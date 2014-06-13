@@ -17,3 +17,7 @@ Then use:
 Use:
 
     dub run
+
+## Useful information ##
+
+[This](http://problemkaputt.de/gbatek.htm) page for a whole lot of detailed information on the hardware.
