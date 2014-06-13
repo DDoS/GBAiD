@@ -1,5 +1,12 @@
-Build me using:
+# Building #
+
+First install the [DUB](http://code.dlang.org/download) package manager.  
+Then use:
+
     dub build
 
-Run me using:
+# Running #
+
+Use:
+
     dub run
