@@ -1,0 +1,8 @@
+{
+	"name": "gbaid",
+	"targetName": "GBAiD",
+	"description": "A GameBoy Advance emulator in D.",
+	"authors": ["Aleksi \"DDoS\" Sapon"],
+	"license": "All rights reserved",
+	"targetPath": "bin"
+}
