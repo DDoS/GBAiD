@@ -1,5 +1,7 @@
 import std.stdio;
+import gbaid.ARM;
 
-void main() {
-	writeln("Hello");
+public void main() {
+	ARMCPU cpu = new ARMCPU();
+	cpu.test();
 }
