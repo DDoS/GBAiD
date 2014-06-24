@@ -19,23 +19,49 @@ public class ARMCPU {
 			return;
 		}
 		// BX and BLX
-		int register = instruction & 0b111;
-		int value = getRegister(register);
-		if (set == Set.ARM) {
-			setBit(value, 0, 1);
-			setRegister(register, value);
+		int address = getRegister(instruction & 0b111);
+		int pc = getRegister(Register.PC);
+		if (getBit(address, 0)) {
+			// switch to thumb
+			int flagValue = getRegister(Register.CPSR);
+			setBit(flagValue, CPSRFlag.T, Set.THUMB);
+			setRegister(Register.CPSR, flagValue);
 			set = Set.THUMB;
-		} else {
-			set = Set.ARM;
+			// discard the last bit in the address
+			address -= 1;
 		}
-		setRegister(Register.PC, value);
-		int flagValue = getRegister(Register.CPSR);
-		setBit(flagValue, CPSRFlag.T, getBit(value, 0));
-		setRegister(Register.CPSR, flagValue);
-		// BLX
+		setRegister(Register.PC, address);
 		if (checkBit(instruction, 5)) {
-			setRegister(Register.LR, value + 4);
+			// BLX
+			setRegister(Register.LR, pc + 4);
 		}
+	}
+
+	private void armBranchAndBranchWithLink(int instruction) {
+		int conditionBits = getConditionBits(instruction);
+		bool blx = conditionBits == 0b1111;
+		if (!blx && !checkCondition(conditionBits)) {
+			return;
+		}
+		// B, BL and BLX
+		int offset = (instruction & 0xFFFFFF);
+		int pc = getRegister(Register.PC);
+		int newPC = pc + 8 + offset * 4;
+		int opcode = getBit(instruction, 24);
+		if (blx) {
+			// BLX
+			newPC += opcode * 2;
+			setRegister(Register.LR, pc + 4);
+			int flagValue = getRegister(Register.CPSR);
+			setBit(flagValue, CPSRFlag.T, Set.THUMB);
+			setRegister(Register.CPSR, flagValue);
+		} else {
+			if (opcode) {
+				// BL
+				setRegister(Register.LR, pc + 4);
+			}
+		}
+		setRegister(Register.PC, newPC);
 	}
 
 	private bool checkCondition(int condition) {
