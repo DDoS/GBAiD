@@ -7,10 +7,9 @@ public class ARMCPU {
 
 	public void test() {
 		import std.stdio;
-		int i = 0;
-		setBit(i, 4, 1);
-		setBit(i, 3, 1);
-		setBit(i, 4, 0);
+		int i = 0xFFFFFF;
+		i <<= 8;
+		i >>= 8;
 		writeln(i);
 	}
 
@@ -44,7 +43,10 @@ public class ARMCPU {
 			return;
 		}
 		// B, BL and BLX
-		int offset = (instruction & 0xFFFFFF);
+		int offset = instruction & 0xFFFFFF;
+		// sign extend the offset
+		offset <<= 8;
+		offset >>= 8;
 		int pc = getRegister(Register.PC);
 		int newPC = pc + 8 + offset * 4;
 		int opcode = getBit(instruction, 24);
