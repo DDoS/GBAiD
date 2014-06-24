@@ -57,6 +57,7 @@ public class ARMCPU {
 			int flagValue = getRegister(Register.CPSR);
 			setBit(flagValue, CPSRFlag.T, Set.THUMB);
 			setRegister(Register.CPSR, flagValue);
+			set = Set.THUMB;
 		} else {
 			if (opcode) {
 				// BL
