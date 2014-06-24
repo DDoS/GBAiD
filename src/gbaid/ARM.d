@@ -1,14 +1,17 @@
 module gbaid.ARM;
 
 public class ARMCPU {
-	private Mode mode = Mode.SYSTEM_AND_USER;
+	private Mode mode = Mode.USER;
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
 
 	public void test() {
 		import std.stdio;
-		setRegister(Register.CPSR, 1 << 31);
-		writeln(checkCondition(4));
+		int i = 0;
+		setBit(i, 4, 1);
+		setBit(i, 3, 1);
+		setBit(i, 4, 0);
+		writeln(i);
 	}
 
 	private void armBranchAndExchange(int instruction) {
@@ -19,7 +22,7 @@ public class ARMCPU {
 		int register = instruction & 0b111;
 		int value = getRegister(register);
 		if (set == Set.ARM) {
-			setBit(value, 0);
+			setBit(value, 0, 1);
 			setRegister(register, value);
 			set = Set.THUMB;
 		} else {
@@ -27,7 +30,7 @@ public class ARMCPU {
 		}
 		setRegister(Register.PC, value);
 		int flagValue = getRegister(Register.CPSR);
-		setBit(flagValue, 5, getBit(value, 0));
+		setBit(flagValue, CPSRFlag.T, getBit(value, 0));
 		setRegister(Register.CPSR, flagValue);
 		// BLX
 		if (checkBit(instruction, 5)) {
@@ -39,33 +42,33 @@ public class ARMCPU {
 		int flags = registers[Register.CPSR];
 		final switch (condition) {
 			case 0x0:
-				return checkBit(flags, 30);
+				return checkBit(flags, CPSRFlag.Z);
 			case 0x1:
-				return !checkBit(flags, 30);
+				return !checkBit(flags, CPSRFlag.Z);
 			case 0x2:
-				return checkBit(flags, 29);
+				return checkBit(flags, CPSRFlag.C);
 			case 0x3:
-				return !checkBit(flags, 29);
+				return !checkBit(flags, CPSRFlag.C);
 			case 0x4:
-				return checkBit(flags, 31);
+				return checkBit(flags, CPSRFlag.N);
 			case 0x5:
-				return !checkBit(flags, 31);
+				return !checkBit(flags, CPSRFlag.N);
 			case 0x6:
-				return checkBit(flags, 28);
+				return checkBit(flags, CPSRFlag.V);
 			case 0x7:
-				return !checkBit(flags, 28);
+				return !checkBit(flags, CPSRFlag.V);
 			case 0x8:
-				return checkBit(flags, 29) && !checkBit(flags, 30);
+				return checkBit(flags, CPSRFlag.C) && !checkBit(flags, CPSRFlag.Z);
 			case 0x9:
-				return !checkBit(flags, 29) || checkBit(flags, 30);
+				return !checkBit(flags, CPSRFlag.C) || checkBit(flags, CPSRFlag.Z);
 			case 0xA:
-				return checkBit(flags, 31) == checkBit(flags, 28);
+				return checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
 			case 0xB:
-				return checkBit(flags, 31) != checkBit(flags, 28);
+				return checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
 			case 0xC:
-				return !checkBit(flags, 30) && checkBit(flags, 31) == checkBit(flags, 28);
+				return !checkBit(flags, CPSRFlag.Z) && checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
 			case 0xD:
-				return checkBit(flags, 30) || checkBit(flags, 31) != checkBit(flags, 28);
+				return checkBit(flags, CPSRFlag.Z) || checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
 			case 0xE:
 				return true;
 			case 0xF:
@@ -97,7 +100,8 @@ public class ARMCPU {
 			SPSR_und = 36
 		*/
 		final switch (mode) {
-			case Mode.SYSTEM_AND_USER:
+			case Mode.USER:
+			case Mode.SYSTEM:
 				return register;
 			case Mode.FIQ:
 				switch (register) {
@@ -160,28 +164,23 @@ private int getBit(int i, int b) {
 	return i & 1 << b;
 }
 
-private void setBit(ref int i, int b) {
-	i |= 1 << b;
-}
-
-private void unsetBit(ref int i, int b) {
-	i &= ~(1 << b);
-}
-
 private void setBit(ref int i, int b, int n) {
-	if (n) {
-		setBit(i, b);
-	} else {
-		unsetBit(i, b);
-	}
+	i = i & ~(1 << b) | (n & 1) << b;
 }
 
 private enum Set {
-	ARM, THUMB
+	ARM = 0,
+	THUMB = 1
 }
 
 private enum Mode {
-	SYSTEM_AND_USER, FIQ, SUPERVISOR, ABORT, IRQ, UNDEFINED
+	USER = 16,
+	FIQ = 17,
+	IRQ = 18,
+	SUPERVISOR = 19,
+	ABORT = 23,
+	UNDEFINED = 27,
+	SYSTEM = 31
 }
 
 private enum Register {
@@ -190,5 +189,17 @@ private enum Register {
 	LR = 14,
 	PC = 15,
 	CPSR = 16,
-	SPSR = 17,
+	SPSR = 17
+}
+
+private enum CPSRFlag {
+	N = 31,
+	Z = 30,
+	C = 29,
+	V = 28,
+	Q = 27,
+	I = 7,
+	F = 6,
+	T = 5,
+	M0 = 0
 }
