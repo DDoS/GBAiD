@@ -7,10 +7,10 @@ public class ARMCPU {
 
 	public void test() {
 		import std.stdio;
-		int i = 0xFFFFFF;
-		i <<= 8;
-		i >>= 8;
-		writeln(i);
+		int i = 0;
+		setBits(i, 2, 4, 0b111);
+		int j = getBits(i, 2, 4);
+		writeln(j);
 	}
 
 	private void armBranchAndExchange(int instruction) {
@@ -18,13 +18,11 @@ public class ARMCPU {
 			return;
 		}
 		// BX and BLX
-		int address = getRegister(instruction & 0b111);
+		int address = getRegister(instruction & 0b1111);
 		int pc = getRegister(Register.PC);
-		if (getBit(address, 0)) {
+		if (address & 0b1) {
 			// switch to thumb
-			int flagValue = getRegister(Register.CPSR);
-			setBit(flagValue, CPSRFlag.T, Set.THUMB);
-			setRegister(Register.CPSR, flagValue);
+			setFlag(CPSRFlag.T, Set.THUMB);
 			set = Set.THUMB;
 			// discard the last bit in the address
 			address -= 1;
@@ -49,22 +47,290 @@ public class ARMCPU {
 		offset >>= 8;
 		int pc = getRegister(Register.PC);
 		int newPC = pc + 8 + offset * 4;
-		int opcode = getBit(instruction, 24);
+		int opCode = getBit(instruction, 24);
 		if (blx) {
 			// BLX
-			newPC += opcode * 2;
+			newPC += opCode * 2;
 			setRegister(Register.LR, pc + 4);
-			int flagValue = getRegister(Register.CPSR);
-			setBit(flagValue, CPSRFlag.T, Set.THUMB);
-			setRegister(Register.CPSR, flagValue);
+			setFlag(CPSRFlag.T, Set.THUMB);
 			set = Set.THUMB;
 		} else {
-			if (opcode) {
+			if (opCode) {
 				// BL
 				setRegister(Register.LR, pc + 4);
 			}
 		}
 		setRegister(Register.PC, newPC);
+	}
+
+	private void armDataProcessing(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int op2Src = getBit(instruction, 25);
+		int opCode = getBits(instruction, 21, 24);
+		int setFlags = getBit(instruction, 20);
+		int rn = getBits(instruction, 16, 19);
+		int rd = getBits(instruction, 12, 15);
+		byte shift;
+		int shiftType;
+		int rm;
+		int op2;
+		if (op2Src) {
+			// immediate
+			shift = cast(byte) getBits(instruction, 8, 11);
+			shiftType = 3;
+			op2 = instruction & 0xFF;
+		} else {
+			// register
+			int shiftSrc = getBit(instruction, 4);
+			if (shiftSrc) {
+				// register
+				shift = cast(byte) (getRegister(getBits(instruction, 8, 11)) & 0xFF);
+
+			} else {
+				// immediate
+				shift = cast(byte) getBits(instruction, 7, 11);
+			}
+			shiftType = getBits(instruction, 5, 6);
+			rm = instruction & 0b1111;
+			op2 = getRegister(rm);
+		}
+		int carry = getFlag(CPSRFlag.C);
+		int shiftCarry = carry;
+		final switch (shiftType) {
+			// LSL
+			case 0:
+				if (shift != 0) {
+					shiftCarry = getBit(op2, 32 - shift);
+					op2 <<= shift;
+				}
+				break;
+			// LSR
+			case 1:
+				if (op2Src && shift == 0) {
+					shiftCarry = getBit(op2, 31);
+					op2 = 0;
+				} else {
+					shiftCarry = getBit(op2, shift - 1);
+					op2 >>>= shift;
+				}
+				break;
+			// ASR
+			case 2:
+				if (op2Src && shift == 0) {
+					shiftCarry = getBit(op2, 31);
+					op2 >>= 31;
+				} else {
+					shiftCarry = getBit(op2, shift - 1);
+					op2 >>= shift;
+				}
+				break;
+			// ROR
+			case 3:
+				if (op2Src && shift == 0) {
+					// RRX
+					int newCarry = getBit(op2, 0);
+					asm {
+						ror op2, 1;
+					}
+					setBit(op2, 31, shiftCarry);
+					if (!op2Src) {
+						setRegister(rm, op2);
+					}
+					carry = newCarry;
+					shiftCarry = carry;
+				} else {
+					shiftCarry = getBit(op2, shift - 1);
+					asm {
+						mov CL, shift;
+						ror op2, CL;
+					}
+				}
+				break;
+		}
+		int op1 = getRegister(rn);
+		int res;
+		int negative, zero, overflow;
+		final switch(opCode) {
+			case 0x0:
+				// AND
+				res = op1 & op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x1:
+				// EOR
+				res = op1 ^ op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x2:
+				// SUB
+				res = op1 - op2;
+				if (setFlags) {
+					overflow = overflowed(op1, -op2, res);
+					carry = res >= 0;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x3:
+				// RSB
+				res = op2 - op1;
+				if (setFlags) {
+					overflow = overflowed(op2, -op1, res);
+					carry = res >= 0;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x4:
+				// ADD
+				res = op1 + op2;
+				if (setFlags) {
+					overflow = overflowed(op1, op2, res);
+					carry = carried(op1, op2, res);
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x5:
+				// ADC
+				res = op1 + op2 + carry;
+				if (setFlags) {
+					overflow = overflowed(op1, op2 + carry, res);
+					carry = carried(op1, op2 + carry, res);
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x6:
+				// SBC
+				res = op1 - op2 + carry - 1;
+				if (setFlags) {
+					overflow = overflowed(op1, -op2 + carry - 1, res);
+					carry = res >= 0;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x7:
+				// RSC
+				res = op2 - op1 + carry - 1;
+				if (setFlags) {
+					overflow = overflowed(op2, -op1 + carry - 1, res);
+					carry = res >= 0;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0x8:
+				// TST
+				int v = op1 & op2;
+				overflow = getFlag(CPSRFlag.V);
+				carry = shiftCarry;
+				zero = v == 0;
+				negative = v < 0;
+				break;
+			case 0x9:
+				// TEQ
+				int v = op1 ^ op2;
+				overflow = getFlag(CPSRFlag.V);
+				carry = shiftCarry;
+				zero = v == 0;
+				negative = v < 0;
+				break;
+			case 0xA:
+				// CMP
+				int v = op1 - op2;
+				overflow = overflowed(op1, -op2, v);
+				carry = v >= 0;
+				zero = v == 0;
+				negative = v < 0;
+				break;
+			case 0xB:
+				// CMN
+				int v = op1 + op2;
+				overflow = overflowed(op1, op2, v);
+				carry = carried(op1, op2, v);
+				zero = v == 0;
+				negative = v < 0;
+				break;
+			case 0xC:
+				// ORR
+				res = op1 | op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0xD:
+				// MOV
+				res = op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0xE:
+				// BIC
+				res = op1 & ~op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+			case 0xF:
+				// MVN
+				res = ~op2;
+				if (setFlags) {
+					overflow = getFlag(CPSRFlag.V);
+					carry = shiftCarry;
+					zero = res == 0;
+					negative = res < 0;
+				}
+				break;
+		}
+		if (setFlags) {
+			if (rd == 15) {
+				setRegister(Register.CPSR, getRegister(Register.SPSR));
+			} else {
+				setAPSRFlags(negative, zero, carry, overflow);
+			}
+		}
+		setRegister(rd, res);
+	}
+
+	private int getFlag(CPSRFlag flag) {
+		return getBit(getRegister(Register.CPSR), flag);
+	}
+
+	private void setFlag(CPSRFlag flag, int b) {
+		int flagValue = getRegister(Register.CPSR);
+		setBit(flagValue, flag, b);
+		setRegister(Register.CPSR, flagValue);
+	}
+
+	private void setAPSRFlags(int n, int z, int c, int v) {
+		int flagValue = getRegister(Register.CPSR);
+		int apsr =  v | c << 1 | z << 2 | n << 3;
+		setBits(flagValue, 28, 31, apsr);
+		setRegister(Register.CPSR, flagValue);
 	}
 
 	private bool checkCondition(int condition) {
@@ -181,6 +447,15 @@ public class ARMCPU {
 	}
 }
 
+private bool carried(int a, int b, int r) {
+	return cast(uint) r < cast(uint) a;
+}
+
+private bool overflowed(int a, int b, int r) {
+	int rn = getBit(r, 31);
+	return getBit(a, 31) != rn && getBit(b, 31) != rn;
+}
+
 private int getConditionBits(int instruction) {
 	return instruction >> 28 & 0b1111;
 }
@@ -195,6 +470,15 @@ private int getBit(int i, int b) {
 
 private void setBit(ref int i, int b, int n) {
 	i = i & ~(1 << b) | (n & 1) << b;
+}
+
+private int getBits(int i, int a, int b) {
+	return i >> a & (1 << b - a + 1) - 1;
+}
+
+private void setBits(ref int i, int a, int b, int n) {
+	int mask = (1 << b - a + 1) - 1 << a;
+	i = i & ~mask | n << a & mask;
 }
 
 private enum Set {
