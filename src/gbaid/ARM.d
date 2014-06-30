@@ -1,19 +1,36 @@
 module gbaid.ARM;
 
+import std.stdio;
+
 public class ARMCPU {
 	private Mode mode = Mode.USER;
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
 
 	public void test() {
-		import std.stdio;
-		int i = 0;
-		setBits(i, 2, 4, 0b111);
-		int j = getBits(i, 2, 4);
-		writeln(j);
+		// B
+		process(0xEA00002E);
+		// B
+		process(0xEA000006);
+	}
+
+	private void process(int instruction) {
+		// temporary
+		int opCode = getBits(instruction, 8, 27);
+		if (opCode == 0b00010010111111111111) {
+			armBranchAndExchange(instruction);
+			return;
+		}
+		opCode = getBits(opCode, 17, 19);
+		if (opCode == 0b101) {
+			armBranchAndBranchWithLink(instruction);
+			return;
+		}
+		armDataProcessing(instruction);
 	}
 
 	private void armBranchAndExchange(int instruction) {
+		writeln("BX and BLX");
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
@@ -35,6 +52,7 @@ public class ARMCPU {
 	}
 
 	private void armBranchAndBranchWithLink(int instruction) {
+		writeln("B, BL and BLX");
 		int conditionBits = getConditionBits(instruction);
 		bool blx = conditionBits == 0b1111;
 		if (!blx && !checkCondition(conditionBits)) {
@@ -78,7 +96,7 @@ public class ARMCPU {
 		int op2;
 		if (op2Src) {
 			// immediate
-			shift = cast(byte) getBits(instruction, 8, 11);
+			shift = cast(byte) (getBits(instruction, 8, 11) * 2);
 			shiftType = 3;
 			op2 = instruction & 0xFF;
 		} else {
@@ -152,6 +170,7 @@ public class ARMCPU {
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
+		writefln("Arithmetic and logical, %X", opCode);
 		final switch(opCode) {
 			case 0x0:
 				// AND
@@ -457,7 +476,7 @@ private bool overflowed(int a, int b, int r) {
 }
 
 private int getConditionBits(int instruction) {
-	return instruction >> 28 & 0b1111;
+	return instruction >> 28 & 0xF;
 }
 
 private bool checkBit(int i, int b) {
@@ -465,7 +484,7 @@ private bool checkBit(int i, int b) {
 }
 
 private int getBit(int i, int b) {
-	return i & 1 << b;
+	return i >> b & 1;
 }
 
 private void setBit(ref int i, int b, int n) {
