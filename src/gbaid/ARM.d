@@ -15,22 +15,92 @@ public class ARMCPU {
 	}
 
 	private void process(int instruction) {
-		// temporary
-		int opCode = getBits(instruction, 8, 27);
-		if (opCode == 0b00010010111111111111) {
-			armBranchAndExchange(instruction);
-			return;
+		int category = getBits(instruction, 25, 27);
+		/*
+			0: DataProc, PSR Reg, BX, BLX, BKPT, CLZ, QALU, Multiply, MulLong, MulHalf, TransSwp12, TransReg10, TransImm10
+			1: DataProc, PSR Imm
+			2: TransImm9
+			3: TransReg9, Undefined
+			4: BlockTrans
+			5: B, BL, BLX
+			6: CoDataTrans, CoRR
+			7: CoDataOp, CoRegTrans, SWI
+		*/
+		final switch (category) {
+			case 0:
+				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
+					writeln("PSR Reg");
+				} else if (getBits(instruction, 8, 24) == 0b00010010111111111111) {
+					writeln("BX, BLX");
+					armBranchAndExchange(instruction);
+				} else if (getBits(instruction, 20, 24) == 0b10010 && getBits(instruction, 4, 7) == 0b0111) {
+					writeln("BKPT");
+				} else if (getBits(instruction, 16, 24) == 0b101101111 && getBits(instruction, 4, 11) == 0b11110001) {
+					writeln("CLZ");
+				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000101) {
+					writeln("QALU");
+				} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
+					writeln("Multiply");
+				} else if (getBits(instruction, 23, 24) == 0b01 && getBits(instruction, 4, 7) == 0b1001) {
+					writeln("MulLong");
+				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
+					writeln("MulHalf");
+				} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
+					writeln("TransSwp12");
+				} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
+					writeln("TransReg10");
+				} else if (getBit(instruction, 22) == 0b1 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b1) {
+					writeln("TransImm10");
+				} else {
+					writeln("DataProc");
+					armDataProcessing(instruction);
+				}
+				break;
+			case 1:
+				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0) {
+					writeln("PSR Reg");
+				} else {
+					writeln("DataProc");
+					armDataProcessing(instruction);
+				}
+				break;
+			case 2:
+				writeln("TransImm9");
+				break;
+			case 3:
+				if (getBit(instruction, 4) == 0b0) {
+					writeln("TransReg9");
+				} else {
+					writeln("Undefined");
+				}
+				break;
+			case 4:
+				writeln("BlockTrans");
+				break;
+			case 5:
+				writeln("B, BL, BLX");
+				armBranchAndBranchWithLink(instruction);
+				break;
+			case 6:
+				if (getBits(instruction, 21, 24) == 0b0010) {
+					writeln("CoDataTrans");
+				} else {
+					writeln("CoRR");
+				}
+				break;
+			case 7:
+				if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b0) {
+					writeln("CoDataOp");
+				} else if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b1) {
+					writeln("CoRegTrans");
+				} else {
+					writeln("SWI");
+				}
+				break;
 		}
-		opCode = getBits(opCode, 17, 19);
-		if (opCode == 0b101) {
-			armBranchAndBranchWithLink(instruction);
-			return;
-		}
-		armDataProcessing(instruction);
 	}
 
 	private void armBranchAndExchange(int instruction) {
-		writeln("BX and BLX");
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
@@ -52,7 +122,6 @@ public class ARMCPU {
 	}
 
 	private void armBranchAndBranchWithLink(int instruction) {
-		writeln("B, BL and BLX");
 		int conditionBits = getConditionBits(instruction);
 		bool blx = conditionBits == 0b1111;
 		if (!blx && !checkCondition(conditionBits)) {
@@ -170,8 +239,8 @@ public class ARMCPU {
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
-		writefln("Arithmetic and logical, %X", opCode);
-		final switch(opCode) {
+		writeln(opCode);
+		final switch (opCode) {
 			case 0x0:
 				// AND
 				res = op1 & op2;
