@@ -1,7 +1,7 @@
 import std.stdio;
-import gbaid.ARM;
+import gbaid.arm;
 
 public void main() {
-	ARMCPU cpu = new ARMCPU();
-	cpu.test();
+	ARMProcessor processor = new ARMProcessor();
+	processor.test();
 }

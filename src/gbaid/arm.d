@@ -1,8 +1,8 @@
-module gbaid.ARM;
+module gbaid.arm;
 
 import std.stdio;
 
-public class ARMCPU {
+public class ARMProcessor {
 	private Mode mode = Mode.USER;
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
