@@ -1,9 +1,9 @@
-module gbaid.ram;
+module gbaid.memory;
 
-public class RAM {
-    private int[] memory;
+public class Memory {
+    protected int[] memory;
 
-    public this(ulong capacity) {
+    protected this(ulong capacity) {
         memory = new int[capacity];
     }
 
@@ -31,12 +31,12 @@ public class RAM {
         memory[wordAddress] = memory[wordAddress] & ~(0xFFFF << offset) | (s & 0xFFFF) << offset;
     }
 
-    public int getWord(int address) {
+    public int getInt(int address) {
         return memory[address];
     }
 
-    public void setWord(int address, int w) {
-        memory[address] = w;
+    public void setInt(int address, int i) {
+        memory[address] = i;
     }
 
     public long getLong(int address) {
@@ -48,5 +48,39 @@ public class RAM {
         address *= 2;
         memory[address] = cast(int) l;
         memory[address + 1] = cast(int) (l >> 32);
+    }
+}
+
+public class RAM : Memory {
+    public this(ulong capacity) {
+        super(capacity);
+    }
+}
+
+public class ROM : Memory {
+    public this(ulong capacity) {
+        super(capacity);
+    }
+
+    public override void setByte(int address, byte b) {
+        throw new ReadOnlyException();
+    }
+
+    public override void setShort(int address, short s) {
+        throw new ReadOnlyException();
+    }
+
+    public override void setInt(int address, int i) {
+        throw new ReadOnlyException();
+    }
+
+    public override void setLong(int address, long l) {
+        throw new ReadOnlyException();
+    }
+}
+
+public class ReadOnlyException : Exception {
+    protected this() {
+        super("Memory is read only");
     }
 }
