@@ -2,10 +2,12 @@ import std.stdio;
 import gbaid.arm;
 import gbaid.memory;
 
-public void main() {
+public void main(string[] args) {
+	if (args.length < 2) {
+		throw new Exception("Missing ROM path as first argument");
+	}
 	ARMProcessor processor = new ARMProcessor();
-	Memory ram = new RAM(1024);
-	ram.setInt(10, 10);
-	writeln(ram.getInt(10));
+	ROM rom = new ROM(args[1]);
+	writeln(rom.getInt(0));
 	processor.test();
 }

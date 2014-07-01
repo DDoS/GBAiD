@@ -7,6 +7,10 @@ public class Memory {
         memory = new int[capacity];
     }
 
+    protected this(int[] memory) {
+        this.memory = memory;
+    }
+
     public ulong getCapacity() {
         return memory.length;
     }
@@ -58,8 +62,22 @@ public class RAM : Memory {
 }
 
 public class ROM : Memory {
-    public this(ulong capacity) {
-        super(capacity);
+    import std.string : string;
+
+    private static immutable uint BYTES_PER_MIB = 1048576;
+
+    public this(string file) {
+        import std.file : read, FileException;
+        import std.path : expandTilde;
+        try {
+            this(cast(int[]) read(expandTilde(file), 8 * BYTES_PER_MIB));
+        } catch (FileException ex) {
+            throw new Exception("Cannot initialize ROM", ex);
+        }
+    }
+
+    public this(int[] rom) {
+        super(rom);
     }
 
     public override void setByte(int address, byte b) {
