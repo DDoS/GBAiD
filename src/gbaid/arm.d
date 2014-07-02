@@ -2,16 +2,28 @@ module gbaid.arm;
 
 import std.stdio;
 
+import gbaid.memory;
+
 public class ARMProcessor {
 	private Mode mode = Mode.USER;
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
+	private Memory memory;
 
-	public void test() {
-		// B
-		process(0xEA00002E);
-		// B
-		process(0xEA000006);
+	public void setMemory(Memory memory) {
+		this.memory = memory;
+	}
+
+	public void run(uint entryPointAddress) {
+		setRegister(Register.PC, entryPointAddress);
+		int pc = entryPointAddress;
+		while (true) {
+			// TODO: proper pipelining
+			process(memory.getInt(pc));
+			pc = getRegister(Register.PC);
+			pc += 4;
+			setRegister(Register.PC, pc);
+		}
 	}
 
 	private void process(int instruction) {
