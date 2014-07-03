@@ -9,6 +9,8 @@ public class ARMProcessor {
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
 	private Memory memory;
+	private int instruction;
+	private int decoded;
 
 	public void setMemory(Memory memory) {
 		this.memory = memory;
@@ -16,17 +18,46 @@ public class ARMProcessor {
 
 	public void run(uint entryPointAddress) {
 		setRegister(Register.PC, entryPointAddress);
-		int pc = entryPointAddress;
-		while (true) {
-			// TODO: proper pipelining
-			process(memory.getInt(pc));
-			pc = getRegister(Register.PC);
-			pc += 4;
-			setRegister(Register.PC, pc);
+		// first tick
+		instruction = fetch();
+		incrementPC();
+		// second tick
+		int nextInstruction = fetch();
+		decoded = decode(instruction);
+		instruction = nextInstruction;
+		incrementPC();
+		// the rest of the ticks
+		foreach (i; 0 .. 10) {
+			tick();
 		}
 	}
 
-	private void process(int instruction) {
+	private void tick() {
+		// fetch
+		int nextInstruction = fetch();
+		// decode
+		int nextDecoded = decode(instruction);
+		instruction = nextInstruction;
+		// execute
+		execute(decoded);
+		decoded = nextDecoded;
+		// increment the porgram counter
+		incrementPC();
+	}
+
+	private int fetch() {
+		int pc = getRegister(Register.PC);
+		writefln("%X", pc);
+		int instruction = memory.getInt(pc);
+		return instruction;
+	}
+
+	private int decode(int instruction) {
+		// Nothing to do
+		return instruction;
+	}
+
+	private void execute(int instruction) {
 		int category = getBits(instruction, 25, 27);
 		/*
 			0: DataProc, PSR Reg, BX, BLX, BKPT, CLZ, QALU, Multiply, MulLong, MulHalf, TransSwp12, TransReg10, TransImm10
@@ -112,13 +143,17 @@ public class ARMProcessor {
 		}
 	}
 
+	private void incrementPC() {
+		setRegister(Register.PC, getRegister(Register.PC) + 4);
+	}
+
 	private void armBranchAndExchange(int instruction) {
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
 		// BX and BLX
 		int address = getRegister(instruction & 0b1111);
-		int pc = getRegister(Register.PC);
+		int pc = getRegister(Register.PC) - 8;
 		if (address & 0b1) {
 			// switch to thumb
 			setFlag(CPSRFlag.T, Set.THUMB);
@@ -144,7 +179,7 @@ public class ARMProcessor {
 		// sign extend the offset
 		offset <<= 8;
 		offset >>= 8;
-		int pc = getRegister(Register.PC);
+		int pc = getRegister(Register.PC) - 8;
 		int newPC = pc + 8 + offset * 4;
 		int opCode = getBit(instruction, 24);
 		if (blx) {
@@ -251,10 +286,10 @@ public class ARMProcessor {
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
-		writeln(opCode);
 		final switch (opCode) {
 			case 0x0:
 				// AND
+				writeln("AND");
 				res = op1 & op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
@@ -265,6 +300,7 @@ public class ARMProcessor {
 				break;
 			case 0x1:
 				// EOR
+				writeln("EOR");
 				res = op1 ^ op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
@@ -275,6 +311,7 @@ public class ARMProcessor {
 				break;
 			case 0x2:
 				// SUB
+				writeln("SUB");
 				res = op1 - op2;
 				if (setFlags) {
 					overflow = overflowed(op1, -op2, res);
@@ -285,6 +322,7 @@ public class ARMProcessor {
 				break;
 			case 0x3:
 				// RSB
+				writeln("RSB");
 				res = op2 - op1;
 				if (setFlags) {
 					overflow = overflowed(op2, -op1, res);
@@ -295,6 +333,7 @@ public class ARMProcessor {
 				break;
 			case 0x4:
 				// ADD
+				writeln("ADD");
 				res = op1 + op2;
 				if (setFlags) {
 					overflow = overflowed(op1, op2, res);
@@ -305,6 +344,7 @@ public class ARMProcessor {
 				break;
 			case 0x5:
 				// ADC
+				writeln("ADC");
 				res = op1 + op2 + carry;
 				if (setFlags) {
 					overflow = overflowed(op1, op2 + carry, res);
@@ -315,6 +355,7 @@ public class ARMProcessor {
 				break;
 			case 0x6:
 				// SBC
+				writeln("SBC");
 				res = op1 - op2 + carry - 1;
 				if (setFlags) {
 					overflow = overflowed(op1, -op2 + carry - 1, res);
@@ -325,6 +366,7 @@ public class ARMProcessor {
 				break;
 			case 0x7:
 				// RSC
+				writeln("RSC");
 				res = op2 - op1 + carry - 1;
 				if (setFlags) {
 					overflow = overflowed(op2, -op1 + carry - 1, res);
@@ -335,6 +377,7 @@ public class ARMProcessor {
 				break;
 			case 0x8:
 				// TST
+				writeln("TST");
 				int v = op1 & op2;
 				overflow = getFlag(CPSRFlag.V);
 				carry = shiftCarry;
@@ -343,6 +386,7 @@ public class ARMProcessor {
 				break;
 			case 0x9:
 				// TEQ
+				writeln("TEQ");
 				int v = op1 ^ op2;
 				overflow = getFlag(CPSRFlag.V);
 				carry = shiftCarry;
@@ -351,6 +395,7 @@ public class ARMProcessor {
 				break;
 			case 0xA:
 				// CMP
+				writeln("CMP");
 				int v = op1 - op2;
 				overflow = overflowed(op1, -op2, v);
 				carry = v >= 0;
@@ -359,6 +404,7 @@ public class ARMProcessor {
 				break;
 			case 0xB:
 				// CMN
+				writeln("CMN");
 				int v = op1 + op2;
 				overflow = overflowed(op1, op2, v);
 				carry = carried(op1, op2, v);
@@ -367,6 +413,7 @@ public class ARMProcessor {
 				break;
 			case 0xC:
 				// ORR
+				writeln("ORR");
 				res = op1 | op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
@@ -377,6 +424,7 @@ public class ARMProcessor {
 				break;
 			case 0xD:
 				// MOV
+				writeln("MOV");
 				res = op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
@@ -387,6 +435,7 @@ public class ARMProcessor {
 				break;
 			case 0xE:
 				// BIC
+				writeln("BIC");
 				res = op1 & ~op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
@@ -397,6 +446,7 @@ public class ARMProcessor {
 				break;
 			case 0xF:
 				// MVN
+				writeln("MVN");
 				res = ~op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
