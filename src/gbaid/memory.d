@@ -1,10 +1,13 @@
 module gbaid.memory;
 
+import std.string : string, format;
+import std.file : read, FileException;
+import std.path : expandTilde;
+
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
 public interface Memory {
-
     ulong getCapacity();
 
     byte getByte(uint address);
@@ -25,15 +28,11 @@ public interface Memory {
 }
 
 public class ROM : Memory {
-    import std.string : string;
-
     protected int[] memory;
 
-    public this(string file, uint maxByteSize) {
-        import std.file : read, FileException;
-        import std.path : expandTilde;
+    public this(string file, uint maxSize) {
         try {
-            this(cast(int[]) read(expandTilde(file), maxByteSize));
+            this(cast(int[]) read(expandTilde(file), maxSize));
         } catch (FileException ex) {
             throw new Exception("Cannot initialize ROM", ex);
         }
@@ -44,7 +43,7 @@ public class ROM : Memory {
     }
 
     public ulong getCapacity() {
-        return memory.length;
+        return memory.length * 4;
     }
 
     public byte getByte(uint address) {
@@ -56,6 +55,7 @@ public class ROM : Memory {
     }
 
     public short getShort(uint address) {
+        address /= 2;
         return cast(short) (memory[address / 2] >> address % 2 * 16 & 0xFFFF);
     }
 
@@ -64,7 +64,7 @@ public class ROM : Memory {
     }
 
     public int getInt(uint address) {
-        return memory[address];
+        return memory[address / 4];
     }
 
     public void setInt(uint address, int i) {
@@ -72,7 +72,7 @@ public class ROM : Memory {
     }
 
     public long getLong(uint address) {
-        address *= 2;
+        address /= 4;
         return cast(long) memory[address] & 0xFFFFFFFF | cast(long) memory[address + 1] << 32;
     }
 
@@ -82,7 +82,6 @@ public class ROM : Memory {
 }
 
 public class RAM : ROM {
-
     public this(string file, uint maxByteSize) {
         super(file, maxByteSize);
     }
@@ -92,7 +91,7 @@ public class RAM : ROM {
     }
 
     public this(ulong capacity) {
-        this(new int[capacity]);
+        this(new int[capacity / 4]);
     }
 
     public override void setByte(uint address, byte b) {
@@ -102,24 +101,32 @@ public class RAM : ROM {
     }
 
     public override void setShort(uint address, short s) {
+        address /= 2;
         int wordAddress = address / 2;
         int offset = address % 2 * 16;
         memory[wordAddress] = memory[wordAddress] & ~(0xFFFF << offset) | (s & 0xFFFF) << offset;
     }
 
     public override void setInt(uint address, int i) {
-        memory[address] = i;
+        memory[address / 4] = i;
     }
 
     public override void setLong(uint address, long l) {
-        address *= 2;
+        address /= 4;
         memory[address] = cast(int) l;
         memory[address + 1] = cast(int) (l >> 32);
     }
 }
 
 public class ReadOnlyException : Exception {
-    protected this() {
+    public this() {
         super("Memory is read only");
+    }
+}
+
+
+public class BadAddressException : Exception {
+    public this(uint address) {
+        super(format("Invalid address: 0x%X", address));
     }
 }
