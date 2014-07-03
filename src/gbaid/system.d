@@ -32,7 +32,7 @@ public class GameBoyAdvance {
         checkNotRunning();
         processor.setMemory(memory);
         // TODO: start at proper location
-        processor.run(0);
+        processor.run(GBAMemory.GAMEPAK_ROM_START);
     }
 
     private void checkNotRunning() {
@@ -49,6 +49,20 @@ public class GameBoyAdvance {
         private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
         private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
+        private static immutable uint BIOS_START = 0x00000000;
+        private static immutable uint BIOS_END = 0x00003FFF;
+        private static immutable uint WRAM_START = 0x02000000;
+        private static immutable uint WRAM_END = 0x03007FFF;
+        private static immutable uint PALETTE_RAM_START = 0x05000000;
+        private static immutable uint PALETTE_RAM_END = 0x050003FF;
+        private static immutable uint VRAM_START = 0x06000000;
+        private static immutable uint VRAM_END = 0x06017FFF;
+        private static immutable uint OAM_START = 0x07000000;
+        private static immutable uint OAM_END = 0x070003FF;
+        private static immutable uint GAMEPAK_ROM_START = 0x08000000;
+        private static immutable uint GAMEPAK_ROM_END = 0x0DFFFFFF;
+        private static immutable uint GAMEPAK_SRAM_START = 0x0E000000;
+        private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
         private ROM bios;
         private RAM wram = new RAM(WRAM_SIZE);
         private RAM vram = new RAM(VRAM_SIZE);
@@ -72,33 +86,77 @@ public class GameBoyAdvance {
             return capacity;
         }
 
-        // TODO: map memory
         public byte getByte(uint address) {
-            return 0;
+            Memory memory = map(address);
+            return memory.getByte(address);
         }
 
         public void setByte(uint address, byte b) {
+            Memory memory = map(address);
+            memory.setByte(address, b);
         }
 
         public short getShort(uint address) {
-            return 0;
+            Memory memory = map(address);
+            return memory.getShort(address);
         }
 
         public void setShort(uint address, short s) {
+            Memory memory = map(address);
+            memory.setShort(address, s);
         }
 
         public int getInt(uint address) {
-            return 0;
+            Memory memory = map(address);
+            return memory.getInt(address);
         }
 
         public void setInt(uint address, int i) {
+            Memory memory = map(address);
+            memory.setInt(address, i);
         }
 
         public long getLong(uint address) {
-            return 0;
+            Memory memory = map(address);
+            return memory.getLong(address);
         }
 
         public void setLong(uint address, long l) {
+            Memory memory = map(address);
+            memory.setLong(address, l);
+        }
+
+        private Memory map(ref uint address) {
+            if (address <= BIOS_END) {
+                address -= BIOS_START;
+                return bios;
+            }
+            if (address <= WRAM_END) {
+                address -= WRAM_START;
+                return wram;
+            }
+            if (address <= PALETTE_RAM_END) {
+                address -= PALETTE_RAM_START;
+                return paletteRAM;
+            }
+            if (address <= VRAM_END) {
+                address -= VRAM_START;
+                return vram;
+            }
+            if (address <= OAM_END) {
+                address -= OAM_START;
+                return oam;
+            }
+            if (address <= GAMEPAK_ROM_END) {
+                address -= GAMEPAK_ROM_START;
+                address %= MAX_GAMEPAK_ROM_SIZE;
+                return gamepakROM;
+            }
+            if (address <= GAMEPAK_SRAM_END) {
+                address -= GAMEPAK_SRAM_START;
+                return gamepackSRAM;
+            }
+            throw new BadAddressException(address);
         }
     }
 }
