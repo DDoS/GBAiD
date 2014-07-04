@@ -21,3 +21,7 @@ Use:
 ## Useful information ##
 
 [This](http://problemkaputt.de/gbatek.htm) page for a whole lot of detailed information on the hardware.
+
+[This](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0210c/Cacbgice.html) and 
+[this](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0210c/I1040101.html) for a list of all instructions
+supported by the ARM7TDMI CPU.
