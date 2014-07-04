@@ -43,6 +43,7 @@ public class ARMProcessor {
 		decoded = nextDecoded;
 		// increment the porgram counter
 		incrementPC();
+		// TODO: properly handle branching (flush the pipeline)
 	}
 
 	private int fetch() {
@@ -206,13 +207,13 @@ public class ARMProcessor {
 		int setFlags = getBit(instruction, 20);
 		int rn = getBits(instruction, 16, 19);
 		int rd = getBits(instruction, 12, 15);
-		byte shift;
+		int shift;
 		int shiftType;
 		int rm;
 		int op2;
 		if (op2Src) {
 			// immediate
-			shift = cast(byte) (getBits(instruction, 8, 11) * 2);
+			shift = getBits(instruction, 8, 11) * 2;
 			shiftType = 3;
 			op2 = instruction & 0xFF;
 		} else {
@@ -220,11 +221,11 @@ public class ARMProcessor {
 			int shiftSrc = getBit(instruction, 4);
 			if (shiftSrc) {
 				// register
-				shift = cast(byte) (getRegister(getBits(instruction, 8, 11)) & 0xFF);
+				shift = getRegister(getBits(instruction, 8, 11)) & 0xFF;
 
 			} else {
 				// immediate
-				shift = cast(byte) getBits(instruction, 7, 11);
+				shift = getBits(instruction, 7, 11);
 			}
 			shiftType = getBits(instruction, 5, 6);
 			rm = instruction & 0b1111;
@@ -268,16 +269,18 @@ public class ARMProcessor {
 					asm {
 						ror op2, 1;
 					}
-					setBit(op2, 31, shiftCarry);
+					setBit(op2, 31, carry);
 					if (!op2Src) {
 						setRegister(rm, op2);
 					}
 					carry = newCarry;
+					setFlag(CPSRFlag.C, carry);
 					shiftCarry = carry;
 				} else {
 					shiftCarry = getBit(op2, shift - 1);
+					byte byteShift = cast(byte) shift;
 					asm {
-						mov CL, shift;
+						mov CL, byteShift;
 						ror op2, CL;
 					}
 				}
@@ -464,6 +467,56 @@ public class ARMProcessor {
 			}
 		}
 		setRegister(rd, res);
+	}
+
+	private void armPRSTransfer(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int psrSrc = getBit(instruction, 22);
+		int opCode = getBit(instruction, 21);
+		if (opCode) {
+			// MSR
+			int opSrc = getBit(instruction, 25);
+			int writeFlags = getBit(instruction, 19);
+			int writeControl = getBit(instruction, 16);
+			int op;
+			if (opSrc) {
+				// immediate
+				byte shift = cast(byte) (getBits(instruction, 8, 11) * 2);
+				op = instruction & 0xFF;
+				asm {
+					mov CL, shift;
+					ror op, CL;
+				}
+			} else {
+				// register
+				op = getRegister(instruction & 0xF);
+			}
+			int mask;
+			if (writeFlags) {
+				mask |= 0xFF000000;
+			}
+			if (writeControl) {
+				// never write T
+				mask |= 0b11011111;
+			}
+			if (psrSrc) {
+				int spsr = getRegister(Register.SPSR);
+				setRegister(Register.SPSR, spsr & ~mask | op & mask);
+			} else {
+				int cpsr = getRegister(Register.CPSR);
+				setRegister(Register.CPSR, cpsr & ~mask | op & mask);
+			}
+		} else {
+			// MRS
+			int rd = getBits(instruction, 12, 15);
+			if (psrSrc) {
+				setRegister(rd, getRegister(Register.SPSR));
+			} else {
+				setRegister(rd, getRegister(Register.CPSR));
+			}
+		}
 	}
 
 	private int getFlag(CPSRFlag flag) {
