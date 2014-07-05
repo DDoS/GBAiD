@@ -3,6 +3,7 @@ module gbaid.arm;
 import std.stdio;
 
 import gbaid.memory;
+import gbaid.util;
 
 public class ARMProcessor {
 	private Mode mode = Mode.USER;
@@ -74,6 +75,7 @@ public class ARMProcessor {
 			case 0:
 				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
 					writeln("PSR Reg");
+					armPRSTransfer(instruction);
 				} else if (getBits(instruction, 8, 24) == 0b00010010111111111111) {
 					writeln("BX, BLX");
 					armBranchAndExchange(instruction);
@@ -85,8 +87,10 @@ public class ARMProcessor {
 					writeln("QALU");
 				} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
 					writeln("Multiply");
+					armMultiplyAndMultiplyAccumulate(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b01 && getBits(instruction, 4, 7) == 0b1001) {
 					writeln("MulLong");
+					armMultiplyAndMultiplyAccumulate(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
 					writeln("MulHalf");
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
@@ -103,6 +107,7 @@ public class ARMProcessor {
 			case 1:
 				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0) {
 					writeln("PSR Reg");
+					armPRSTransfer(instruction);
 				} else {
 					writeln("DataProc");
 					armDataProcessing(instruction);
@@ -516,6 +521,62 @@ public class ARMProcessor {
 			} else {
 				setRegister(rd, getRegister(Register.CPSR));
 			}
+		}
+	}
+
+	private void armMultiplyAndMultiplyAccumulate(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int opCode = getBits(instruction, 21, 24);
+		int setFlags = getBit(instruction, 20);
+		int rd = getBits(instruction, 16, 19);
+		int op2 = getRegister(getBits(instruction, 8, 11));
+		int op1 = getRegister(instruction & 0xF);
+		final switch (opCode) {
+			case 0x0:
+				int res = op1 * op2;
+				setRegister(rd, res);
+				break;
+			case 0x1:
+				int op3 = getRegister(getBits(instruction, 12, 15));
+				int res = op1 * op2 + op3;
+				setRegister(rd, res);
+				break;
+			case 0x4:
+				int rn = getBits(instruction, 12, 15);
+				ulong res = ucast(op1) * ucast(op2);
+				int resLo = cast(int) res;
+				int resHi = cast(int) (res >> 32);
+				setRegister(rn, resLo);
+				setRegister(rd, resHi);
+				break;
+			case 0x5:
+				int rn = getBits(instruction, 12, 15);
+				ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
+				ulong res = ucast(op1) * ucast(op2) + op3;
+				int resLo = cast(int) res;
+				int resHi = cast(int) (res >> 32);
+				setRegister(rn, resLo);
+				setRegister(rd, resHi);
+				break;
+			case 0x6:
+				int rn = getBits(instruction, 12, 15);
+				long res = cast(long) op1 * cast(long) op2;
+				int resLo = cast(int) res;
+				int resHi = cast(int) (res >> 32);
+				setRegister(rn, resLo);
+				setRegister(rd, resHi);
+				break;
+			case 0x7:
+				int rn = getBits(instruction, 12, 15);
+				long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
+				long res = cast(long) op1 * cast(long) op2 + op3;
+				int resLo = cast(int) res;
+				int resHi = cast(int) (res >> 32);
+				setRegister(rn, resLo);
+				setRegister(rd, resHi);
+				break;
 		}
 	}
 
