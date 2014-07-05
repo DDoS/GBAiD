@@ -537,11 +537,17 @@ public class ARMProcessor {
 			case 0x0:
 				int res = op1 * op2;
 				setRegister(rd, res);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 			case 0x1:
 				int op3 = getRegister(getBits(instruction, 12, 15));
 				int res = op1 * op2 + op3;
 				setRegister(rd, res);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 			case 0x4:
 				int rn = getBits(instruction, 12, 15);
@@ -550,6 +556,9 @@ public class ARMProcessor {
 				int resHi = cast(int) (res >> 32);
 				setRegister(rn, resLo);
 				setRegister(rd, resHi);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 			case 0x5:
 				int rn = getBits(instruction, 12, 15);
@@ -559,6 +568,9 @@ public class ARMProcessor {
 				int resHi = cast(int) (res >> 32);
 				setRegister(rn, resLo);
 				setRegister(rd, resHi);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 			case 0x6:
 				int rn = getBits(instruction, 12, 15);
@@ -567,6 +579,9 @@ public class ARMProcessor {
 				int resHi = cast(int) (res >> 32);
 				setRegister(rn, resLo);
 				setRegister(rd, resHi);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 			case 0x7:
 				int rn = getBits(instruction, 12, 15);
@@ -576,6 +591,9 @@ public class ARMProcessor {
 				int resHi = cast(int) (res >> 32);
 				setRegister(rn, resLo);
 				setRegister(rd, resHi);
+				if (setFlags) {
+					setAPSRFlags(res < 0, res == 0);
+				}
 				break;
 		}
 	}
@@ -587,6 +605,13 @@ public class ARMProcessor {
 	private void setFlag(CPSRFlag flag, int b) {
 		int flagValue = getRegister(Register.CPSR);
 		setBit(flagValue, flag, b);
+		setRegister(Register.CPSR, flagValue);
+	}
+
+	private void setAPSRFlags(int n, int z) {
+		int flagValue = getRegister(Register.CPSR);
+		int apsr =  z | n << 1;
+		setBits(flagValue, 30, 31, apsr);
 		setRegister(Register.CPSR, flagValue);
 	}
 
