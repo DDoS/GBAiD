@@ -115,10 +115,12 @@ public class ARMProcessor {
 				break;
 			case 2:
 				writeln("TransImm9");
+				armSingleDataTransfer(instruction);
 				break;
 			case 3:
 				if (getBit(instruction, 4) == 0b0) {
 					writeln("TransReg9");
+					armSingleDataTransfer(instruction);
 				} else {
 					writeln("Undefined");
 				}
@@ -238,59 +240,7 @@ public class ARMProcessor {
 		}
 		int carry = getFlag(CPSRFlag.C);
 		int shiftCarry = carry;
-		final switch (shiftType) {
-			// LSL
-			case 0:
-				if (shift != 0) {
-					shiftCarry = getBit(op2, 32 - shift);
-					op2 <<= shift;
-				}
-				break;
-			// LSR
-			case 1:
-				if (op2Src && shift == 0) {
-					shiftCarry = getBit(op2, 31);
-					op2 = 0;
-				} else {
-					shiftCarry = getBit(op2, shift - 1);
-					op2 >>>= shift;
-				}
-				break;
-			// ASR
-			case 2:
-				if (op2Src && shift == 0) {
-					shiftCarry = getBit(op2, 31);
-					op2 >>= 31;
-				} else {
-					shiftCarry = getBit(op2, shift - 1);
-					op2 >>= shift;
-				}
-				break;
-			// ROR
-			case 3:
-				if (op2Src && shift == 0) {
-					// RRX
-					int newCarry = getBit(op2, 0);
-					asm {
-						ror op2, 1;
-					}
-					setBit(op2, 31, carry);
-					if (!op2Src) {
-						setRegister(rm, op2);
-					}
-					carry = newCarry;
-					setFlag(CPSRFlag.C, carry);
-					shiftCarry = carry;
-				} else {
-					shiftCarry = getBit(op2, shift - 1);
-					byte byteShift = cast(byte) shift;
-					asm {
-						mov CL, byteShift;
-						ror op2, CL;
-					}
-				}
-				break;
-		}
+		applyShift(shiftType, cast(bool) op2Src, shift, op2, shiftCarry);
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
@@ -593,6 +543,142 @@ public class ARMProcessor {
 				setRegister(rd, resHi);
 				if (setFlags) {
 					setAPSRFlags(res < 0, res == 0);
+				}
+				break;
+		}
+	}
+
+	private void armSingleDataTransfer(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int offsetSrc = getBit(instruction, 25);
+		int preIncr = getBit(instruction, 24);
+		int upIncr = getBit(instruction, 23);
+		int byteQuantity = getBit(instruction, 22);
+		int writeBack = getBit(instruction, 21);
+		int load = getBit(instruction, 20);
+		int rn = getBits(instruction, 16, 19);
+		int rd = getBits(instruction, 12, 15);
+		int offset;
+		if (offsetSrc) {
+			// register
+			int shift = getBits(instruction, 7, 11);
+			int shiftType = getBits(instruction, 5, 6);
+			offset = getRegister(instruction & 0xF);
+			int carry;
+			applyShift(shiftType, true, shift, offset, carry);
+		} else {
+			// immediate
+			offset = instruction & 0xFFF;
+		}
+		int address = getRegister(rn);
+		if (preIncr) {
+			if (upIncr) {
+				address += offset;
+			} else {
+				address -= offset;
+			}
+			if (load) {
+				if (byteQuantity) {
+					byte b = memory.getByte(address);
+					setRegister(rd, b & 0xFF);
+				} else {
+					int w = memory.getInt(address);
+					if (address & 0b10) {
+						w >>>= 16;
+					}
+					setRegister(rd, w);
+				}
+			} else {
+				if (byteQuantity) {
+					byte b = cast(byte) getRegister(rd);
+					memory.setByte(rd, b);
+				} else {
+					int w = getRegister(rd);
+					memory.setInt(rd, w);
+				}
+			}
+			if (writeBack) {
+				setRegister(rn, address);
+			}
+		} else {
+			if (load) {
+				if (byteQuantity) {
+					byte b = memory.getByte(address);
+					setRegister(rd, b & 0xFF);
+				} else {
+					int w = memory.getInt(address);
+					if (address & 0b10) {
+						w >>>= 16;
+					}
+					setRegister(rd, w);
+				}
+			} else {
+				if (byteQuantity) {
+					byte b = cast(byte) getRegister(rd);
+					memory.setByte(rd, b);
+				} else {
+					int w = getRegister(rd);
+					memory.setInt(rd, w);
+				}
+			}
+			if (upIncr) {
+				address += offset;
+			} else {
+				address -= offset;
+			}
+			setRegister(rn, address);
+		}
+	}
+
+	private void applyShift(int shiftType, bool specialZeroShift, int shift, ref int op, ref int carry) {
+		final switch (shiftType) {
+			// LSL
+			case 0:
+				if (shift != 0) {
+					carry = getBit(op, 32 - shift);
+					op <<= shift;
+				}
+				break;
+			// LSR
+			case 1:
+				if (specialZeroShift && shift == 0) {
+					carry = getBit(op, 31);
+					op = 0;
+				} else {
+					carry = getBit(op, shift - 1);
+					op >>>= shift;
+				}
+				break;
+			// ASR
+			case 2:
+				if (specialZeroShift && shift == 0) {
+					carry = getBit(op, 31);
+					op >>= 31;
+				} else {
+					carry = getBit(op, shift - 1);
+					op >>= shift;
+				}
+				break;
+			// ROR
+			case 3:
+				if (specialZeroShift && shift == 0) {
+					// RRX
+					int newCarry = getBit(op, 0);
+					asm {
+						ror op, 1;
+					}
+					setBit(op, 31, carry);
+					carry = newCarry;
+					setFlag(CPSRFlag.C, carry);
+				} else {
+					carry = getBit(op, shift - 1);
+					byte byteShift = cast(byte) shift;
+					asm {
+						mov CL, byteShift;
+						ror op, CL;
+					}
 				}
 				break;
 		}
