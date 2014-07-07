@@ -97,8 +97,10 @@ public class ARMProcessor {
 					writeln("TransSwp12");
 				} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
 					writeln("TransReg10");
+					armHalfwordAndSignedDataTransfer(instruction);
 				} else if (getBit(instruction, 22) == 0b1 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b1) {
 					writeln("TransImm10");
+					armHalfwordAndSignedDataTransfer(instruction);
 				} else {
 					writeln("DataProc");
 					armDataProcessing(instruction);
@@ -556,7 +558,6 @@ public class ARMProcessor {
 		int preIncr = getBit(instruction, 24);
 		int upIncr = getBit(instruction, 23);
 		int byteQuantity = getBit(instruction, 22);
-		int writeBack = getBit(instruction, 21);
 		int load = getBit(instruction, 20);
 		int rn = getBits(instruction, 16, 19);
 		int rd = getBits(instruction, 12, 15);
@@ -574,6 +575,7 @@ public class ARMProcessor {
 		}
 		int address = getRegister(rn);
 		if (preIncr) {
+			int writeBack = getBit(instruction, 21);
 			if (upIncr) {
 				address += offset;
 			} else {
@@ -581,8 +583,8 @@ public class ARMProcessor {
 			}
 			if (load) {
 				if (byteQuantity) {
-					byte b = memory.getByte(address);
-					setRegister(rd, b & 0xFF);
+					int b = memory.getByte(address) & 0xFF;
+					setRegister(rd, b);
 				} else {
 					int w = memory.getInt(address);
 					if (address & 0b10) {
@@ -605,8 +607,8 @@ public class ARMProcessor {
 		} else {
 			if (load) {
 				if (byteQuantity) {
-					byte b = memory.getByte(address);
-					setRegister(rd, b & 0xFF);
+					int b = memory.getByte(address) & 0xFF;
+					setRegister(rd, b);
 				} else {
 					int w = memory.getInt(address);
 					if (address & 0b10) {
@@ -623,6 +625,73 @@ public class ARMProcessor {
 					memory.setInt(rd, w);
 				}
 			}
+			if (upIncr) {
+				address += offset;
+			} else {
+				address -= offset;
+			}
+			setRegister(rn, address);
+		}
+	}
+
+	private void armHalfwordAndSignedDataTransfer(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int preIncr = getBit(instruction, 24);
+		int upIncr = getBit(instruction, 23);
+		int offsetSrc = getBit(instruction, 22);
+		int load = getBit(instruction, 20);
+		int rn = getBits(instruction, 16, 19);
+		int rd = getBits(instruction, 12, 15);
+		int offset;
+		if (offsetSrc) {
+			// immediate
+			int upperOffset = getBits(instruction, 8, 11);
+			int lowerOffset = instruction & 0xF;
+			offset = upperOffset << 4 | lowerOffset;
+		} else {
+			// register
+			offset = getRegister(instruction & 0xF);
+		}
+		int address = getRegister(rn);
+		if (preIncr) {
+			if (upIncr) {
+				address += offset;
+			} else {
+				address -= offset;
+			}
+		}
+		int opCode = getBits(instruction, 5, 6);
+		if (load) {
+			final switch (opCode) {
+				case 1:
+					int hw = memory.getShort(address) & 0xFFFF;
+					setRegister(rd, hw);
+					break;
+				case 2:
+					int b = memory.getByte(address);
+					setRegister(rd, b);
+					break;
+				case 3:
+					int hw = memory.getShort(address);
+					setRegister(rd, hw);
+					break;
+			}
+		} else {
+			final switch (opCode) {
+				case 1:
+					short hw = cast(short) getRegister(rd);
+					memory.setShort(address, hw);
+					break;
+			}
+		}
+		if (preIncr) {
+			int writeBack = getBit(instruction, 21);
+			if (writeBack) {
+				setRegister(rn, address);
+			}
+		} else {
 			if (upIncr) {
 				address += offset;
 			} else {
