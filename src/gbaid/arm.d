@@ -81,10 +81,13 @@ public class ARMProcessor {
 					armBranchAndExchange(instruction);
 				} else if (getBits(instruction, 20, 24) == 0b10010 && getBits(instruction, 4, 7) == 0b0111) {
 					writeln("BKPT");
+					armUnsupported(instruction);
 				} else if (getBits(instruction, 16, 24) == 0b101101111 && getBits(instruction, 4, 11) == 0b11110001) {
 					writeln("CLZ");
+					armUnsupported(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000101) {
 					writeln("QALU");
+					armUnsupported(instruction);
 				} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
 					writeln("Multiply");
 					armMultiplyAndMultiplyAccumulate(instruction);
@@ -93,8 +96,10 @@ public class ARMProcessor {
 					armMultiplyAndMultiplyAccumulate(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
 					writeln("MulHalf");
+					armUnsupported(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
 					writeln("TransSwp12");
+					armUnsupported(instruction);
 				} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
 					writeln("TransReg10");
 					armHalfwordAndSignedDataTransfer(instruction);
@@ -125,10 +130,12 @@ public class ARMProcessor {
 					armSingleDataTransfer(instruction);
 				} else {
 					writeln("Undefined");
+					armUnsupported(instruction);
 				}
 				break;
 			case 4:
 				writeln("BlockTrans");
+				armUnsupported(instruction);
 				break;
 			case 5:
 				writeln("B, BL, BLX");
@@ -137,17 +144,22 @@ public class ARMProcessor {
 			case 6:
 				if (getBits(instruction, 21, 24) == 0b0010) {
 					writeln("CoDataTrans");
+					armUnsupported(instruction);
 				} else {
 					writeln("CoRR");
+					armUnsupported(instruction);
 				}
 				break;
 			case 7:
 				if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b0) {
 					writeln("CoDataOp");
+					armUnsupported(instruction);
 				} else if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b1) {
 					writeln("CoRegTrans");
+					armUnsupported(instruction);
 				} else {
 					writeln("SWI");
+					armUnsupported(instruction);
 				}
 				break;
 		}
@@ -701,6 +713,10 @@ public class ARMProcessor {
 		}
 	}
 
+	private void armUnsupported(int instruction) {
+		throw new UnsupportedARMInstructionException();
+	}
+
 	private void applyShift(int shiftType, bool specialZeroShift, int shift, ref int op, ref int carry) {
 		final switch (shiftType) {
 			// LSL
@@ -959,4 +975,10 @@ private enum CPSRFlag {
 	F = 6,
 	T = 5,
 	M0 = 0
+}
+
+public class UnsupportedARMInstructionException : Exception {
+	protected this() {
+		super("This ARM instruction is unsupported by the implementation");
+	}
 }
