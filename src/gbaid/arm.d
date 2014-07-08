@@ -24,7 +24,7 @@ public class ARMProcessor {
 		// branch to instruction
 		branch();
 		// start ticking
-		foreach (i; 0 .. 10) {
+		foreach (i; 0 .. 100) {
 			tick();
 			if (branchSignal) {
 				branch();
@@ -145,7 +145,7 @@ public class ARMProcessor {
 				break;
 			case 4:
 				// BlockTrans
-				armUnsupported(instruction);
+				armBlockDataTransfer(instruction);
 				break;
 			case 5:
 				// B, BL, BLX
@@ -754,6 +754,77 @@ public class ARMProcessor {
 		}
 	}
 
+	private void armBlockDataTransfer(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int preIncr = getBit(instruction, 24);
+		int upIncr = getBit(instruction, 23);
+		int loadPSR = getBit(instruction, 22);
+		int writeBack = getBit(instruction, 21);
+		int load = getBit(instruction, 20);
+		int rn = getBits(instruction, 16, 19);
+		int registerList = instruction & 0xFFFF;
+		int address = getRegister(rn);
+		if (load) {
+			writeln("LDM");
+		} else {
+			writeln("STM");
+		}
+		Mode mode = this.mode;
+		if (loadPSR) {
+			if (load && checkBit(registerList, 15)) {
+				setRegister(Register.CPSR, getRegister(Register.SPSR));
+			} else {
+				mode = Mode.USER;
+			}
+		}
+		if (upIncr) {
+			for (int i = 0; i <= 15; i++) {
+				if (checkBit(registerList, i)) {
+					if (preIncr) {
+						address += 4;
+						if (load) {
+							setRegister(mode, i, memory.getInt(address));
+						} else {
+							memory.setInt(address, getRegister(mode, i));
+						}
+					} else {
+						if (load) {
+							setRegister(mode, i, memory.getInt(address));
+						} else {
+							memory.setInt(address, getRegister(mode, i));
+						}
+						address += 4;
+					}
+				}
+			}
+		} else {
+			for (int i = 15; i >= 0; i--) {
+				if (checkBit(registerList, i)) {
+					if (preIncr) {
+						address -= 4;
+						if (load) {
+							setRegister(mode, i, memory.getInt(address));
+						} else {
+							memory.setInt(address, getRegister(mode, i));
+						}
+					} else {
+						if (load) {
+							setRegister(mode, i, memory.getInt(address));
+						} else {
+							memory.setInt(address, getRegister(mode, i));
+						}
+						address -= 4;
+					}
+				}
+			}
+		}
+		if (writeBack) {
+			setRegister(mode, rn, address);
+		}
+	}
+
 	private void armUnsupported(int instruction) {
 		throw new UnsupportedARMInstructionException();
 	}
@@ -873,78 +944,19 @@ public class ARMProcessor {
 	}
 
 	private int getRegister(int register) {
-		return registers[getRegisterIndex(register)];
+		return getRegister(mode, register);
+	}
+
+	private int getRegister(Mode mode, int register) {
+		return registers[getRegisterIndex(mode, register)];
 	}
 
 	private void setRegister(int register, int value) {
-		registers[getRegisterIndex(register)] = value;
+		setRegister(mode, register, value);
 	}
 
-	private int getRegisterIndex(int register) {
-		/*
-			R0 - R15: 0 - 15
-			CPSR: 16
-			R8_fiq - R14_fiq: 17 - 23
-			SPSR_fiq = 24
-			R13_svc - R14_svc = 25 - 26
-			SPSR_svc = 27
-			R13_abt - R14_abt = 28 - 29
-			SPSR_abt = 30
-			R13_irq - R14_irq = 31 - 32
-			SPSR_irq = 33
-			R13_und - R14_und = 34 - 35
-			SPSR_und = 36
-		*/
-		final switch (mode) {
-			case Mode.USER:
-			case Mode.SYSTEM:
-				return register;
-			case Mode.FIQ:
-				switch (register) {
-					case 8: .. case 14:
-						return register + 9;
-					case 17:
-						return register + 7;
-					default:
-						return register;
-				}
-			case Mode.SUPERVISOR:
-				switch (register) {
-					case 13: .. case 14:
-						return register + 12;
-					case 17:
-						return register + 10;
-					default:
-						return register;
-				}
-			case Mode.ABORT:
-				switch (register) {
-					case 13: .. case 14:
-						return register + 15;
-					case 17:
-						return register + 13;
-					default:
-						return register;
-				}
-			case Mode.IRQ:
-				switch (register) {
-					case 13: .. case 14:
-						return register + 18;
-					case 17:
-						return register + 16;
-					default:
-						return register;
-				}
-			case Mode.UNDEFINED:
-				switch (register) {
-					case 13: .. case 14:
-						return register + 21;
-					case 17:
-						return register + 19;
-					default:
-						return register;
-				}
-		}
+	private void setRegister(Mode mode, int register, int value) {
+		registers[getRegisterIndex(mode, register)] = value;
 	}
 }
 
@@ -980,6 +992,73 @@ private int getBits(int i, int a, int b) {
 private void setBits(ref int i, int a, int b, int n) {
 	int mask = (1 << b - a + 1) - 1 << a;
 	i = i & ~mask | n << a & mask;
+}
+
+private int getRegisterIndex(Mode mode, int register) {
+	/*
+		R0 - R15: 0 - 15
+		CPSR: 16
+		R8_fiq - R14_fiq: 17 - 23
+		SPSR_fiq = 24
+		R13_svc - R14_svc = 25 - 26
+		SPSR_svc = 27
+		R13_abt - R14_abt = 28 - 29
+		SPSR_abt = 30
+		R13_irq - R14_irq = 31 - 32
+		SPSR_irq = 33
+		R13_und - R14_und = 34 - 35
+		SPSR_und = 36
+	*/
+	final switch (mode) {
+		case Mode.USER:
+		case Mode.SYSTEM:
+			return register;
+		case Mode.FIQ:
+			switch (register) {
+				case 8: .. case 14:
+					return register + 9;
+				case 17:
+					return register + 7;
+				default:
+					return register;
+			}
+		case Mode.SUPERVISOR:
+			switch (register) {
+				case 13: .. case 14:
+					return register + 12;
+				case 17:
+					return register + 10;
+				default:
+					return register;
+			}
+		case Mode.ABORT:
+			switch (register) {
+				case 13: .. case 14:
+					return register + 15;
+				case 17:
+					return register + 13;
+				default:
+					return register;
+			}
+		case Mode.IRQ:
+			switch (register) {
+				case 13: .. case 14:
+					return register + 18;
+				case 17:
+					return register + 16;
+				default:
+					return register;
+			}
+		case Mode.UNDEFINED:
+			switch (register) {
+				case 13: .. case 14:
+					return register + 21;
+				case 17:
+					return register + 19;
+				default:
+					return register;
+			}
+	}
 }
 
 private enum Set {
