@@ -12,25 +12,39 @@ public class ARMProcessor {
 	private Memory memory;
 	private int instruction;
 	private int decoded;
+	private bool branchSignal = false;
 
 	public void setMemory(Memory memory) {
 		this.memory = memory;
 	}
 
 	public void run(uint entryPointAddress) {
+		// set first instruction
 		setRegister(Register.PC, entryPointAddress);
-		// first tick
+		// branch to instruction
+		branch();
+		// start ticking
+		foreach (i; 0 .. 10) {
+			tick();
+			if (branchSignal) {
+				branch();
+			} else {
+				incrementPC();
+			}
+		}
+	}
+
+	private void branch() {
+		// fetch first instruction
 		instruction = fetch();
 		incrementPC();
-		// second tick
+		// fetch second and decode first
 		int nextInstruction = fetch();
 		decoded = decode(instruction);
 		instruction = nextInstruction;
 		incrementPC();
-		// the rest of the ticks
-		foreach (i; 0 .. 10) {
-			tick();
-		}
+		// remove branch signal flag
+		branchSignal = false;
 	}
 
 	private void tick() {
@@ -42,14 +56,10 @@ public class ARMProcessor {
 		// execute
 		execute(decoded);
 		decoded = nextDecoded;
-		// increment the porgram counter
-		incrementPC();
-		// TODO: properly handle branching (flush the pipeline)
 	}
 
 	private int fetch() {
 		int pc = getRegister(Register.PC);
-		writefln("%X", pc);
 		int instruction = memory.getInt(pc);
 		return instruction;
 	}
@@ -74,91 +84,91 @@ public class ARMProcessor {
 		final switch (category) {
 			case 0:
 				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
-					writeln("PSR Reg");
+					// PSR Reg
 					armPRSTransfer(instruction);
 				} else if (getBits(instruction, 8, 24) == 0b00010010111111111111) {
-					writeln("BX, BLX");
+					// BX, BLX
 					armBranchAndExchange(instruction);
 				} else if (getBits(instruction, 20, 24) == 0b10010 && getBits(instruction, 4, 7) == 0b0111) {
-					writeln("BKPT");
+					// BKPT
 					armUnsupported(instruction);
 				} else if (getBits(instruction, 16, 24) == 0b101101111 && getBits(instruction, 4, 11) == 0b11110001) {
-					writeln("CLZ");
+					// CLZ
 					armUnsupported(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000101) {
-					writeln("QALU");
+					// QALU
 					armUnsupported(instruction);
 				} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
-					writeln("Multiply");
+					// Multiply
 					armMultiplyAndMultiplyAccumulate(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b01 && getBits(instruction, 4, 7) == 0b1001) {
-					writeln("MulLong");
+					// MulLong
 					armMultiplyAndMultiplyAccumulate(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
-					writeln("MulHalf");
+					// MulHalf
 					armUnsupported(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
-					writeln("TransSwp12");
+					// TransSwp12
 					armUnsupported(instruction);
 				} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
-					writeln("TransReg10");
+					// TransReg10
 					armHalfwordAndSignedDataTransfer(instruction);
 				} else if (getBit(instruction, 22) == 0b1 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b1) {
-					writeln("TransImm10");
+					// TransImm10
 					armHalfwordAndSignedDataTransfer(instruction);
 				} else {
-					writeln("DataProc");
+					// DataProc
 					armDataProcessing(instruction);
 				}
 				break;
 			case 1:
 				if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0) {
-					writeln("PSR Reg");
+					// PSR Reg
 					armPRSTransfer(instruction);
 				} else {
-					writeln("DataProc");
+					// DataProc
 					armDataProcessing(instruction);
 				}
 				break;
 			case 2:
-				writeln("TransImm9");
+				// TransImm9
 				armSingleDataTransfer(instruction);
 				break;
 			case 3:
 				if (getBit(instruction, 4) == 0b0) {
-					writeln("TransReg9");
+					// TransReg9
 					armSingleDataTransfer(instruction);
 				} else {
-					writeln("Undefined");
+					// Undefined
 					armUnsupported(instruction);
 				}
 				break;
 			case 4:
-				writeln("BlockTrans");
+				// BlockTrans
 				armUnsupported(instruction);
 				break;
 			case 5:
-				writeln("B, BL, BLX");
+				// B, BL, BLX
 				armBranchAndBranchWithLink(instruction);
 				break;
 			case 6:
 				if (getBits(instruction, 21, 24) == 0b0010) {
-					writeln("CoDataTrans");
+					// CoDataTrans
 					armUnsupported(instruction);
 				} else {
-					writeln("CoRR");
+					// CoRR
 					armUnsupported(instruction);
 				}
 				break;
 			case 7:
 				if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b0) {
-					writeln("CoDataOp");
+					// CoDataOp
 					armUnsupported(instruction);
 				} else if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b1) {
-					writeln("CoRegTrans");
+					// CoRegTrans
 					armUnsupported(instruction);
 				} else {
-					writeln("SWI");
+					// SWI
 					armUnsupported(instruction);
 				}
 				break;
@@ -186,8 +196,13 @@ public class ARMProcessor {
 		setRegister(Register.PC, address);
 		if (checkBit(instruction, 5)) {
 			// BLX
+			writeln("BLX");
 			setRegister(Register.LR, pc + 4);
+		} else {
+			writeln("BX");
 		}
+		// signal a branch
+		branchSignal = true;
 	}
 
 	private void armBranchAndBranchWithLink(int instruction) {
@@ -206,6 +221,7 @@ public class ARMProcessor {
 		int opCode = getBit(instruction, 24);
 		if (blx) {
 			// BLX
+			writeln("BLX");
 			newPC += opCode * 2;
 			setRegister(Register.LR, pc + 4);
 			setFlag(CPSRFlag.T, Set.THUMB);
@@ -213,10 +229,15 @@ public class ARMProcessor {
 		} else {
 			if (opCode) {
 				// BL
+				writeln("BL");
 				setRegister(Register.LR, pc + 4);
+			} else {
+				writeln("B");
 			}
 		}
 		setRegister(Register.PC, newPC);
+		// signal a branch
+		branchSignal = true;
 	}
 
 	private void armDataProcessing(int instruction) {
@@ -254,7 +275,7 @@ public class ARMProcessor {
 		}
 		int carry = getFlag(CPSRFlag.C);
 		int shiftCarry = carry;
-		applyShift(shiftType, cast(bool) op2Src, shift, op2, shiftCarry);
+		op2 = applyShift(shiftType, cast(bool) op2Src, shift, op2, shiftCarry);
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
@@ -445,6 +466,7 @@ public class ARMProcessor {
 		int psrSrc = getBit(instruction, 22);
 		int opCode = getBit(instruction, 21);
 		if (opCode) {
+			writeln("MSR");
 			// MSR
 			int opSrc = getBit(instruction, 25);
 			int writeFlags = getBit(instruction, 19);
@@ -479,6 +501,7 @@ public class ARMProcessor {
 			}
 		} else {
 			// MRS
+			writeln("MRS");
 			int rd = getBits(instruction, 12, 15);
 			if (psrSrc) {
 				setRegister(rd, getRegister(Register.SPSR));
@@ -498,14 +521,16 @@ public class ARMProcessor {
 		int op2 = getRegister(getBits(instruction, 8, 11));
 		int op1 = getRegister(instruction & 0xF);
 		final switch (opCode) {
-			case 0x0:
+			case 0:
+				writeln("MUL");
 				int res = op1 * op2;
 				setRegister(rd, res);
 				if (setFlags) {
 					setAPSRFlags(res < 0, res == 0);
 				}
 				break;
-			case 0x1:
+			case 1:
+				writeln("MLA");
 				int op3 = getRegister(getBits(instruction, 12, 15));
 				int res = op1 * op2 + op3;
 				setRegister(rd, res);
@@ -513,7 +538,8 @@ public class ARMProcessor {
 					setAPSRFlags(res < 0, res == 0);
 				}
 				break;
-			case 0x4:
+			case 4:
+				writeln("UMULL");
 				int rn = getBits(instruction, 12, 15);
 				ulong res = ucast(op1) * ucast(op2);
 				int resLo = cast(int) res;
@@ -524,7 +550,8 @@ public class ARMProcessor {
 					setAPSRFlags(res < 0, res == 0);
 				}
 				break;
-			case 0x5:
+			case 5:
+				writeln("UMLAL");
 				int rn = getBits(instruction, 12, 15);
 				ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
 				ulong res = ucast(op1) * ucast(op2) + op3;
@@ -536,7 +563,8 @@ public class ARMProcessor {
 					setAPSRFlags(res < 0, res == 0);
 				}
 				break;
-			case 0x6:
+			case 6:
+				writeln("SMULL");
 				int rn = getBits(instruction, 12, 15);
 				long res = cast(long) op1 * cast(long) op2;
 				int resLo = cast(int) res;
@@ -547,7 +575,8 @@ public class ARMProcessor {
 					setAPSRFlags(res < 0, res == 0);
 				}
 				break;
-			case 0x7:
+			case 7:
+				writeln("SMLAL");
 				int rn = getBits(instruction, 12, 15);
 				long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
 				long res = cast(long) op1 * cast(long) op2 + op3;
@@ -580,7 +609,7 @@ public class ARMProcessor {
 			int shiftType = getBits(instruction, 5, 6);
 			offset = getRegister(instruction & 0xF);
 			int carry;
-			applyShift(shiftType, true, shift, offset, carry);
+			offset = applyShift(shiftType, true, shift, offset, carry);
 		} else {
 			// immediate
 			offset = instruction & 0xFFF;
@@ -595,9 +624,11 @@ public class ARMProcessor {
 			}
 			if (load) {
 				if (byteQuantity) {
+					writeln("LDRB");
 					int b = memory.getByte(address) & 0xFF;
 					setRegister(rd, b);
 				} else {
+					writeln("LDR");
 					int w = memory.getInt(address);
 					if (address & 0b10) {
 						w >>>= 16;
@@ -606,11 +637,13 @@ public class ARMProcessor {
 				}
 			} else {
 				if (byteQuantity) {
+					writeln("STRB");
 					byte b = cast(byte) getRegister(rd);
-					memory.setByte(rd, b);
+					memory.setByte(address, b);
 				} else {
+					writeln("STR");
 					int w = getRegister(rd);
-					memory.setInt(rd, w);
+					memory.setInt(address, w);
 				}
 			}
 			if (writeBack) {
@@ -619,9 +652,11 @@ public class ARMProcessor {
 		} else {
 			if (load) {
 				if (byteQuantity) {
+					writeln("LDRB");
 					int b = memory.getByte(address) & 0xFF;
 					setRegister(rd, b);
 				} else {
+					writeln("LDR");
 					int w = memory.getInt(address);
 					if (address & 0b10) {
 						w >>>= 16;
@@ -630,11 +665,13 @@ public class ARMProcessor {
 				}
 			} else {
 				if (byteQuantity) {
+					writeln("STRB");
 					byte b = cast(byte) getRegister(rd);
-					memory.setByte(rd, b);
+					memory.setByte(address, b);
 				} else {
+					writeln("STR");
 					int w = getRegister(rd);
-					memory.setInt(rd, w);
+					memory.setInt(address, w);
 				}
 			}
 			if (upIncr) {
@@ -678,14 +715,17 @@ public class ARMProcessor {
 		if (load) {
 			final switch (opCode) {
 				case 1:
+					writeln("LDRH");
 					int hw = memory.getShort(address) & 0xFFFF;
 					setRegister(rd, hw);
 					break;
 				case 2:
+					writeln("LDRSB");
 					int b = memory.getByte(address);
 					setRegister(rd, b);
 					break;
 				case 3:
+					writeln("LDRSH");
 					int hw = memory.getShort(address);
 					setRegister(rd, hw);
 					break;
@@ -693,6 +733,7 @@ public class ARMProcessor {
 		} else {
 			final switch (opCode) {
 				case 1:
+					writeln("STRH");
 					short hw = cast(short) getRegister(rd);
 					memory.setShort(address, hw);
 					break;
@@ -717,35 +758,34 @@ public class ARMProcessor {
 		throw new UnsupportedARMInstructionException();
 	}
 
-	private void applyShift(int shiftType, bool specialZeroShift, int shift, ref int op, ref int carry) {
+	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, ref int carry) {
 		final switch (shiftType) {
 			// LSL
 			case 0:
 				if (shift != 0) {
 					carry = getBit(op, 32 - shift);
-					op <<= shift;
+					return op << shift;
+				} else {
+					return op;
 				}
-				break;
 			// LSR
 			case 1:
 				if (specialZeroShift && shift == 0) {
 					carry = getBit(op, 31);
-					op = 0;
+					return 0;
 				} else {
 					carry = getBit(op, shift - 1);
-					op >>>= shift;
+					return op >>> shift;
 				}
-				break;
 			// ASR
 			case 2:
 				if (specialZeroShift && shift == 0) {
 					carry = getBit(op, 31);
-					op >>= 31;
+					return op >> 31;
 				} else {
 					carry = getBit(op, shift - 1);
-					op >>= shift;
+					return op >> shift;
 				}
-				break;
 			// ROR
 			case 3:
 				if (specialZeroShift && shift == 0) {
@@ -757,6 +797,7 @@ public class ARMProcessor {
 					setBit(op, 31, carry);
 					carry = newCarry;
 					setFlag(CPSRFlag.C, carry);
+					return op;
 				} else {
 					carry = getBit(op, shift - 1);
 					byte byteShift = cast(byte) shift;
@@ -764,8 +805,8 @@ public class ARMProcessor {
 						mov CL, byteShift;
 						ror op, CL;
 					}
+					return op;
 				}
-				break;
 		}
 	}
 
