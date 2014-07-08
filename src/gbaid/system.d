@@ -44,15 +44,18 @@ public class GameBoyAdvance {
     public class GBAMemory : Memory {
         private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
         private static immutable uint WRAM_SIZE = 288 * BYTES_PER_KIB;
+        private static immutable uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
+        private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
-        private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
         private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
         private static immutable uint BIOS_START = 0x00000000;
         private static immutable uint BIOS_END = 0x00003FFF;
         private static immutable uint WRAM_START = 0x02000000;
         private static immutable uint WRAM_END = 0x03007FFF;
+        private static immutable uint IO_REGISTERS_START = 0x04000000;
+        private static immutable uint IO_REGISTERS_END = 0x040003FE;
         private static immutable uint PALETTE_RAM_START = 0x05000000;
         private static immutable uint PALETTE_RAM_END = 0x050003FF;
         private static immutable uint VRAM_START = 0x06000000;
@@ -65,6 +68,7 @@ public class GameBoyAdvance {
         private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
         private ROM bios;
         private RAM wram = new RAM(WRAM_SIZE);
+        private RAM ioRegisters = new RAM(IO_REGISTERS_SIZE);
         private RAM vram = new RAM(VRAM_SIZE);
         private RAM oam = new RAM(OAM_SIZE);
         private RAM paletteRAM = new RAM(PALETTE_RAM_SIZE);
@@ -134,6 +138,10 @@ public class GameBoyAdvance {
             if (address <= WRAM_END) {
                 address -= WRAM_START;
                 return wram;
+            }
+            if (address <= IO_REGISTERS_END) {
+                address -= IO_REGISTERS_START;
+                return ioRegisters;
             }
             if (address <= PALETTE_RAM_END) {
                 address -= PALETTE_RAM_START;
