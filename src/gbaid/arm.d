@@ -169,7 +169,7 @@ public class ARM7TDMI {
 					armUnsupported(instruction);
 				} else {
 					// SWI
-					armUnsupported(instruction);
+					armSoftwareInterrupt(instruction);
 				}
 				break;
 		}
@@ -846,6 +846,17 @@ public class ARM7TDMI {
 			memory.setInt(address, getRegister(rm));
 			setRegister(rd, w);
 		}
+	}
+
+	private void armSoftwareInterrupt(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		mode = Mode.SUPERVISOR;
+		setRegister(Register.LR, getRegister(Register.PC) - 4);
+		setRegister(Register.SPSR, Register.CPSR);
+		setRegister(Register.PC, 0x8);
+		branchSignal = true;
 	}
 
 	private void armUnsupported(int instruction) {
