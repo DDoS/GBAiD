@@ -6,9 +6,9 @@ import gbaid.memory;
 import gbaid.util;
 
 public class ARM7TDMI {
-	private Mode mode = Mode.USER;
-	private Set set = Set.ARM;
 	private int[37] registers = new int[37];
+	private Mode mode;
+	private Set set;
 	private Memory memory;
 	private int instruction;
 	private int decoded;
@@ -19,6 +19,11 @@ public class ARM7TDMI {
 	}
 
 	public void run(uint entryPointAddress) {
+		// initialize to ARM in supervisor mode
+		setFlag(CPSRFlag.T, Set.ARM);
+		set = Set.ARM;
+		setMode(Mode.SUPERVISOR);
+		mode = Mode.SUPERVISOR;
 		// set first instruction
 		setRegister(Register.PC, entryPointAddress);
 		// branch to instruction
@@ -173,6 +178,9 @@ public class ARM7TDMI {
 				}
 				break;
 		}
+		// Update the mode and set variables
+		mode = getMode();
+		set = cast(Set) getFlag(CPSRFlag.T);
 	}
 
 	private void incrementPC() {
@@ -189,7 +197,6 @@ public class ARM7TDMI {
 		if (address & 0b1) {
 			// switch to thumb
 			setFlag(CPSRFlag.T, Set.THUMB);
-			set = Set.THUMB;
 			// discard the last bit in the address
 			address -= 1;
 		}
@@ -225,7 +232,6 @@ public class ARM7TDMI {
 			newPC += opCode * 2;
 			setRegister(Register.LR, pc + 4);
 			setFlag(CPSRFlag.T, Set.THUMB);
-			set = Set.THUMB;
 		} else {
 			if (opCode) {
 				// BL
@@ -249,18 +255,19 @@ public class ARM7TDMI {
 		int setFlags = getBit(instruction, 20);
 		int rn = getBits(instruction, 16, 19);
 		int rd = getBits(instruction, 12, 15);
+		int shiftSrc;
 		int shift;
 		int shiftType;
-		int rm;
 		int op2;
 		if (op2Src) {
 			// immediate
+			shiftSrc = 1;
 			shift = getBits(instruction, 8, 11) * 2;
 			shiftType = 3;
 			op2 = instruction & 0xFF;
 		} else {
 			// register
-			int shiftSrc = getBit(instruction, 4);
+			shiftSrc = getBit(instruction, 4);
 			if (shiftSrc) {
 				// register
 				shift = getRegister(getBits(instruction, 8, 11)) & 0xFF;
@@ -270,12 +277,11 @@ public class ARM7TDMI {
 				shift = getBits(instruction, 7, 11);
 			}
 			shiftType = getBits(instruction, 5, 6);
-			rm = instruction & 0b1111;
-			op2 = getRegister(rm);
+			op2 = getRegister(instruction & 0b1111);
 		}
 		int carry = getFlag(CPSRFlag.C);
 		int shiftCarry = carry;
-		op2 = applyShift(shiftType, cast(bool) op2Src, shift, op2, shiftCarry);
+		op2 = applyShift(shiftType, !shiftSrc, shift, op2, shiftCarry);
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
@@ -924,27 +930,27 @@ public class ARM7TDMI {
 	}
 
 	private int getFlag(CPSRFlag flag) {
-		return getBit(getRegister(Register.CPSR), flag);
+		return getBit(registers[Register.CPSR], flag);
 	}
 
 	private void setFlag(CPSRFlag flag, int b) {
-		int flagValue = getRegister(Register.CPSR);
-		setBit(flagValue, flag, b);
-		setRegister(Register.CPSR, flagValue);
+		setBit(registers[Register.CPSR], flag, b);
 	}
 
 	private void setAPSRFlags(int n, int z) {
-		int flagValue = getRegister(Register.CPSR);
-		int apsr =  z | n << 1;
-		setBits(flagValue, 30, 31, apsr);
-		setRegister(Register.CPSR, flagValue);
+		setBits(registers[Register.CPSR], 30, 31, z | n << 1);
 	}
 
 	private void setAPSRFlags(int n, int z, int c, int v) {
-		int flagValue = getRegister(Register.CPSR);
-		int apsr =  v | c << 1 | z << 2 | n << 3;
-		setBits(flagValue, 28, 31, apsr);
-		setRegister(Register.CPSR, flagValue);
+		setBits(registers[Register.CPSR], 28, 31, v | c << 1 | z << 2 | n << 3);
+	}
+
+	private Mode getMode() {
+		return cast(Mode) (registers[Register.CPSR] & 0b11111);
+	}
+
+	private void setMode(Mode mode) {
+		setBits(registers[Register.CPSR], 0, 4, mode);
 	}
 
 	private bool checkCondition(int condition) {
