@@ -140,7 +140,7 @@ public class ARM7TDMI {
 					armSingleDataTransfer(instruction);
 				} else {
 					// Undefined
-					armUnsupported(instruction);
+					armUndefined(instruction);
 				}
 				break;
 			case 4:
@@ -857,6 +857,14 @@ public class ARM7TDMI {
 		setRegister(Register.SPSR, Register.CPSR);
 		setRegister(Register.PC, 0x8);
 		branchSignal = true;
+	}
+
+	private void armUndefined(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		mode = Mode.UNDEFINED;
+		// TODO: kill process
 	}
 
 	private void armUnsupported(int instruction) {
