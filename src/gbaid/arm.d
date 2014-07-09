@@ -858,7 +858,7 @@ public class ARM7TDMI {
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
-		mode = Mode.SUPERVISOR;
+		setMode(Mode.SUPERVISOR);
 		setRegister(Register.LR, getRegister(Register.PC) - 4);
 		setRegister(Register.SPSR, Register.CPSR);
 		setRegister(Register.PC, 0x8);
@@ -869,7 +869,7 @@ public class ARM7TDMI {
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
-		mode = Mode.UNDEFINED;
+		setMode(Mode.UNDEFINED);
 		// TODO: kill process
 	}
 
