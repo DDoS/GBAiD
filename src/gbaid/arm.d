@@ -5,7 +5,7 @@ import std.stdio;
 import gbaid.memory;
 import gbaid.util;
 
-public class ARMProcessor {
+public class ARM7TDMI {
 	private Mode mode = Mode.USER;
 	private Set set = Set.ARM;
 	private int[37] registers = new int[37];

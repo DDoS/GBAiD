@@ -6,7 +6,7 @@ import gbaid.arm;
 import gbaid.memory;
 
 public class GameBoyAdvance {
-    private ARMProcessor processor = new ARMProcessor();
+    private ARM7TDMI processor = new ARM7TDMI();
     private GBAMemory memory = null;
     private bool running = false;
 
