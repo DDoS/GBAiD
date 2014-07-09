@@ -109,7 +109,7 @@ public class ARM7TDMI {
 					armUnsupported(instruction);
 				} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
 					// TransSwp12
-					armUnsupported(instruction);
+					armSingeDataSwap(instruction);
 				} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
 					// TransReg10
 					armHalfwordAndSignedDataTransfer(instruction);
@@ -822,6 +822,29 @@ public class ARM7TDMI {
 		}
 		if (writeBack) {
 			setRegister(mode, rn, address);
+		}
+	}
+
+	private void armSingeDataSwap(int instruction) {
+		if (!checkCondition(getConditionBits(instruction))) {
+			return;
+		}
+		int byteQuantity = getBit(instruction, 22);
+		int rn = getBits(instruction, 16, 19);
+		int rd = getBits(instruction, 12, 15);
+		int rm = instruction & 0xF;
+		int address = getRegister(rn);
+		if (byteQuantity) {
+			int b = memory.getByte(address) & 0xFF;
+			memory.setByte(address, cast(byte) getRegister(rm));
+			setRegister(rd, b);
+		} else {
+			int w = memory.getInt(address);
+			if (address & 0b10) {
+				w >>>= 16;
+			}
+			memory.setInt(address, getRegister(rm));
+			setRegister(rd, w);
 		}
 	}
 
