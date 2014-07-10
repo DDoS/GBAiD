@@ -1048,7 +1048,7 @@ public class ARM7TDMI {
 			case 0x6:
 				// SBC
 				writeln("SBC");
-				intcarry = getFlag(CPSRFlag.C);
+				int carry = getFlag(CPSRFlag.C);
 				int res = op1 - op2 + carry - 1;
 				setRegister(rd, res);
 				setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(op1, -op2 + carry - 1, res));
@@ -1126,10 +1126,14 @@ public class ARM7TDMI {
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
+		if (!specialZeroShift && shift == 0) {
+			carry = getFlag(CPSRFlag.C);
+			return op;
+		}
 		final switch (shiftType) {
 			// LSL
 			case 0:
-				if (specialZeroShift && shift == 0) {
+				if (shift == 0) {
 					carry = getFlag(CPSRFlag.C);
 					return op;
 				} else {
@@ -1138,7 +1142,7 @@ public class ARM7TDMI {
 				}
 			// LSR
 			case 1:
-				if (specialZeroShift && shift == 0) {
+				if (shift == 0) {
 					carry = getBit(op, 31);
 					return 0;
 				} else {
@@ -1147,7 +1151,7 @@ public class ARM7TDMI {
 				}
 			// ASR
 			case 2:
-				if (specialZeroShift && shift == 0) {
+				if (shift == 0) {
 					carry = getBit(op, 31);
 					return op >> 31;
 				} else {
@@ -1156,7 +1160,7 @@ public class ARM7TDMI {
 				}
 			// ROR
 			case 3:
-				if (specialZeroShift && shift == 0) {
+				if (shift == 0) {
 					// RRX
 					carry = getBit(op, 0);
 					asm {
