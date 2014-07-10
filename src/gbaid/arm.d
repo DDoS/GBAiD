@@ -890,6 +890,7 @@ public class ARM7TDMI {
 				break;
 			case 3:
 				writeln("ROR");
+				break;
 		}
 		int carry;
 		op = applyShift(shiftType, true, shift, op, carry);
@@ -930,6 +931,43 @@ public class ARM7TDMI {
 		zero = res == 0;
 		setRegister(rd, res);
 		setAPSRFlags(negative, zero, carry, overflow);
+	}
+
+	private void thumbMoveCompareAddAndSubtractImmediate(int instruction) {
+		int opCode = getBits(instruction, 11, 12);
+		int rd = getBits(instruction, 8, 10);
+		int op2 = instruction & 0xFF;
+		final switch (opCode) {
+			case 0:
+				// MOV
+				writeln("MOV");
+				setRegister(rd, op2);
+				setAPSRFlags(op2 < 0, op2 == 0);
+				break;
+			case 1:
+				// CMP
+				writeln("CMP");
+				int op1 = getRegister(rd);
+				int v = op1 - op2;
+				setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+				break;
+			case 2:
+				// ADD
+				writeln("ADD");
+				int op1 = getRegister(rd);
+				int res = op1 + op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0, carried(op1, op2, res), overflowed(op1, op2, res));
+				break;
+			case 3:
+				// SUB
+				writeln("SUB");
+				int op1 = getRegister(rd);
+				int res = op1 - op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(op1, -op2, res));
+				break;
+		}
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
