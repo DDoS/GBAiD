@@ -981,6 +981,150 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbALUOperations(int instruction) {
+		int opCode = getBits(instruction, 6, 9);
+		int op2 = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		int op1 = getRegister(rd);
+		final switch (opCode) {
+			case 0x0:
+				// AND
+				writeln("AND");
+				int res = op1 & op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+			case 0x1:
+				// EOR
+				writeln("EOR");
+				int res = op1 ^ op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+			case 0x2:
+				// LSL
+				writeln("LSL");
+				int shift = op2 & 0xFF;
+				int res = op1 << shift;
+				setRegister(rd, res);
+				if (shift == 0) {
+					setAPSRFlags(res < 0, res == 0);
+				} else {
+					setAPSRFlags(res < 0, res == 0, getBit(op1, 32 - shift));
+				}
+				break;
+			case 0x3:
+				// LSR
+				writeln("LSR");
+				int shift = op2 & 0xFF;
+				int res = op1 >>> shift;
+				setRegister(rd, res);
+				if (shift == 0) {
+					setAPSRFlags(res < 0, res == 0);
+				} else {
+					setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
+				}
+				break;
+			case 0x4:
+				// ASR
+				writeln("ASR");
+				int shift = op2 & 0xFF;
+				int res = op1 >> shift;
+				setRegister(rd, res);
+				if (shift == 0) {
+					setAPSRFlags(res < 0, res == 0);
+				} else {
+					setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
+				}
+				break;
+			case 0x5:
+				// ADC
+				writeln("ADC");
+				int carry = getFlag(CPSRFlag.C);
+				int res = op1 + op2 + carry;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0, carried(op1, op2 + carry, res), overflowed(op1, op2 + carry, res));
+				break;
+			case 0x6:
+				// SBC
+				writeln("SBC");
+				intcarry = getFlag(CPSRFlag.C);
+				int res = op1 - op2 + carry - 1;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(op1, -op2 + carry - 1, res));
+				break;
+			case 0x7:
+				// ROR
+				writeln("ROR");
+				byte shift = cast(byte) op2;
+				asm {
+					mov CL, shift;
+					ror op1, CL;
+				}
+				int res = op1;
+				setRegister(rd, res);
+				if (shift == 0) {
+					setAPSRFlags(res < 0, res == 0);
+				} else {
+					setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
+				}
+				break;
+			case 0x8:
+				// TST
+				writeln("TST");
+				int v = op1 & op2;
+				setAPSRFlags(v < 0, v == 0);
+				break;
+			case 0x9:
+				// NEG
+				writeln("NEG");
+				int res = 0 - op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(0, -op2, res));
+				break;
+			case 0xA:
+				// CMP
+				writeln("CMP");
+				int v = op1 - op2;
+				setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+				break;
+			case 0xB:
+				// CMN
+				writeln("CMN");
+				int v = op1 + op2;
+				setAPSRFlags(v < 0, v == 0, carried(op1, op2, v), overflowed(op1, op2, v));
+				break;
+			case 0xC:
+				// ORR
+				writeln("ORR");
+				int res = op1 | op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+			case 0xD:
+				// MUL
+				writeln("MUL");
+				int res = op1 * op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+			case 0xE:
+				// BIC
+				writeln("BIC");
+				int res = op1 & ~op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+			case 0xF:
+				// MNV
+				writeln("MNV");
+				int res = ~op2;
+				setRegister(rd, res);
+				setAPSRFlags(res < 0, res == 0);
+				break;
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		final switch (shiftType) {
 			// LSL
