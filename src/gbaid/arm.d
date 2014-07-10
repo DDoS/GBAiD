@@ -859,6 +859,7 @@ public class ARM7TDMI {
 			return;
 		}
 		setMode(Mode.SUPERVISOR);
+		setFlag(CPSRFlag.I, 1);
 		setRegister(Register.LR, getRegister(Register.PC) - 4);
 		setRegister(Register.SPSR, Register.CPSR);
 		setRegister(Register.PC, 0x8);
@@ -870,7 +871,11 @@ public class ARM7TDMI {
 			return;
 		}
 		setMode(Mode.UNDEFINED);
-		// TODO: kill process
+		setFlag(CPSRFlag.I, 1);
+		setRegister(Register.LR, getRegister(Register.PC) - 4);
+		setRegister(Register.SPSR, Register.CPSR);
+		setRegister(Register.PC, 0x4);
+		branchSignal = true;
 	}
 
 	private void armUnsupported(int instruction) {
