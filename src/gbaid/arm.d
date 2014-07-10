@@ -877,11 +877,59 @@ public class ARM7TDMI {
 		int shiftType = getBits(instruction, 12, 15);
 		int shift = getBits(instruction, 6, 10);
 		int op = getRegister(getBits(instruction, 3, 5));
-		int rd = instruction & 0b11;
+		int rd = instruction & 0b111;
+		final switch (shiftType) {
+			case 0:
+				writeln("LSL");
+				break;
+			case 1:
+				writeln("LSR");
+				break;
+			case 2:
+				writeln("ASR");
+				break;
+			case 3:
+				writeln("ROR");
+		}
 		int carry;
 		op = applyShift(shiftType, true, shift, op, carry);
 		setAPSRFlags(op < 0, op == 0, carry);
 		setRegister(rd, op);
+	}
+
+	private void thumbAddAndSubtract(int instruction) {
+		int op2Src = getBit(instruction, 10);
+		int opCode = getBit(instruction, 9);
+		int rn = getBits(instruction, 6, 8);
+		int op2;
+		if (op2Src) {
+			// immediate
+			op2 = rn;
+		} else {
+			// register
+			op2 = getRegister(rn);
+		}
+		int op1 = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		int res;
+		int negative, zero, carry, overflow;
+		if (opCode) {
+			// ADD
+			writeln("ADD");
+			res = op1 + op2;
+			carry = carried(op1, op2, res);
+			overflow = overflowed(op1, op2, res);
+		} else {
+			// SUB
+			writeln("SUB");
+			res = op1 - op2;
+			carry = res >= 0;
+			overflow = overflowed(op1, -op2, res);
+		}
+		negative = res < 0;
+		zero = res == 0;
+		setRegister(rd, res);
+		setAPSRFlags(negative, zero, carry, overflow);
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
