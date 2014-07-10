@@ -294,6 +294,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x1:
 				// EOR
@@ -304,6 +305,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x2:
 				// SUB
@@ -315,6 +317,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x3:
 				// RSB
@@ -326,6 +329,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x4:
 				// ADD
@@ -337,6 +341,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x5:
 				// ADC
@@ -348,6 +353,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x6:
 				// SBC
@@ -359,6 +365,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x7:
 				// RSC
@@ -370,6 +377,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0x8:
 				// TST
@@ -414,6 +422,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0xD:
 				// MOV
@@ -424,6 +433,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0xE:
 				// BIC
@@ -434,6 +444,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 			case 0xF:
 				// MVN
@@ -444,6 +455,7 @@ public class ARM7TDMI {
 					zero = res == 0;
 					negative = res < 0;
 				}
+				setRegister(rd, res);
 				break;
 		}
 		if (setFlags) {
@@ -453,7 +465,6 @@ public class ARM7TDMI {
 				setAPSRFlags(negative, zero, carry, overflow);
 			}
 		}
-		setRegister(rd, res);
 	}
 
 	private void armPRSTransfer(int instruction) {
