@@ -279,9 +279,8 @@ public class ARM7TDMI {
 			shiftType = getBits(instruction, 5, 6);
 			op2 = getRegister(instruction & 0b1111);
 		}
-		int carry = getFlag(CPSRFlag.C);
-		int shiftCarry = carry;
-		op2 = applyShift(shiftType, !shiftSrc, shift, op2, shiftCarry);
+		int carry;
+		op2 = applyShift(shiftType, !shiftSrc, shift, op2, carry);
 		int op1 = getRegister(rn);
 		int res;
 		int negative, zero, overflow;
@@ -292,7 +291,6 @@ public class ARM7TDMI {
 				res = op1 & op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -303,7 +301,6 @@ public class ARM7TDMI {
 				res = op1 ^ op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -379,7 +376,6 @@ public class ARM7TDMI {
 				writeln("TST");
 				int v = op1 & op2;
 				overflow = getFlag(CPSRFlag.V);
-				carry = shiftCarry;
 				zero = v == 0;
 				negative = v < 0;
 				break;
@@ -388,7 +384,6 @@ public class ARM7TDMI {
 				writeln("TEQ");
 				int v = op1 ^ op2;
 				overflow = getFlag(CPSRFlag.V);
-				carry = shiftCarry;
 				zero = v == 0;
 				negative = v < 0;
 				break;
@@ -416,7 +411,6 @@ public class ARM7TDMI {
 				res = op1 | op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -427,7 +421,6 @@ public class ARM7TDMI {
 				res = op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -438,7 +431,6 @@ public class ARM7TDMI {
 				res = op1 & ~op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -449,7 +441,6 @@ public class ARM7TDMI {
 				res = ~op2;
 				if (setFlags) {
 					overflow = getFlag(CPSRFlag.V);
-					carry = shiftCarry;
 					zero = res == 0;
 					negative = res < 0;
 				}
@@ -882,15 +873,27 @@ public class ARM7TDMI {
 		throw new UnsupportedARMInstructionException();
 	}
 
-	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, ref int carry) {
+	private void thumbMoveShiftedRegister(int instruction) {
+		int shiftType = getBits(instruction, 12, 15);
+		int shift = getBits(instruction, 6, 10);
+		int op = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b11;
+		int carry;
+		op = applyShift(shiftType, true, shift, op, carry);
+		setAPSRFlags(op < 0, op == 0, carry);
+		setRegister(rd, op);
+	}
+
+	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		final switch (shiftType) {
 			// LSL
 			case 0:
-				if (shift != 0) {
+				if (specialZeroShift && shift == 0) {
+					carry = getFlag(CPSRFlag.C);
+					return op;
+				} else {
 					carry = getBit(op, 32 - shift);
 					return op << shift;
-				} else {
-					return op;
 				}
 			// LSR
 			case 1:
@@ -914,12 +917,11 @@ public class ARM7TDMI {
 			case 3:
 				if (specialZeroShift && shift == 0) {
 					// RRX
-					int newCarry = getBit(op, 0);
+					carry = getBit(op, 0);
 					asm {
 						ror op, 1;
 					}
-					setBit(op, 31, carry);
-					carry = newCarry;
+					setBit(op, 31, getFlag(CPSRFlag.C));
 					setFlag(CPSRFlag.C, carry);
 					return op;
 				} else {
@@ -944,6 +946,10 @@ public class ARM7TDMI {
 
 	private void setAPSRFlags(int n, int z) {
 		setBits(registers[Register.CPSR], 30, 31, z | n << 1);
+	}
+
+	private void setAPSRFlags(int n, int z, int c) {
+		setBits(registers[Register.CPSR], 29, 31, c << 1 | z << 2 | n << 3);
 	}
 
 	private void setAPSRFlags(int n, int z, int c, int v) {
