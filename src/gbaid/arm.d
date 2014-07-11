@@ -1125,6 +1125,39 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbHiRegisterOperationsAndBranchExchange(int instruction) {
+		int opCode = getBits(instruction, 8, 9);
+		int rs = getBits(instruction, 3, 6);
+		int rd = instruction & 0b111 | getBit(instruction, 7) << 3;
+		final switch (opCode) {
+			case 0:
+				// ADD
+				writeln("ADD");
+				setRegister(rd, getRegister(rd) + getRegister(rs));
+				break;
+			case 1:
+				// CMP
+				writeln("CMP");
+				int op1 = getRegister(rd);
+				int op2 = getRegister(rs);
+				int v = op1 - op2;
+				setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+				break;
+			case 2:
+				// MOV
+				writeln("MOV");
+				setRegister(rd, getRegister(rs));
+				break;
+			case 3:
+				// BX
+				writeln("BX");
+				int address = getRegister(rs);
+				setRegister(Register.PC, address);
+				setFlag(CPSRFlag.T, cast(Set) (address & 0b1));
+				break;
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
