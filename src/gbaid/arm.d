@@ -1192,6 +1192,32 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbLoadStoreSignExtentedByteHalfword(int instruction) {
+		int opCode = getBits(instruction, 10, 11);
+		int offset = getRegister(getBits(instruction, 6, 8));
+		int base = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		int address = base + offset;
+		final switch (opCode) {
+			case 0:
+				writeln("STRH");
+				memory.setShort(address, cast(short) getRegister(rd));
+				break;
+			case 1:
+				writeln("LDSB");
+				setRegister(rd, memory.getByte(address));
+				break;
+			case 2:
+				writeln("LDRH");
+				setRegister(rd, memory.getShort(address) & 0xFFFF);
+				break;
+			case 3:
+				writeln("LDSH");
+				setRegister(rd, memory.getShort(address));
+				break;
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
