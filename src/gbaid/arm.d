@@ -1334,6 +1334,31 @@ public class ARM7TDMI {
 		setRegister(Register.SP, sp);
 	}
 
+	private void thumbMultipleLoadAndStore(int instruction) {
+		int opCode = getBit(instruction, 11);
+		int rb = getBits(instruction, 8, 10);
+		int registerList = instruction & 0xFF;
+		int address = getRegister(rb);
+		if (opCode) {
+			writeln("LDMIA");
+			for (int i = 0; i <= 7; i++) {
+				if (checkBit(registerList, i)) {
+					setRegister(i, memory.getInt(address));
+					address += 4;
+				}
+			}
+		} else {
+			writeln("STMIA");
+			for (int i = 0; i <= 7; i++) {
+				if (checkBit(registerList, i)) {
+					memory.setInt(address, getRegister(i));
+					address += 4;
+				}
+			}
+		}
+		setRegister(rb, address);
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
