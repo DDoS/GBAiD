@@ -926,17 +926,17 @@ public class ARM7TDMI {
 		int res;
 		int negative, zero, carry, overflow;
 		if (opCode) {
-			// ADD
-			writeln("ADD");
-			res = op1 + op2;
-			carry = carried(op1, op2, res);
-			overflow = overflowed(op1, op2, res);
-		} else {
 			// SUB
 			writeln("SUB");
 			res = op1 - op2;
 			carry = res >= 0;
 			overflow = overflowed(op1, -op2, res);
+		} else {
+			// ADD
+			writeln("ADD");
+			res = op1 + op2;
+			carry = carried(op1, op2, res);
+			overflow = overflowed(op1, op2, res);
 		}
 		negative = res < 0;
 		zero = res == 0;
