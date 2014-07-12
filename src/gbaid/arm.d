@@ -1247,7 +1247,18 @@ public class ARM7TDMI {
 	}
 
 	private void thumbLoadAndStoreHalfWord(int instruction) {
-
+		int opCode = getBit(instruction, 11);
+		int offset = getBits(instruction, 6, 10) * 2;
+		int base = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		int address = base + offset;
+		if (opCode) {
+			writeln("LDRH");
+			setRegister(rd, memory.getShort(address) & 0xFFFF);
+		} else {
+			writeln("STRH");
+			memory.setShort(address, cast(short) getRegister(rd));
+		}
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
