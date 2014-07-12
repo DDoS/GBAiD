@@ -1162,7 +1162,34 @@ public class ARM7TDMI {
 		int rd = getBits(instruction, 8, 10);
 		int offset = (instruction & 0xFF) * 4;
 		int pc = getRegister(Register.PC);
+		writeln("LDR");
 		setRegister(rd, memory.getInt(pc + offset));
+	}
+
+	private void thumbLoadStoreWithRegisterOffset(int instruction) {
+		int opCode = getBits(instruction, 10, 11);
+		int offset = getRegister(getBits(instruction, 6, 8));
+		int base = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		int address = base + offset;
+		final switch (opCode) {
+			case 0:
+				writeln("STR");
+				memory.setInt(address, getRegister(rd));
+				break;
+			case 1:
+				writeln("STRB");
+				memory.setByte(address, cast(byte) getRegister(rd));
+				break;
+			case 2:
+				writeln("LDR");
+				setRegister(rd, memory.getInt(address));
+				break;
+			case 3:
+				writeln("LDRB");
+				setRegister(rd, memory.getByte(address) & 0xFF);
+				break;
+		}
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
