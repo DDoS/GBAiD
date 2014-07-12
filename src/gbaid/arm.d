@@ -1135,6 +1135,7 @@ public class ARM7TDMI {
 					setFlag(CPSRFlag.T, Set.ARM);
 				}
 				setRegister(Register.PC, address);
+				branchSignal = true;
 				break;
 		}
 	}
@@ -1346,6 +1347,7 @@ public class ARM7TDMI {
 		offset <<= 24;
 		offset >>= 24;
 		setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
+		branchSignal = true;
 	}
 
 	private void thumbSoftwareInterrupt(int instruction) {
@@ -1366,6 +1368,7 @@ public class ARM7TDMI {
 		offset <<= 21;
 		offset >>= 21;
 		setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
+		branchSignal = true;
 	}
 
 	private void thumbLongBranchWithLink(int instruction) {
@@ -1379,6 +1382,7 @@ public class ARM7TDMI {
 		} else {
 			setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
 		}
+		branchSignal = true;
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
