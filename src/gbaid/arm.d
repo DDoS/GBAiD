@@ -1281,8 +1281,10 @@ public class ARM7TDMI {
 		int rd = getBits(instruction, 8, 10);
 		int offset = (instruction & 0xFF) * 4;
 		if (opCode) {
+			writeln("ADD");
 			setRegister(rd, getRegister(Register.SP) + offset);
 		} else {
+			writeln("ADD");
 			setRegister(rd, (getRegister(Register.PC) & 0xFFFFFFFD) + offset);
 		}
 	}
@@ -1291,10 +1293,45 @@ public class ARM7TDMI {
 		int opCode = getBit(instruction, 7);
 		int offset = (instruction & 0b111111) * 4;
 		if (opCode) {
+			writeln("ADD");
 			setRegister(Register.SP, getRegister(Register.SP) - offset);
 		} else {
+			writeln("ADD");
 			setRegister(Register.SP, getRegister(Register.SP) + offset);
 		}
+	}
+
+	private void thumbPushAndPopRegisters(int instruction) {
+		int opCode = getBit(instruction, 11);
+		int pcAndLR = getBit(instruction, 8);
+		int registerList = instruction & 0xFF;
+		int sp = getRegister(Register.SP);
+		if (opCode) {
+			writeln("POP");
+			if (pcAndLR) {
+				setRegister(Register.PC, memory.getInt(sp));
+				sp += 4;
+			}
+			for (int i = 7; i >= 0; i--) {
+				if (checkBit(registerList, i)) {
+					setRegister(i, memory.getInt(sp));
+					sp += 4;
+				}
+			}
+		} else {
+			writeln("PUSH");
+			for (int i = 0; i <= 7; i++) {
+				if (checkBit(registerList, i)) {
+					sp -= 4;
+					memory.setInt(sp, getRegister(i));
+				}
+			}
+			if (pcAndLR) {
+				sp -= 4;
+				memory.setInt(sp, getRegister(Register.LR));
+			}
+		}
+		setRegister(Register.SP, sp);
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
