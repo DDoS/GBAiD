@@ -1261,7 +1261,7 @@ public class ARM7TDMI {
 		}
 	}
 
-	private void loadAndStoreSPRelative(int instruction) {
+	private void thumbLoadAndStoreSPRelative(int instruction) {
 		int opCode = getBit(instruction, 11);
 		int rd = getBits(instruction, 8, 10);
 		int offset = (instruction & 0xFF) * 4;
@@ -1273,6 +1273,17 @@ public class ARM7TDMI {
 		} else {
 			writeln("STR");
 			memory.setInt(address, getRegister(rd));
+		}
+	}
+
+	private void thumbGetRelativeAddresss(int instruction) {
+		int opCode = getBit(instruction, 11);
+		int rd = getBits(instruction, 8, 10);
+		int offset = (instruction & 0xFF) * 4;
+		if (opCode) {
+			setRegister(rd, getRegister(Register.SP) + offset);
+		} else {
+			setRegister(rd, (getRegister(Register.PC) & 0xFFFFFFFD) + offset);
 		}
 	}
 
