@@ -1287,6 +1287,16 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbAddOffsetToStackPointer(int instruction) {
+		int opCode = getBit(instruction, 7);
+		int offset = (instruction & 0b111111) * 4;
+		if (opCode) {
+			setRegister(Register.SP, getRegister(Register.SP) - offset);
+		} else {
+			setRegister(Register.SP, getRegister(Register.SP) + offset);
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
