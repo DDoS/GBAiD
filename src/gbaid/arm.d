@@ -191,9 +191,8 @@ public class ARM7TDMI {
 		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
-		// BX and BLX
-		int address = getRegister(instruction & 0b1111);
-		int pc = getRegister(Register.PC) - 8;
+		writeln("BX");
+		int address = getRegister(instruction & 0xF);
 		if (address & 0b1) {
 			// switch to thumb
 			setFlag(CPSRFlag.T, Set.THUMB);
@@ -201,48 +200,26 @@ public class ARM7TDMI {
 			address -= 1;
 		}
 		setRegister(Register.PC, address);
-		if (checkBit(instruction, 5)) {
-			// BLX
-			writeln("BLX");
-			setRegister(Register.LR, pc + 4);
-		} else {
-			writeln("BX");
-		}
-		// signal a branch
 		branchSignal = true;
 	}
 
 	private void armBranchAndBranchWithLink(int instruction) {
-		int conditionBits = getConditionBits(instruction);
-		bool blx = conditionBits == 0b1111;
-		if (!blx && !checkCondition(conditionBits)) {
+		if (!checkCondition(getConditionBits(instruction))) {
 			return;
 		}
-		// B, BL and BLX
+		int opCode = getBit(instruction, 24);
 		int offset = instruction & 0xFFFFFF;
 		// sign extend the offset
 		offset <<= 8;
 		offset >>= 8;
-		int pc = getRegister(Register.PC) - 8;
-		int newPC = pc + 8 + offset * 4;
-		int opCode = getBit(instruction, 24);
-		if (blx) {
-			// BLX
-			writeln("BLX");
-			newPC += opCode * 2;
-			setRegister(Register.LR, pc + 4);
-			setFlag(CPSRFlag.T, Set.THUMB);
+		int pc = getRegister(Register.PC);
+		if (opCode) {
+			writeln("BL");
+			setRegister(Register.LR, pc - 4);
 		} else {
-			if (opCode) {
-				// BL
-				writeln("BL");
-				setRegister(Register.LR, pc + 4);
-			} else {
-				writeln("B");
-			}
+			writeln("B");
 		}
-		setRegister(Register.PC, newPC);
-		// signal a branch
+		setRegister(Register.PC, pc + offset * 4);
 		branchSignal = true;
 	}
 
@@ -1368,10 +1345,11 @@ public class ARM7TDMI {
 		// sign extend the offset
 		offset <<= 24;
 		offset >>= 24;
-		setRegister(Register.PC, offset * 2);
+		setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
 	}
 
-	private void thumbSoftwareInterruptAndBreakpoint(int instruction) {
+	private void thumbSoftwareInterrupt(int instruction) {
+		writeln("SWI");
 		setMode(Mode.SUPERVISOR);
 		setRegister(Register.SPSR, Register.CPSR);
 		setFlag(CPSRFlag.I, 1);
@@ -1380,6 +1358,15 @@ public class ARM7TDMI {
 		setRegister(Register.PC, 0x8);
 		branchSignal = true;
 	}
+
+	private void thumbUnconditionalBranch(int instruction) {
+		int offset = instruction & 0x7FF;
+		// sign extend the offset
+		offset <<= 21;
+		offset >>= 21;
+		setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
+	}
+
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
