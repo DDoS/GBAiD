@@ -861,9 +861,9 @@ public class ARM7TDMI {
 			return;
 		}
 		setMode(Mode.SUPERVISOR);
+		setRegister(Register.SPSR, Register.CPSR);
 		setFlag(CPSRFlag.I, 1);
 		setRegister(Register.LR, getRegister(Register.PC) - 4);
-		setRegister(Register.SPSR, Register.CPSR);
 		setRegister(Register.PC, 0x8);
 		branchSignal = true;
 	}
@@ -873,9 +873,9 @@ public class ARM7TDMI {
 			return;
 		}
 		setMode(Mode.UNDEFINED);
+		setRegister(Register.SPSR, Register.CPSR);
 		setFlag(CPSRFlag.I, 1);
 		setRegister(Register.LR, getRegister(Register.PC) - 4);
-		setRegister(Register.SPSR, Register.CPSR);
 		setRegister(Register.PC, 0x4);
 		branchSignal = true;
 	}
@@ -1363,11 +1363,22 @@ public class ARM7TDMI {
 		if (!checkCondition(getBits(instruction, 8, 11))) {
 			return;
 		}
+		writeln("B");
 		int offset = instruction & 0xFF;
 		// sign extend the offset
 		offset <<= 24;
 		offset >>= 24;
 		setRegister(Register.PC, offset * 2);
+	}
+
+	private void thumbSoftwareInterruptAndBreakpoint(int instruction) {
+		setMode(Mode.SUPERVISOR);
+		setRegister(Register.SPSR, Register.CPSR);
+		setFlag(CPSRFlag.I, 1);
+		setFlag(CPSRFlag.T, Set.ARM);
+		setRegister(Register.LR, getRegister(Register.PC) - 2);
+		setRegister(Register.PC, 0x8);
+		branchSignal = true;
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
