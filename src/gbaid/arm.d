@@ -1158,6 +1158,13 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbLoadPCRelative(int instruction) {
+		int rd = getBits(instruction, 8, 10);
+		int offset = (instruction & 0xFF) * 4;
+		int pc = getRegister(Register.PC);
+		setRegister(rd, memory.getInt(pc + offset));
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
