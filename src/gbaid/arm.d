@@ -1359,6 +1359,17 @@ public class ARM7TDMI {
 		setRegister(rb, address);
 	}
 
+	private void thumbConditionalBranch(int instruction) {
+		if (!checkCondition(getBits(instruction, 8, 11))) {
+			return;
+		}
+		int offset = instruction & 0xFF;
+		// sign extend the offset
+		offset <<= 24;
+		offset >>= 24;
+		setRegister(Register.PC, offset * 2);
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
@@ -1447,36 +1458,52 @@ public class ARM7TDMI {
 		int flags = registers[Register.CPSR];
 		final switch (condition) {
 			case 0x0:
+				// EQ
 				return checkBit(flags, CPSRFlag.Z);
 			case 0x1:
+				// NE
 				return !checkBit(flags, CPSRFlag.Z);
 			case 0x2:
+				// CS/HS
 				return checkBit(flags, CPSRFlag.C);
 			case 0x3:
+				// CC/LO
 				return !checkBit(flags, CPSRFlag.C);
 			case 0x4:
+				// MI
 				return checkBit(flags, CPSRFlag.N);
 			case 0x5:
+				// PL
 				return !checkBit(flags, CPSRFlag.N);
 			case 0x6:
+				// VS
 				return checkBit(flags, CPSRFlag.V);
 			case 0x7:
+				// VC
 				return !checkBit(flags, CPSRFlag.V);
 			case 0x8:
+				// HI
 				return checkBit(flags, CPSRFlag.C) && !checkBit(flags, CPSRFlag.Z);
 			case 0x9:
+				// LS
 				return !checkBit(flags, CPSRFlag.C) || checkBit(flags, CPSRFlag.Z);
 			case 0xA:
+				// GE
 				return checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
 			case 0xB:
+				// LT
 				return checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
 			case 0xC:
+				// GT
 				return !checkBit(flags, CPSRFlag.Z) && checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
 			case 0xD:
+				// LE
 				return checkBit(flags, CPSRFlag.Z) || checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
 			case 0xE:
+				// AL
 				return true;
 			case 0xF:
+				// NV
 				return false;
 		}
 	}
