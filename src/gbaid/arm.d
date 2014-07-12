@@ -1218,6 +1218,30 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void thumbLoadAndStoreWithImmediateOffset(int instruction) {
+		int opCode = getBits(instruction, 11, 12);
+		int offset = getBits(instruction, 6, 10);
+		int base = getRegister(getBits(instruction, 3, 5));
+		int rd = instruction & 0b111;
+		final switch (opCode) {
+			case 0:
+				writeln("STR");
+				memory.setInt(base + offset * 4, getRegister(rd));
+				break;
+			case 1:
+				writeln("LDR");
+				setRegister(rd, memory.getInt(base + offset * 4));
+				break;
+			case 2:
+				writeln("STRB");
+				memory.setByte(base + offset, cast(byte) getRegister(rd));
+				break;
+			case 3:
+				writeln("LDRB");
+				setRegister(rd, memory.getByte(base + offset) & 0xFF);
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
