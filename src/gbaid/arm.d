@@ -1583,38 +1583,8 @@ public class ARM7TDMI {
 	}
 }
 
-private bool carried(int a, int b, int r) {
-	return cast(uint) r < cast(uint) a;
-}
-
-private bool overflowed(int a, int b, int r) {
-	int rn = getBit(r, 31);
-	return getBit(a, 31) != rn && getBit(b, 31) != rn;
-}
-
 private int getConditionBits(int instruction) {
 	return instruction >> 28 & 0xF;
-}
-
-private bool checkBit(int i, int b) {
-	return cast(bool) getBit(i, b);
-}
-
-private int getBit(int i, int b) {
-	return i >> b & 1;
-}
-
-private void setBit(ref int i, int b, int n) {
-	i = i & ~(1 << b) | (n & 1) << b;
-}
-
-private int getBits(int i, int a, int b) {
-	return i >> a & (1 << b - a + 1) - 1;
-}
-
-private void setBits(ref int i, int a, int b, int n) {
-	int mask = (1 << b - a + 1) - 1 << a;
-	i = i & ~mask | n << a & mask;
 }
 
 private int getRegisterIndex(Mode mode, int register) {

@@ -31,7 +31,6 @@ public class GameBoyAdvance {
         }
         checkNotRunning();
         processor.setMemory(memory);
-        // TODO: start at proper location
         processor.run(GBAMemory.GAMEPAK_ROM_START);
     }
 
