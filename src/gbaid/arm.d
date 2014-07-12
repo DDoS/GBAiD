@@ -1261,6 +1261,21 @@ public class ARM7TDMI {
 		}
 	}
 
+	private void loadAndStoreSPRelative(int instruction) {
+		int opCode = getBit(instruction, 11);
+		int rd = getBits(instruction, 8, 10);
+		int offset = (instruction & 0xFF) * 4;
+		int sp = getRegister(Register.SP);
+		int address = sp + offset;
+		if (opCode) {
+			writeln("LDR");
+			setRegister(rd, memory.getInt(address));
+		} else {
+			writeln("STR");
+			memory.setInt(address, getRegister(rd));
+		}
+	}
+
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
 			carry = getFlag(CPSRFlag.C);
