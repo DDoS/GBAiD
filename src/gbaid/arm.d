@@ -115,91 +115,91 @@ public class ARM7TDMI {
 				case 0:
 					if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
 						// PSR Reg
-						armPRSTransfer(instruction);
+						psrTransfer(instruction);
 					} else if (getBits(instruction, 8, 24) == 0b00010010111111111111) {
 						// BX, BLX
-						armBranchAndExchange(instruction);
+						branchAndExchange(instruction);
 					} else if (getBits(instruction, 20, 24) == 0b10010 && getBits(instruction, 4, 7) == 0b0111) {
 						// BKPT
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else if (getBits(instruction, 16, 24) == 0b101101111 && getBits(instruction, 4, 11) == 0b11110001) {
 						// CLZ
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000101) {
 						// QALU
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
 						// Multiply
-						armMultiplyAndMultiplyAccumulate(instruction);
+						multiplyAndMultiplyAccumulate(instruction);
 					} else if (getBits(instruction, 23, 24) == 0b01 && getBits(instruction, 4, 7) == 0b1001) {
 						// MulLong
-						armMultiplyAndMultiplyAccumulate(instruction);
+						multiplyAndMultiplyAccumulate(instruction);
 					} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
 						// MulHalf
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
 						// TransSwp12
-						armSingeDataSwap(instruction);
+						singeDataSwap(instruction);
 					} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
 						// TransReg10
-						armHalfwordAndSignedDataTransfer(instruction);
+						halfwordAndSignedDataTransfer(instruction);
 					} else if (getBit(instruction, 22) == 0b1 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b1) {
 						// TransImm10
-						armHalfwordAndSignedDataTransfer(instruction);
+						halfwordAndSignedDataTransfer(instruction);
 					} else {
 						// DataProc
-						armDataProcessing(instruction);
+						dataProcessing(instruction);
 					}
 					break;
 				case 1:
 					if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0) {
 						// PSR Reg
-						armPRSTransfer(instruction);
+						psrTransfer(instruction);
 					} else {
 						// DataProc
-						armDataProcessing(instruction);
+						dataProcessing(instruction);
 					}
 					break;
 				case 2:
 					// TransImm9
-					armSingleDataTransfer(instruction);
+					singleDataTransfer(instruction);
 					break;
 				case 3:
 					if (getBit(instruction, 4) == 0b0) {
 						// TransReg9
-						armSingleDataTransfer(instruction);
+						singleDataTransfer(instruction);
 					} else {
 						// Undefined
-						armUndefined(instruction);
+						undefined(instruction);
 					}
 					break;
 				case 4:
 					// BlockTrans
-					armBlockDataTransfer(instruction);
+					blockDataTransfer(instruction);
 					break;
 				case 5:
 					// B, BL, BLX
-					armBranchAndBranchWithLink(instruction);
+					branchAndBranchWithLink(instruction);
 					break;
 				case 6:
 					if (getBits(instruction, 21, 24) == 0b0010) {
 						// CoDataTrans
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else {
 						// CoRR
-						armUnsupported(instruction);
+						unsupported(instruction);
 					}
 					break;
 				case 7:
 					if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b0) {
 						// CoDataOp
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b1) {
 						// CoRegTrans
-						armUnsupported(instruction);
+						unsupported(instruction);
 					} else {
 						// SWI
-						armSoftwareInterrupt(instruction);
+						softwareInterrupt(instruction);
 					}
 					break;
 			}
@@ -209,7 +209,7 @@ public class ARM7TDMI {
 			setRegister(Register.PC, getRegister(Register.PC) + 4);
 		}
 
-		private void armBranchAndExchange(int instruction) {
+		private void branchAndExchange(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -226,7 +226,7 @@ public class ARM7TDMI {
 			exchangeSignal = true;
 		}
 
-		private void armBranchAndBranchWithLink(int instruction) {
+		private void branchAndBranchWithLink(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -246,7 +246,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void armDataProcessing(int instruction) {
+		private void dataProcessing(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -467,7 +467,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armPRSTransfer(int instruction) {
+		private void psrTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -519,7 +519,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armMultiplyAndMultiplyAccumulate(int instruction) {
+		private void multiplyAndMultiplyAccumulate(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -599,7 +599,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armSingleDataTransfer(int instruction) {
+		private void singleDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -691,7 +691,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armHalfwordAndSignedDataTransfer(int instruction) {
+		private void halfwordAndSignedDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -762,7 +762,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armBlockDataTransfer(int instruction) {
+		private void blockDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -833,7 +833,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armSingeDataSwap(int instruction) {
+		private void singeDataSwap(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -856,7 +856,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void armSoftwareInterrupt(int instruction) {
+		private void softwareInterrupt(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -868,7 +868,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void armUndefined(int instruction) {
+		private void undefined(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
@@ -880,7 +880,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void armUnsupported(int instruction) {
+		private void unsupported(int instruction) {
 			throw new UnsupportedARMInstructionException();
 		}
 	}
@@ -902,7 +902,7 @@ public class ARM7TDMI {
 			setRegister(Register.PC, getRegister(Register.PC) + 2);
 		}
 
-		private void thumbMoveShiftedRegister(int instruction) {
+		private void moveShiftedRegister(int instruction) {
 			int shiftType = getBits(instruction, 12, 15);
 			int shift = getBits(instruction, 6, 10);
 			int op = getRegister(getBits(instruction, 3, 5));
@@ -927,7 +927,7 @@ public class ARM7TDMI {
 			setRegister(rd, op);
 		}
 
-		private void thumbAddAndSubtract(int instruction) {
+		private void addAndSubtract(int instruction) {
 			int op2Src = getBit(instruction, 10);
 			int opCode = getBit(instruction, 9);
 			int rn = getBits(instruction, 6, 8);
@@ -962,7 +962,7 @@ public class ARM7TDMI {
 			setAPSRFlags(negative, zero, carry, overflow);
 		}
 
-		private void thumbMoveCompareAddAndSubtractImmediate(int instruction) {
+		private void moveCompareAddAndSubtractImmediate(int instruction) {
 			int opCode = getBits(instruction, 11, 12);
 			int rd = getBits(instruction, 8, 10);
 			int op2 = instruction & 0xFF;
@@ -999,7 +999,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbALUOperations(int instruction) {
+		private void aluOperations(int instruction) {
 			int opCode = getBits(instruction, 6, 9);
 			int op2 = getRegister(getBits(instruction, 3, 5));
 			int rd = instruction & 0b111;
@@ -1143,7 +1143,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbHiRegisterOperationsAndBranchExchange(int instruction) {
+		private void hiRegisterOperationsAndBranchExchange(int instruction) {
 			int opCode = getBits(instruction, 8, 9);
 			int rs = getBits(instruction, 3, 6);
 			int rd = instruction & 0b111 | getBit(instruction, 7) << 3;
@@ -1182,7 +1182,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbLoadPCRelative(int instruction) {
+		private void loadPCRelative(int instruction) {
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
 			int pc = getRegister(Register.PC);
@@ -1190,7 +1190,7 @@ public class ARM7TDMI {
 			setRegister(rd, memory.getInt(pc + offset));
 		}
 
-		private void thumbLoadAndStoreWithRegisterOffset(int instruction) {
+		private void loadAndStoreWithRegisterOffset(int instruction) {
 			int opCode = getBits(instruction, 10, 11);
 			int offset = getRegister(getBits(instruction, 6, 8));
 			int base = getRegister(getBits(instruction, 3, 5));
@@ -1216,7 +1216,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbLoadAndStoreSignExtentedByteAndHalfword(int instruction) {
+		private void loadAndStoreSignExtentedByteAndHalfword(int instruction) {
 			int opCode = getBits(instruction, 10, 11);
 			int offset = getRegister(getBits(instruction, 6, 8));
 			int base = getRegister(getBits(instruction, 3, 5));
@@ -1242,7 +1242,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbLoadAndStoreWithImmediateOffset(int instruction) {
+		private void loadAndStoreWithImmediateOffset(int instruction) {
 			int opCode = getBits(instruction, 11, 12);
 			int offset = getBits(instruction, 6, 10);
 			int base = getRegister(getBits(instruction, 3, 5));
@@ -1266,7 +1266,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbLoadAndStoreHalfWord(int instruction) {
+		private void loadAndStoreHalfWord(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int offset = getBits(instruction, 6, 10) * 2;
 			int base = getRegister(getBits(instruction, 3, 5));
@@ -1281,7 +1281,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbLoadAndStoreSPRelative(int instruction) {
+		private void loadAndStoreSPRelative(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
@@ -1296,7 +1296,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbGetRelativeAddresss(int instruction) {
+		private void getRelativeAddresss(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
@@ -1309,7 +1309,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbAddOffsetToStackPointer(int instruction) {
+		private void addOffsetToStackPointer(int instruction) {
 			int opCode = getBit(instruction, 7);
 			int offset = (instruction & 0b111111) * 4;
 			if (opCode) {
@@ -1321,7 +1321,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void thumbPushAndPopRegisters(int instruction) {
+		private void pushAndPopRegisters(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int pcAndLR = getBit(instruction, 8);
 			int registerList = instruction & 0xFF;
@@ -1354,7 +1354,7 @@ public class ARM7TDMI {
 			setRegister(Register.SP, sp);
 		}
 
-		private void thumbMultipleLoadAndStore(int instruction) {
+		private void multipleLoadAndStore(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int rb = getBits(instruction, 8, 10);
 			int registerList = instruction & 0xFF;
@@ -1379,7 +1379,7 @@ public class ARM7TDMI {
 			setRegister(rb, address);
 		}
 
-		private void thumbConditionalBranch(int instruction) {
+		private void conditionalBranch(int instruction) {
 			if (!checkCondition(getBits(instruction, 8, 11))) {
 				return;
 			}
@@ -1392,7 +1392,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void thumbSoftwareInterrupt(int instruction) {
+		private void softwareInterrupt(int instruction) {
 			writeln("SWI");
 			setMode(Mode.SUPERVISOR);
 			setRegister(Register.SPSR, Register.CPSR);
@@ -1403,7 +1403,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void thumbUnconditionalBranch(int instruction) {
+		private void unconditionalBranch(int instruction) {
 			writeln("B");
 			int offset = instruction & 0x7FF;
 			// sign extend the offset
@@ -1413,7 +1413,7 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 
-		private void thumbLongBranchWithLink(int instruction) {
+		private void longBranchWithLink(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int offset = instruction & 0x7FF;
 			writeln("BL");
