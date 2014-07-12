@@ -1152,8 +1152,12 @@ public class ARM7TDMI {
 				// BX
 				writeln("BX");
 				int address = getRegister(rs);
+				if (address & 0b1) {
+					address -= 1;
+				} else {
+					setFlag(CPSRFlag.T, Set.ARM);
+				}
 				setRegister(Register.PC, address);
-				setFlag(CPSRFlag.T, cast(Set) (address & 0b1));
 				break;
 		}
 	}
@@ -1166,7 +1170,7 @@ public class ARM7TDMI {
 		setRegister(rd, memory.getInt(pc + offset));
 	}
 
-	private void thumbLoadStoreWithRegisterOffset(int instruction) {
+	private void thumbLoadAndStoreWithRegisterOffset(int instruction) {
 		int opCode = getBits(instruction, 10, 11);
 		int offset = getRegister(getBits(instruction, 6, 8));
 		int base = getRegister(getBits(instruction, 3, 5));
@@ -1192,7 +1196,7 @@ public class ARM7TDMI {
 		}
 	}
 
-	private void thumbLoadStoreSignExtentedByteHalfword(int instruction) {
+	private void thumbLoadAndStoreSignExtentedByteAndHalfword(int instruction) {
 		int opCode = getBits(instruction, 10, 11);
 		int offset = getRegister(getBits(instruction, 6, 8));
 		int base = getRegister(getBits(instruction, 3, 5));
@@ -1240,6 +1244,10 @@ public class ARM7TDMI {
 				writeln("LDRB");
 				setRegister(rd, memory.getByte(base + offset) & 0xFF);
 		}
+	}
+
+	private void thumbLoadAndStoreHalfWord(int instruction) {
+
 	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
