@@ -1360,6 +1360,7 @@ public class ARM7TDMI {
 	}
 
 	private void thumbUnconditionalBranch(int instruction) {
+		writeln("B");
 		int offset = instruction & 0x7FF;
 		// sign extend the offset
 		offset <<= 21;
@@ -1367,6 +1368,18 @@ public class ARM7TDMI {
 		setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
 	}
 
+	private void thumbLongBranchWithLink(int instruction) {
+		int opCode = getBit(instruction, 11);
+		int offset = instruction & 0x7FF;
+		writeln("BL");
+		if (opCode) {
+			int address = getRegister(Register.LR) + (offset << 1);
+			setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
+			setRegister(Register.PC, address);
+		} else {
+			setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
+		}
+	}
 
 	private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
 		if (!specialZeroShift && shift == 0) {
