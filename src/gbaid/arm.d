@@ -34,7 +34,7 @@ public class ARM7TDMI {
 		// branch to instruction
 		branch();
 		// start ticking
-		foreach (i; 0 .. 100) {
+		foreach (i; 0 .. 1000) {
 			tick();
 			if (branchSignal) {
 				branch();
@@ -100,17 +100,8 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
+			writef("%x ", getRegister(Register.PC) - 8);
 			int category = getBits(instruction, 25, 27);
-			/*
-				0: DataProc, PSR Reg, BX, BLX, BKPT, CLZ, QALU, Multiply, MulLong, MulHalf, TransSwp12, TransReg10, TransImm10
-				1: DataProc, PSR Imm
-				2: TransImm9
-				3: TransReg9, Undefined
-				4: BlockTrans
-				5: B, BL, BLX
-				6: CoDataTrans, CoRR
-				7: CoDataOp, CoRegTrans, SWI
-			*/
 			final switch (category) {
 				case 0:
 					if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
@@ -842,6 +833,7 @@ public class ARM7TDMI {
 			int rd = getBits(instruction, 12, 15);
 			int rm = instruction & 0xF;
 			int address = getRegister(rn);
+			writeln("SWP");
 			if (byteQuantity) {
 				int b = memory.getByte(address) & 0xFF;
 				memory.setByte(address, cast(byte) getRegister(rm));
@@ -860,6 +852,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
+			writeln("SWI");
 			setMode(Mode.SUPERVISOR);
 			setRegister(Register.SPSR, Register.CPSR);
 			setFlag(CPSRFlag.I, 1);
@@ -896,6 +889,99 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
+			writef("%x ", getRegister(Register.PC) - 4);
+			int category = getBits(instruction, 13, 15);
+			final switch (category) {
+				case 0:
+					if (getBits(instruction, 11, 12) == 0b11) {
+						// ADD/SUB
+						addAndSubtract(instruction);
+					} else {
+						// Shifted
+						moveShiftedRegister(instruction);
+					}
+					break;
+				case 1:
+					// Immedi.
+					moveCompareAddAndSubtractImmediate(instruction);
+					break;
+				case 2:
+					if (getBits(instruction, 10, 12) == 0b000) {
+						// AluOp
+						aluOperations(instruction);
+					} else if (getBits(instruction, 10, 12) == 0b001) {
+						// HiReg/BX
+						hiRegisterOperationsAndBranchExchange(instruction);
+					} else if (getBits(instruction, 11, 12) == 0b01) {
+						// LDR PC
+						loadPCRelative(instruction);
+					} else if (getBit(instruction, 12) == 0b1 && getBit(instruction, 9) == 0b0) {
+						// LDR/STR
+						loadAndStoreWithRegisterOffset(instruction);
+					} else if (getBit(instruction, 12) == 0b1 && getBit(instruction, 9) == 0b1) {
+						// LDR/STR H/SB/SH
+						loadAndStoreSignExtentedByteAndHalfword(instruction);
+					}
+					break;
+				case 3:
+					// LDR/STR {B}
+					loadAndStoreWithImmediateOffset(instruction);
+					break;
+				case 4:
+					if (getBit(instruction, 12) == 0b0) {
+						// LDR/STR H
+						loadAndStoreHalfWord(instruction);
+					} else if (getBit(instruction, 12) == 0b1) {
+						// LDR/STR SP
+						loadAndStoreSPRelative(instruction);
+					}
+					break;
+				case 5:
+					if (getBit(instruction, 12) == 0b0) {
+						// ADD PC/SP
+						getRelativeAddresss(instruction);
+					} else if (getBits(instruction, 8, 12) == 0b10000) {
+						// ADD SP,nn
+						addOffsetToStackPointer(instruction);
+					} else if (getBit(instruction, 12) == 0b1 && getBits(instruction, 9, 10) == 0b10) {
+						// PUSH/POP
+						pushAndPopRegisters(instruction);
+					} else if (getBits(instruction, 8, 12) == 0b11110) {
+						// BKPT
+						unsupported(instruction);
+					}
+					break;
+				case 6:
+					if (getBit(instruction, 12) == 0b0) {
+						// LDM/STM
+						multipleLoadAndStore(instruction);
+					} else if (getBits(instruction, 8, 12) == 0b11111) {
+						// SWI
+						softwareInterrupt(instruction);
+					} else if (getBits(instruction, 8, 12) == 0b11110) {
+						// UNDEF
+						undefined(instruction);
+					} else {
+						// B{cond}
+						conditionalBranch(instruction);
+					}
+					break;
+				case 7:
+					if (getBits(instruction, 11, 12) == 0b00) {
+						// B
+						unconditionalBranch(instruction);
+					} else if (getBits(instruction, 11, 12) == 0b01 && getBit(instruction, 0) == 0b0) {
+						// BLXsuf
+						unsupported(instruction);
+					} else if (getBits(instruction, 11, 12) == 0b01 && getBit(instruction, 0) == 0b1) {
+						// UNDEF
+						undefined(instruction);
+					} else if (getBit(instruction, 12) == 0b1) {
+						// BL
+						longBranchWithLink(instruction);
+					}
+					break;
+			}
 		}
 
 		protected override void incrementPC() {
@@ -1416,15 +1502,29 @@ public class ARM7TDMI {
 		private void longBranchWithLink(int instruction) {
 			int opCode = getBit(instruction, 11);
 			int offset = instruction & 0x7FF;
-			writeln("BL");
 			if (opCode) {
+				writeln("BL");
 				int address = getRegister(Register.LR) + (offset << 1);
 				setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
 				setRegister(Register.PC, address);
+				branchSignal = true;
 			} else {
 				setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
 			}
+		}
+
+		private void undefined(int instruction) {
+			setMode(Mode.UNDEFINED);
+			setRegister(Register.SPSR, Register.CPSR);
+			setFlag(CPSRFlag.I, 1);
+			setFlag(CPSRFlag.T, Set.ARM);
+			setRegister(Register.LR, getRegister(Register.PC) - 2);
+			setRegister(Register.PC, 0x4);
 			branchSignal = true;
+		}
+
+		private void unsupported(int instruction) {
+			throw new UnsupportedTHUMBInstructionException();
 		}
 	}
 
@@ -1693,5 +1793,11 @@ private enum CPSRFlag {
 public class UnsupportedARMInstructionException : Exception {
 	protected this() {
 		super("This ARM instruction is unsupported by the implementation");
+	}
+}
+
+public class UnsupportedTHUMBInstructionException : Exception {
+	protected this() {
+		super("This THUMB instruction is unsupported by the implementation");
 	}
 }
