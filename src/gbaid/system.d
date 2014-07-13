@@ -1,5 +1,6 @@
 module gbaid.system;
 
+import std.stdio;
 import std.string : string;
 
 import gbaid.arm;
@@ -42,7 +43,8 @@ public class GameBoyAdvance {
 
     public class GBAMemory : Memory {
         private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
-        private static immutable uint WRAM_SIZE = 288 * BYTES_PER_KIB;
+        private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
+        private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
         private static immutable uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
@@ -51,8 +53,10 @@ public class GameBoyAdvance {
         private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
         private static immutable uint BIOS_START = 0x00000000;
         private static immutable uint BIOS_END = 0x00003FFF;
-        private static immutable uint WRAM_START = 0x02000000;
-        private static immutable uint WRAM_END = 0x03007FFF;
+        private static immutable uint BOARD_WRAM_START = 0x02000000;
+        private static immutable uint BOARD_WRAM_END = 0x0203FFFF;
+        private static immutable uint CHIP_WRAM_START = 0x03000000;
+        private static immutable uint CHIP_WRAM_END = 0x03007FFF;
         private static immutable uint IO_REGISTERS_START = 0x04000000;
         private static immutable uint IO_REGISTERS_END = 0x040003FE;
         private static immutable uint PALETTE_RAM_START = 0x05000000;
@@ -66,7 +70,8 @@ public class GameBoyAdvance {
         private static immutable uint GAMEPAK_SRAM_START = 0x0E000000;
         private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
         private ROM bios;
-        private RAM wram = new RAM(WRAM_SIZE);
+        private RAM boardWRAM = new RAM(BOARD_WRAM_SIZE);
+        private RAM chipWRAM = new RAM(CHIP_WRAM_SIZE);
         private RAM ioRegisters = new RAM(IO_REGISTERS_SIZE);
         private RAM vram = new RAM(VRAM_SIZE);
         private RAM oam = new RAM(OAM_SIZE);
@@ -81,7 +86,7 @@ public class GameBoyAdvance {
             gamepakROM = new ROM(romFile, MAX_GAMEPAK_ROM_SIZE);
             // TODO: load SRAM
             gamepackSRAM = new RAM(0);
-            capacity = bios.getCapacity() + wram.getCapacity() + oam.getCapacity()
+            capacity = bios.getCapacity() + boardWRAM.getCapacity() + chipWRAM.getCapacity() + oam.getCapacity()
                 + paletteRAM.getCapacity() + gamepakROM.getCapacity() + gamepackSRAM.getCapacity();
         }
 
@@ -134,9 +139,13 @@ public class GameBoyAdvance {
                 address -= BIOS_START;
                 return bios;
             }
-            if (address <= WRAM_END) {
-                address -= WRAM_START;
-                return wram;
+            if (address <= BOARD_WRAM_END) {
+                address -= BOARD_WRAM_START;
+                return boardWRAM;
+            }
+            if (address <= CHIP_WRAM_END) {
+                address -= CHIP_WRAM_START;
+                return chipWRAM;
             }
             if (address <= IO_REGISTERS_END) {
                 address -= IO_REGISTERS_START;
