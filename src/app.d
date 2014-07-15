@@ -1,11 +1,24 @@
 import std.stdio;
+import std.getopt;
+import std.string : string;
 
 import gbaid.system;
+import gbaid.util;
 
 public void main(string[] args) {
-	if (args.length < 2) {
-		throw new Exception("Missing ROM path as first argument");
+	string bios;
+	string sram;
+	getopt(args,
+		"bios|b", &bios,
+		"save|sram|s", &sram
+	);
+	string rom = getSafe!string(args, 1);
+	GameBoyAdvance gba = new GameBoyAdvance(bios);
+	if (rom !is null) {
+		gba.loadROM(rom);
 	}
-	GameBoyAdvance gba = new GameBoyAdvance(args[1]);
+	if (sram !is null) {
+		gba.loadSRAM(sram);
+	}
 	gba.start();
 }

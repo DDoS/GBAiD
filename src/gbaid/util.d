@@ -33,3 +33,13 @@ public bool overflowed(int a, int b, int r) {
     int rn = getBit(r, 31);
     return getBit(a, 31) != rn && getBit(b, 31) != rn;
 }
+
+template getSafe(T) {
+    public T getSafe(T[] array, int index) {
+        if (index < 0 || index >= array.length) {
+            T t;
+            return t;
+        }
+        return array[index];
+    }
+}

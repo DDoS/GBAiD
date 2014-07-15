@@ -11,27 +11,38 @@ public class GameBoyAdvance {
     private GBAMemory memory = null;
     private bool running = false;
 
-    public this() {
-        this(null);
-    }
-
-    public this(string romFile) {
-        if (romFile !is null) {
-            memory = new GBAMemory(romFile);
+    public this(string biosFile) {
+        if (biosFile is null) {
+            throw new NullPathException("BIOS");
         }
+        memory = new GBAMemory(biosFile);
+        processor.setMemory(memory);
     }
 
-    public void loadROM(string romFile) {
+    public void loadROM(string file) {
+        if (file is null) {
+            throw new NullPathException("ROM");
+        }
         checkNotRunning();
-        memory = new GBAMemory(romFile);
+        memory.loadGamepakROM(file);
+    }
+
+    public void loadSRAM(string file) {
+        if (file is null) {
+            throw new NullPathException("SRAM");
+        }
+        checkNotRunning();
+        memory.loadGamepakSRAM(file);
     }
 
     public void start() {
-        if (memory is null) {
+        checkNotRunning();
+        if (!memory.hasGamepakROM()) {
             throw new NoROMException();
         }
-        checkNotRunning();
-        processor.setMemory(memory);
+        if (!memory.hasGamepakSRAM()) {
+            memory.loadEmptyGamepakSRAM();
+        }
         processor.run(GBAMemory.GAMEPAK_ROM_START);
     }
 
@@ -80,14 +91,38 @@ public class GameBoyAdvance {
         private RAM gamepackSRAM;
         private ulong capacity;
 
-        public this(string romFile) {
-            // TODO: load bios
-            bios = new ROM(new int[0]);
+        public this(string biosFile) {
+            bios = new ROM(biosFile, BIOS_SIZE);
+            updateCapacity();
+        }
+
+        public void loadGamepakROM(string romFile) {
             gamepakROM = new ROM(romFile, MAX_GAMEPAK_ROM_SIZE);
-            // TODO: load SRAM
-            gamepackSRAM = new RAM(0);
+            updateCapacity();
+        }
+
+        public void loadGamepakSRAM(string sramFile) {
+            gamepackSRAM = new RAM(sramFile, MAX_GAMEPAK_SRAM_SIZE);
+            updateCapacity();
+        }
+
+        public bool hasGamepakROM() {
+            return gamepakROM !is null;
+        }
+
+        public bool hasGamepakSRAM() {
+            return gamepackSRAM !is null;
+        }
+
+        public void loadEmptyGamepakSRAM() {
+            gamepackSRAM = new RAM(MAX_GAMEPAK_SRAM_SIZE);
+        }
+
+        private void updateCapacity() {
             capacity = bios.getCapacity() + boardWRAM.getCapacity() + chipWRAM.getCapacity() + oam.getCapacity()
-                + paletteRAM.getCapacity() + gamepakROM.getCapacity() + gamepackSRAM.getCapacity();
+                + paletteRAM.getCapacity()
+                + (gamepakROM !is null ? gamepakROM.getCapacity() : 0)
+                + (gamepackSRAM !is null ? gamepackSRAM.getCapacity() : 0);
         }
 
         public ulong getCapacity() {
@@ -174,6 +209,12 @@ public class GameBoyAdvance {
             }
             throw new BadAddressException(address);
         }
+    }
+}
+
+public class NullPathException : Exception {
+    protected this(string type) {
+        super("Path to \"" ~ type ~ "\" file is null");
     }
 }
 

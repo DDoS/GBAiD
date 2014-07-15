@@ -16,6 +16,8 @@ public class ARM7TDMI {
 	private int decoded;
 	private bool branchSignal;
 	private bool exchangeSignal;
+	// TODO: thread safety
+	private bool running = false;
 
 	public void setMemory(Memory memory) {
 		this.memory = memory;
@@ -24,9 +26,9 @@ public class ARM7TDMI {
 	public void run(uint entryPointAddress) {
 		armPipeline = new ARMPipeline();
 		thumbPipeline = new THUMBPipeline();
-		// initialize to ARM in supervisor mode
+		// initialize to ARM in system mode
 		setFlag(CPSRFlag.T, Set.ARM);
-		setMode(Mode.SUPERVISOR);
+		setMode(Mode.SYSTEM);
 		exchangeSignal = true;
 		updateModeAndSet();
 		// set first instruction
@@ -34,7 +36,8 @@ public class ARM7TDMI {
 		// branch to instruction
 		branch();
 		// start ticking
-		foreach (i; 0 .. 1000) {
+		running = true;
+		while (running) {
 			tick();
 			if (branchSignal) {
 				branch();
@@ -42,6 +45,14 @@ public class ARM7TDMI {
 				pipeline.incrementPC();
 			}
 		}
+	}
+
+	public bool isRunning() {
+		return running;
+	}
+
+	public void stop() {
+		running = false;
 	}
 
 	private void branch() {
