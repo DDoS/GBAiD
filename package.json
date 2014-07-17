@@ -1,8 +1,12 @@
 {
 	"name": "gbaid",
-	"targetName": "GBAiD",
+	"targetName": "gbaid",
 	"description": "A GameBoy Advance emulator in D.",
 	"authors": ["Aleksi \"DDoS\" Sapon"],
 	"license": "All rights reserved",
-	"targetPath": "bin"
+	"targetPath": "bin",
+	"dependencies": {
+		"derelict-sdl2":"1.2.4",
+		"derelict-gl3":"1.0.3"
+	}
 }
