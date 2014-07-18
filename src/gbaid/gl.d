@@ -9,7 +9,7 @@ public interface GLVersioned {
      *
      * @return The lowest required OpenGL version
      */
-    public GLVersion getGLVersion();
+    public immutable(GLVersion) getGLVersion();
 }
 
 /**
@@ -328,22 +328,24 @@ public abstract class Context : Creatable, GLVersioned {
     /**
      * Sets the render view port, which is the dimensions and position of the frame inside the window.
      *
-     * @param width The width
-     * @param height The height
      * @param x The x coordinate
      * @param y The y coordinate
+     * @param width The width
+     * @param height The height
      */
-    public abstract void setViewPort(uint width, uint height, uint x, uint y);
+    public abstract void setViewPort(uint x, uint y, uint width, uint height);
 
     /**
      * Reads the current frame pixels and returns it as a byte buffer of the desired format. The size of the returned image data is the same as the current window dimensions.
      *
+     * @param x The x coordinate
+     * @param y The y coordinate
+     * @param width The width
+     * @param height The height
      * @param format The image format to return
-     * @param width The width out parameter
-     * @param height The height out parameter
      * @return The byte array containing the pixel data, according to the provided format
      */
-    public abstract byte[] readFrame(immutable InternalFormat format, out uint width, out uint height);
+    public abstract ubyte[] readFrame(uint x, uint y, uint width, uint height, immutable InternalFormat format);
 
     /**
      * Returns true if an external process (such as the user) is requesting for the window to be closed. This value is reset once this method has been called.
@@ -2041,5 +2043,51 @@ public class VertexData {
         indices = data.indices.dup;
         attributes = data.attributes.dup;
         nameToIndex = data.nameToIndex.dup;
+    }
+}
+
+immutable bool DEBUG_ENABLED = true;
+
+/**
+ * Throws an exception if OpenGL reports an error.
+ *
+ * @throws GLException If OpenGL reports an error
+ */
+public void checkForGLError() {
+    if (DEBUG_ENABLED) {
+        import derelict.opengl3.gl3;
+        final switch (glGetError()) {
+            case 0x0:
+                return;
+            case 0x500:
+                throw new GLException("GL ERROR: INVALID ENUM");
+            case 0x501:
+                throw new GLException("GL ERROR: INVALID VALUE");
+            case 0x502:
+                throw new GLException("GL ERROR: INVALID OPERATION");
+            case 0x503:
+                throw new GLException("GL ERROR: STACK OVERFLOW");
+            case 0x504:
+                throw new GLException("GL ERROR: STACK UNDERFLOW");
+            case 0x505:
+                throw new GLException("GL ERROR: OUT OF MEMORY");
+            case 0x506:
+                throw new GLException("GL ERROR: INVALID FRAMEBUFFER OPERATION");
+        }
+    }
+}
+
+/**
+ * An exception throw when a GL exception occurs.
+ */
+public class GLException : Exception {
+
+    /**
+     * Constructs a new GL exception from the message.
+     *
+     * @param message The error message
+     */
+    public this(string message) {
+        super(message);
     }
 }
