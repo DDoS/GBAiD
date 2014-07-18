@@ -212,3 +212,159 @@ public class GL20Context : Context {
         return gbaid.gl.GLVersion.GL20;
     }
 }
+
+/**
+ * An OpenGL 2.0 implementation of {@link FrameBuffer} using EXT.
+ *
+ * @see FrameBuffer
+ */
+public class GL20FrameBuffer : FrameBuffer {
+    import std.container;
+    private RedBlackTree!uint outputBuffers = make!(RedBlackTree!uint);
+
+    /**
+     * Constructs a new frame buffer for OpenGL 2.0. If no EXT extension for frame buffers is available, an exception is thrown.
+     *
+     * @throws UnsupportedOperationException If the hardware doesn't support EXT frame buffers
+     */
+    public this() {
+        //if (!GLContext.getCapabilities().GL_EXT_framebuffer_object) {
+        //    throw new UnsupportedOperationException("Frame buffers are not supported by this hardware");
+        //}
+    }
+
+    public override void create() {
+        checkNotCreated();
+        // Generate and bind the frame buffer
+        glGenFramebuffersEXT(1, &id);
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Disable input buffers
+        glReadBuffer(GL_NONE);
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Update the state
+        super.create();
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void destroy() {
+        checkCreated();
+        // Delete the frame buffer
+        glDeleteFramebuffersEXT(1, &id);
+        // Clear output buffers
+        outputBuffers.clear();
+        // Update the state
+        super.destroy();
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void attach(immutable AttachmentPoint point, Texture texture) {
+        checkCreated();
+        texture.checkCreated();
+        // Bind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Attach the texture
+        glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, point.getGLConstant(), GL_TEXTURE_2D, texture.getID(), 0);
+        // Add it to the color outputs if it's a color type
+        if (point.isColor()) {
+            outputBuffers.insert(point.getGLConstant());
+        }
+        // Update the list of output buffers
+        updateOutputBuffers();
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void attach(immutable AttachmentPoint point, RenderBuffer buffer) {
+        checkCreated();
+        buffer.checkCreated();
+        // Bind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Attach the render buffer
+        glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, point.getGLConstant(), GL_RENDERBUFFER_EXT, buffer.getID());
+        // Add it to the color outputs if it's a color type
+        if (point.isColor()) {
+            outputBuffers.insert(point.getGLConstant());
+        }
+        // Update the list of output buffers
+        updateOutputBuffers();
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void detach(immutable AttachmentPoint point) {
+        checkCreated();
+        // Bind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Detach the render buffer or texture
+        glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, point.getGLConstant(), GL_RENDERBUFFER_EXT, 0);
+        // Remove it from the color outputs if it's a color type
+        if (point.isColor()) {
+            outputBuffers.removeKey(point.getGLConstant());
+        }
+        // Update the list of output buffers
+        updateOutputBuffers();
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Check for errors
+        checkForGLError();
+    }
+
+    private void updateOutputBuffers() {
+        // Set the output to the proper buffers
+        uint[] outputBuffersArray;
+        if (outputBuffers.empty) {
+            outputBuffersArray = [GL_NONE];
+        } else {
+            // Keep track of the buffers to output
+            outputBuffersArray = new uint[outputBuffers.length];
+            uint i = 0;
+            foreach (buffer; outputBuffers[]) {
+                outputBuffersArray[i++] = buffer;
+            }
+            // Sorting the array ensures that attachments are in order n, n + 1, n + 2...
+            // This is important!
+            outputBuffersArray.sort;
+        }
+        glDrawBuffers(cast(uint) outputBuffersArray.length, outputBuffersArray.ptr);
+    }
+
+    public override bool isComplete() {
+        checkCreated();
+        // Bind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Fetch the status and compare to the complete enum value
+        bool complete = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT) == GL_FRAMEBUFFER_COMPLETE_EXT;
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Check for errors
+        checkForGLError();
+        return complete;
+    }
+
+    public override void bind() {
+        checkCreated();
+        // Bind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id);
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void unbind() {
+        checkCreated();
+        // Unbind the frame buffer
+        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+        // Check for errors
+        checkForGLError();
+    }
+
+    public immutable(gbaid.gl.GLVersion) getGLVersion() {
+        return gbaid.gl.GLVersion.GL20;
+    }
+}
