@@ -35,11 +35,38 @@ public bool overflowed(int a, int b, int r) {
 }
 
 template getSafe(T) {
-    public T getSafe(T[] array, int index) {
+    public T getSafe(T[] array, int index, T def) {
         if (index < 0 || index >= array.length) {
-            T t;
-            return t;
+            return def;
         }
         return array[index];
     }
+}
+
+template addAll(K, V) {
+    public void addAll(V[K] to, V[K] from) {
+        foreach (k; from.byKey()) {
+            to[k] = from[k];
+        }
+    }
+}
+
+template removeAll(K, V) {
+    public void removeAll(V[K] to, V[K] from) {
+        foreach (k; from.byKey()) {
+            to.remove(k);
+        }
+    }
+}
+
+public string toString(char[] cs) {
+    import std.conv;
+    ulong end;
+    foreach (i; 0 .. cs.length) {
+        if (cs[i] == '\0') {
+            end = i;
+            break;
+        }
+    }
+    return to!string(cs[0 .. end]);
 }

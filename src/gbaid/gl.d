@@ -1,5 +1,7 @@
 module gbaid.gl;
 
+import gbaid.gl20;
+
 /**
  * Represents an object that has an OpenGL version associated to it.
  */
@@ -9,36 +11,39 @@ public interface GLVersioned {
      *
      * @return The lowest required OpenGL version
      */
-    public immutable(GLVersion) getGLVersion();
+    public GLVersion getGLVersion();
+}
+
+public enum : GLVersion {
+    GL11 = new GLVersion(1, 1, false, 0, 0),
+    GL12 = new GLVersion(1, 2, false, 0, 0),
+    GL13 = new GLVersion(1, 3, false, 0, 0),
+    GL14 = new GLVersion(1, 4, false, 0, 0),
+    GL15 = new GLVersion(1, 5, false, 0, 0),
+    GL20 = new GLVersion(2, 0, false, 1, 1),
+    GL21 = new GLVersion(2, 1, false, 1, 2),
+    GL30 = new GLVersion(3, 0, false, 1, 3),
+    GL31 = new GLVersion(3, 1, false, 1, 4),
+    GL32 = new GLVersion(3, 2, false, 1, 5),
+    GL33 = new GLVersion(3, 3, false, 3, 3),
+    GL40 = new GLVersion(4, 0, false, 4, 0),
+    GL41 = new GLVersion(4, 1, false, 4, 1),
+    GL42 = new GLVersion(4, 2, false, 4, 2),
+    GL43 = new GLVersion(4, 3, false, 4, 3),
+    GL44 = new GLVersion(4, 4, false, 4, 4),
+    GLES10 = new GLVersion(1, 0, true, 1, 0),
+    GLES11 = new GLVersion(1, 1, true, 1, 0),
+    GLES20 = new GLVersion(2, 0, true, 1, 0),
+    GLES30 = new GLVersion(3, 0, true, 3, 0),
+    GLES31 = new GLVersion(3, 1, true, 3, 0),
+    SOFTWARE = new GLVersion(0, 0, false, 0, 0),
+    OTHER = new GLVersion(0, 0, false, 0, 0)
 }
 
 /**
  * An enum of the existing OpenGL versions. Use this class to generate rendering objects compatible with the version.
  */
-public final immutable class GLVersion {
-    public static immutable GLVersion GL11 = new immutable(GLVersion)(1, 1, false, 0, 0);
-    public static immutable GLVersion GL12 = new immutable(GLVersion)(1, 2, false, 0, 0);
-    public static immutable GLVersion GL13 = new immutable(GLVersion)(1, 3, false, 0, 0);
-    public static immutable GLVersion GL14 = new immutable(GLVersion)(1, 4, false, 0, 0);
-    public static immutable GLVersion GL15 = new immutable(GLVersion)(1, 5, false, 0, 0);
-    public static immutable GLVersion GL20 = new immutable(GLVersion)(2, 0, false, 1, 1);
-    public static immutable GLVersion GL21 = new immutable(GLVersion)(2, 1, false, 1, 2);
-    public static immutable GLVersion GL30 = new immutable(GLVersion)(3, 0, false, 1, 3);
-    public static immutable GLVersion GL31 = new immutable(GLVersion)(3, 1, false, 1, 4);
-    public static immutable GLVersion GL32 = new immutable(GLVersion)(3, 2, false, 1, 5);
-    public static immutable GLVersion GL33 = new immutable(GLVersion)(3, 3, false, 3, 3);
-    public static immutable GLVersion GL40 = new immutable(GLVersion)(4, 0, false, 4, 0);
-    public static immutable GLVersion GL41 = new immutable(GLVersion)(4, 1, false, 4, 1);
-    public static immutable GLVersion GL42 = new immutable(GLVersion)(4, 2, false, 4, 2);
-    public static immutable GLVersion GL43 = new immutable(GLVersion)(4, 3, false, 4, 3);
-    public static immutable GLVersion GL44 = new immutable(GLVersion)(4, 4, false, 4, 4);
-    public static immutable GLVersion GLES10 = new immutable(GLVersion)(1, 0, true, 1, 0);
-    public static immutable GLVersion GLES11 = new immutable(GLVersion)(1, 1, true, 1, 0);
-    public static immutable GLVersion GLES20 = new immutable(GLVersion)(2, 0, true, 1, 0);
-    public static immutable GLVersion GLES30 = new immutable(GLVersion)(3, 0, true, 3, 0);
-    public static immutable GLVersion GLES31 = new immutable(GLVersion)(3, 1, true, 3, 0);
-    public static immutable GLVersion SOFTWARE = new immutable(GLVersion)(0, 0, false, 0, 0);
-    public static immutable GLVersion OTHER = new immutable(GLVersion)(0, 0, false, 0, 0);
+public final class GLVersion {
     private immutable uint major;
     private immutable uint minor;
     private immutable bool es;
@@ -288,14 +293,14 @@ public abstract class Context : Creatable, GLVersioned {
      *
      * @param capability The capability to disable
      */
-    public abstract void disableCapability(immutable Capability capability);
+    public abstract void disableCapability(Capability capability);
 
     /**
      * Enables the capability.
      *
      * @param capability The capability to enable
      */
-    public abstract void enableCapability(immutable Capability capability);
+    public abstract void enableCapability(Capability capability);
 
     /**
      * Enables or disables writing into the depth buffer.
@@ -310,7 +315,7 @@ public abstract class Context : Creatable, GLVersioned {
      * @param source The source function
      * @param destination The destination function
      */
-    public void setBlendingFunctions(immutable BlendFunction source, immutable BlendFunction destination) {
+    public void setBlendingFunctions(BlendFunction source, BlendFunction destination) {
         setBlendingFunctions(-1, source, destination);
     }
 
@@ -323,7 +328,7 @@ public abstract class Context : Creatable, GLVersioned {
      * @param source The source function
      * @param destination The destination function
      */
-    public abstract void setBlendingFunctions(int bufferIndex, immutable BlendFunction source, immutable BlendFunction destination);
+    public abstract void setBlendingFunctions(int bufferIndex, BlendFunction source, BlendFunction destination);
 
     /**
      * Sets the render view port, which is the dimensions and position of the frame inside the window.
@@ -345,7 +350,7 @@ public abstract class Context : Creatable, GLVersioned {
      * @param format The image format to return
      * @return The byte array containing the pixel data, according to the provided format
      */
-    public abstract ubyte[] readFrame(uint x, uint y, uint width, uint height, immutable InternalFormat format);
+    public abstract ubyte[] readFrame(uint x, uint y, uint width, uint height, InternalFormat format);
 
     /**
      * Returns true if an external process (such as the user) is requesting for the window to be closed. This value is reset once this method has been called.
@@ -367,14 +372,17 @@ public abstract class Context : Creatable, GLVersioned {
     }
 }
 
+public enum : Capability {
+    BLEND = new Capability(0xBE2), // GL11.GL_BLEND
+    CULL_FACE = new Capability(0xB44), // GL11.GL_CULL_FACE
+    DEPTH_CLAMP = new Capability(0x864F), // GL32.GL_DEPTH_CLAMP
+    DEPTH_TEST = new Capability(0xB71) // GL11.GL_DEPTH_TEST
+}
+
 /**
  * An enum of the renderer capabilities.
  */
-public final immutable class Capability {
-    public static immutable Capability BLEND = new immutable(Capability)(0xBE2); // GL11.GL_BLEND
-    public static immutable Capability CULL_FACE = new immutable(Capability)(0xB44); // GL11.GL_CULL_FACE
-    public static immutable Capability DEPTH_CLAMP = new immutable(Capability)(0x864F); // GL32.GL_DEPTH_CLAMP
-    public static immutable Capability DEPTH_TEST = new immutable(Capability)(0xB71); // GL11.GL_DEPTH_TEST
+public final class Capability {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -391,29 +399,32 @@ public final immutable class Capability {
     }
 }
 
+public enum : BlendFunction {
+    GL_ZERO = new BlendFunction(0x0), // GL11.GL_ZERO
+    GL_ONE = new BlendFunction(0x1), // GL11.GL_ONE
+    GL_SRC_COLOR = new BlendFunction(0x300), // GL11.GL_SRC_COLOR
+    GL_ONE_MINUS_SRC_COLOR = new BlendFunction(0x301), // GL11.GL_ONE_MINUS_SRC_COLOR
+    GL_DST_COLOR = new BlendFunction(0x306), // GL11.GL_DST_COLOR
+    GL_ONE_MINUS_DST_COLOR = new BlendFunction(0x307), // GL11.GL_ONE_MINUS_DST_COLOR
+    GL_SRC_ALPHA = new BlendFunction(0x302), // GL11.GL_SRC_ALPHA
+    GL_ONE_MINUS_SRC_ALPHA = new BlendFunction(0x303), // GL11.GL_ONE_MINUS_SRC_ALPHA
+    GL_DST_ALPHA = new BlendFunction(0x304), // GL11.GL_DST_ALPHA
+    GL_ONE_MINUS_DST_ALPHA = new BlendFunction(0x305), // GL11.GL_ONE_MINUS_DST_ALPHA
+    GL_CONSTANT_COLOR = new BlendFunction(0x8001), // GL11.GL_CONSTANT_COLOR
+    GL_ONE_MINUS_CONSTANT_COLOR = new BlendFunction(0x8002), // GL11.GL_ONE_MINUS_CONSTANT_COLOR
+    GL_CONSTANT_ALPHA = new BlendFunction(0x8003), // GL11.GL_CONSTANT_ALPHA
+    GL_ONE_MINUS_CONSTANT_ALPHA = new BlendFunction(0x8004), // GL11.GL_ONE_MINUS_CONSTANT_ALPHA
+    GL_SRC_ALPHA_SATURATE = new BlendFunction(0x308), // GL11.GL_SRC_ALPHA_SATURATE
+    GL_SRC1_COLOR = new BlendFunction(0x88F9), // GL33.GL_SRC1_COLOR
+    GL_ONE_MINUS_SRC1_COLOR = new BlendFunction(0x88FA), // GL33.GL_ONE_MINUS_SRC1_COLOR
+    GL_SRC1_ALPHA = new BlendFunction(0x8589), // GL33.GL_SRC1_ALPHA
+    GL_ONE_MINUS_SRC1_ALPHA = new BlendFunction(0x88FB) // GL33.GL_ONE_MINUS_SRC1_ALPHA
+}
+
 /**
  * An enum of the blending functions.
  */
-public final immutable class BlendFunction {
-    public static immutable BlendFunction GL_ZERO = new immutable(BlendFunction)(0x0); // GL11.GL_ZERO
-    public static immutable BlendFunction GL_ONE = new immutable(BlendFunction)(0x1); // GL11.GL_ONE
-    public static immutable BlendFunction GL_SRC_COLOR = new immutable(BlendFunction)(0x300); // GL11.GL_SRC_COLOR
-    public static immutable BlendFunction GL_ONE_MINUS_SRC_COLOR = new immutable(BlendFunction)(0x301); // GL11.GL_ONE_MINUS_SRC_COLOR
-    public static immutable BlendFunction GL_DST_COLOR = new immutable(BlendFunction)(0x306); // GL11.GL_DST_COLOR
-    public static immutable BlendFunction GL_ONE_MINUS_DST_COLOR = new immutable(BlendFunction)(0x307); // GL11.GL_ONE_MINUS_DST_COLOR
-    public static immutable BlendFunction GL_SRC_ALPHA = new immutable(BlendFunction)(0x302); // GL11.GL_SRC_ALPHA
-    public static immutable BlendFunction GL_ONE_MINUS_SRC_ALPHA = new immutable(BlendFunction)(0x303); // GL11.GL_ONE_MINUS_SRC_ALPHA
-    public static immutable BlendFunction GL_DST_ALPHA = new immutable(BlendFunction)(0x304); // GL11.GL_DST_ALPHA
-    public static immutable BlendFunction GL_ONE_MINUS_DST_ALPHA = new immutable(BlendFunction)(0x305); // GL11.GL_ONE_MINUS_DST_ALPHA
-    public static immutable BlendFunction GL_CONSTANT_COLOR = new immutable(BlendFunction)(0x8001); // GL11.GL_CONSTANT_COLOR
-    public static immutable BlendFunction GL_ONE_MINUS_CONSTANT_COLOR = new immutable(BlendFunction)(0x8002); // GL11.GL_ONE_MINUS_CONSTANT_COLOR
-    public static immutable BlendFunction GL_CONSTANT_ALPHA = new immutable(BlendFunction)(0x8003); // GL11.GL_CONSTANT_ALPHA
-    public static immutable BlendFunction GL_ONE_MINUS_CONSTANT_ALPHA = new immutable(BlendFunction)(0x8004); // GL11.GL_ONE_MINUS_CONSTANT_ALPHA
-    public static immutable BlendFunction GL_SRC_ALPHA_SATURATE = new immutable(BlendFunction)(0x308); // GL11.GL_SRC_ALPHA_SATURATE
-    public static immutable BlendFunction GL_SRC1_COLOR = new immutable(BlendFunction)(0x88F9); // GL33.GL_SRC1_COLOR
-    public static immutable BlendFunction GL_ONE_MINUS_SRC1_COLOR = new immutable(BlendFunction)(0x88FA); // GL33.GL_ONE_MINUS_SRC1_COLOR
-    public static immutable BlendFunction GL_SRC1_ALPHA = new immutable(BlendFunction)(0x8589); // GL33.GL_SRC1_ALPHA
-    public static immutable BlendFunction GL_ONE_MINUS_SRC1_ALPHA = new immutable(BlendFunction)(0x88FB); // GL33.GL_ONE_MINUS_SRC1_ALPHA
+public final class BlendFunction {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -458,7 +469,7 @@ public abstract class FrameBuffer : Creatable, GLVersioned {
      * @param point The attachment point
      * @param texture The texture to attach
      */
-    public abstract void attach(immutable AttachmentPoint point, Texture texture);
+    public abstract void attach(AttachmentPoint point, Texture texture);
 
     /**
      * Attaches the render buffer to the attachment point
@@ -466,14 +477,14 @@ public abstract class FrameBuffer : Creatable, GLVersioned {
      * @param point The attachment point
      * @param buffer The render buffer
      */
-    public abstract void attach(immutable AttachmentPoint point, RenderBuffer buffer);
+    public abstract void attach(AttachmentPoint point, RenderBuffer buffer);
 
     /**
      * Detaches the texture or render buffer from the attachment point
      *
      * @param point The attachment point
      */
-    public abstract void detach(immutable AttachmentPoint point);
+    public abstract void detach(AttachmentPoint point);
 
     /**
      * Returns true if the frame buffer is complete, false if otherwise.
@@ -492,18 +503,21 @@ public abstract class FrameBuffer : Creatable, GLVersioned {
     }
 }
 
+public enum : AttachmentPoint {
+    COLOR_ATTACHMENT0 = new AttachmentPoint(0x8CE0, true), // GL30.GL_COLOR_ATTACHMENT0
+    COLOR_ATTACHMENT1 = new AttachmentPoint(0x8CE1, true), // GL30.GL_COLOR_ATTACHMENT1
+    COLOR_ATTACHMENT2 = new AttachmentPoint(0x8CE2, true), // GL30.GL_COLOR_ATTACHMENT2
+    COLOR_ATTACHMENT3 = new AttachmentPoint(0x8CE3, true), // GL30.GL_COLOR_ATTACHMENT3
+    COLOR_ATTACHMENT4 = new AttachmentPoint(0x8CE4, true), // GL30.GL_COLOR_ATTACHMENT4
+    DEPTH_ATTACHMENT = new AttachmentPoint(0x8D00, false), // GL30.GL_DEPTH_ATTACHMENT
+    STENCIL_ATTACHMENT = new AttachmentPoint(0x8D20, false), // GL30.GL_STENCIL_ATTACHMENT
+    DEPTH_STENCIL_ATTACHMENT = new AttachmentPoint(0x821A, false) // GL30.GL_DEPTH_STENCIL_ATTACHMENT
+}
+
 /**
  * An enum of the possible frame buffer attachment points.
  */
-public final immutable class AttachmentPoint {
-    public static immutable AttachmentPoint COLOR0 = new immutable(AttachmentPoint)(0x8CE0, true); // GL30.GL_COLOR_ATTACHMENT0
-    public static immutable AttachmentPoint COLOR1 = new immutable(AttachmentPoint)(0x8CE1, true); // GL30.GL_COLOR_ATTACHMENT1
-    public static immutable AttachmentPoint COLOR2 = new immutable(AttachmentPoint)(0x8CE2, true); // GL30.GL_COLOR_ATTACHMENT2
-    public static immutable AttachmentPoint COLOR3 = new immutable(AttachmentPoint)(0x8CE3, true); // GL30.GL_COLOR_ATTACHMENT3
-    public static immutable AttachmentPoint COLOR4 = new immutable(AttachmentPoint)(0x8CE4, true); // GL30.GL_COLOR_ATTACHMENT4
-    public static immutable AttachmentPoint DEPTH = new immutable(AttachmentPoint)(0x8D00, false); // GL30.GL_DEPTH_ATTACHMENT
-    public static immutable AttachmentPoint STENCIL = new immutable(AttachmentPoint)(0x8D20, false); // GL30.GL_STENCIL_ATTACHMENT
-    public static immutable AttachmentPoint DEPTH_STENCIL = new immutable(AttachmentPoint)(0x821A, false); // GL30.GL_DEPTH_STENCIL_ATTACHMENT
+public final class AttachmentPoint {
     private immutable uint glConstant;
     private immutable bool color;
 
@@ -590,7 +604,7 @@ public abstract class Program : Creatable, GLVersioned {
      * @param name The name of the uniform to set
      * @param i The integer value
      */
-    public abstract void setUniform(string name, uint i);
+    public abstract void setUniform(string name, int i);
 
     /**
      * Sets a uniform float in the shader to the desired value.
@@ -638,7 +652,7 @@ public abstract class Program : Creatable, GLVersioned {
      * @param name The name of the uniform to set
      * @param m The matrix value
      */
-    public abstract void setUniform(string name, float[4] m);
+    public abstract void setUniform(string name, ref float[4] m);
 
     /**
      * Sets a uniform {@link com.flowpowered.math.matrix.Matrix4f} in the shader to the desired value.
@@ -646,7 +660,7 @@ public abstract class Program : Creatable, GLVersioned {
      * @param name The name of the uniform to set
      * @param m The matrix value
      */
-    public abstract void setUniform(string name, float[9] m);
+    public abstract void setUniform(string name, ref float[9] m);
 
     /**
      * Sets a uniform {@link com.flowpowered.math.matrix.Matrix4f} in the shader to the desired value.
@@ -654,7 +668,7 @@ public abstract class Program : Creatable, GLVersioned {
      * @param name The name of the uniform to set
      * @param m The matrix value
      */
-    public abstract void setUniform(string name, float[16] m);
+    public abstract void setUniform(string name, ref float[16] m);
 
     /**
      * Returns the shaders that have been attached to this program.
@@ -699,7 +713,7 @@ public abstract class RenderBuffer : Creatable, GLVersioned {
      * @param width The width
      * @param height The height
      */
-    public abstract void setStorage(immutable InternalFormat format, uint width, uint height);
+    public abstract void setStorage(InternalFormat format, uint width, uint height);
 
     /**
      * Returns the render buffer format.
@@ -813,17 +827,20 @@ public abstract class Shader : Creatable, GLVersioned {
     }
 }
 
+public enum : ShaderType {
+    FRAGMENT = new ShaderType(0x8B30), // GL20.GL_FRAGMENT_SHADER
+    VERTEX = new ShaderType(0x8B31), // GL20.GL_VERTEX_SHADER
+    GEOMETRY = new ShaderType(0x8DD9), // GL32.GL_GEOMETRY_SHADER
+    TESS_EVALUATION = new ShaderType(0x8E87), // GL40.GL_TESS_EVALUATION_SHADER
+    TESS_CONTROL = new ShaderType(0x8E88), // GL40.GL_TESS_CONTROL_SHADER
+    COMPUTE = new ShaderType(0x91B9) // GL43.GL_COMPUTE_SHADER
+}
+
 /**
  * Represents a shader type.
  */
-public final immutable class ShaderType {
-    public static immutable ShaderType FRAGMENT = new immutable(ShaderType)(0x8B30); // GL20.GL_FRAGMENT_SHADER
-    public static immutable ShaderType VERTEX = new immutable(ShaderType)(0x8B31); // GL20.GL_VERTEX_SHADER
-    public static immutable ShaderType GEOMETRY = new immutable(ShaderType)(0x8DD9); // GL32.GL_GEOMETRY_SHADER
-    public static immutable ShaderType TESS_EVALUATION = new immutable(ShaderType)(0x8E87); // GL40.GL_TESS_EVALUATION_SHADER
-    public static immutable ShaderType TESS_CONTROL = new immutable(ShaderType)(0x8E88); // GL40.GL_TESS_CONTROL_SHADER
-    public static immutable ShaderType COMPUTE = new immutable(ShaderType)(0x91B9); // GL43.GL_COMPUTE_SHADER
-    private static immutable immutable(ShaderType)[string] NAME_TO_ENUM_MAP;
+public final class ShaderType {
+    private static ShaderType[string] NAME_TO_ENUM_MAP;
     private immutable uint glConstant;
 
     static this() {
@@ -848,7 +865,7 @@ public final immutable class ShaderType {
         return glConstant;
     }
 
-    public static immutable(ShaderType) valueOf(string name) {
+    public static ShaderType valueOf(string name) {
         return NAME_TO_ENUM_MAP.get(name, null);
     }
 }
@@ -943,7 +960,7 @@ public class ShaderSource {
      * @return The shader type, or null if not set
      */
     public ShaderType getType() {
-        return type;
+        return cast(ShaderType) type;
     }
 
     /**
@@ -951,7 +968,7 @@ public class ShaderSource {
      *
      * @param type The shader type
      */
-    public void setType(immutable ShaderType type) {
+    public void setType(ShaderType type) {
         this.type = cast(ShaderType) type;
     }
 
@@ -1010,7 +1027,7 @@ public abstract class Texture : Creatable, GLVersioned {
      *
      * @param unit The unit to bind the texture to, or -1 to just bind the texture
      */
-    public abstract void bind(uint unit);
+    public abstract void bind(int unit);
 
     /**
      * Unbinds the texture from the OpenGL context.
@@ -1031,7 +1048,7 @@ public abstract class Texture : Creatable, GLVersioned {
      *
      * @param format The format
      */
-    public void setFormat(immutable Format format) {
+    public void setFormat(Format format) {
         setFormat(format, null);
     }
 
@@ -1040,7 +1057,7 @@ public abstract class Texture : Creatable, GLVersioned {
      *
      * @param format The format
      */
-    public void setFormat(immutable InternalFormat format) {
+    public void setFormat(InternalFormat format) {
         setFormat(format.getFormat(), format);
     }
 
@@ -1050,21 +1067,21 @@ public abstract class Texture : Creatable, GLVersioned {
      * @param format The format
      * @param internalFormat The internal format
      */
-    public abstract void setFormat(immutable Format format, immutable InternalFormat internalFormat);
+    public abstract void setFormat(Format format, InternalFormat internalFormat);
 
     /**
      * Returns the texture's format
      *
      * @return the format
      */
-    public abstract immutable(Format) getFormat();
+    public abstract Format getFormat();
 
     /**
      * Returns the texture's internal format.
      *
      * @return The internal format
      */
-    public abstract immutable(InternalFormat) getInternalFormat();
+    public abstract InternalFormat getInternalFormat();
 
     /**
      * Sets the value for anisotropic filtering. Must be greater than zero. Note that this is EXT based and might not be supported on all hardware.
@@ -1079,7 +1096,7 @@ public abstract class Texture : Creatable, GLVersioned {
      * @param horizontalWrap The horizontal wrap
      * @param verticalWrap The vertical wrap
      */
-    public abstract void setWraps(immutable WrapMode horizontalWrap, immutable WrapMode verticalWrap);
+    public abstract void setWraps(WrapMode horizontalWrap, WrapMode verticalWrap);
 
     /**
      * Sets the texture's min and mag filters. The mag filter cannot require mipmap generation.
@@ -1087,14 +1104,14 @@ public abstract class Texture : Creatable, GLVersioned {
      * @param minFilter The min filter
      * @param magFilter The mag filter
      */
-    public abstract void setFilters(immutable FilterMode minFilter, immutable FilterMode magFilter);
+    public abstract void setFilters(FilterMode minFilter, FilterMode magFilter);
 
     /**
      * Sets the compare mode.
      *
      * @param compareMode The compare mode
      */
-    public abstract void setCompareMode(immutable CompareMode compareMode);
+    public abstract void setCompareMode(CompareMode compareMode);
 
     /**
      * Sets the border color.
@@ -1110,14 +1127,14 @@ public abstract class Texture : Creatable, GLVersioned {
      * @param width The width of the image
      * @param height the height of the image
      */
-    public abstract void setImageData(byte[] imageData, uint width, uint height);
+    public abstract void setImageData(ubyte[] imageData, uint width, uint height);
 
     /**
      * Returns the image data in the internal format.
      *
      * @return The image data in the internal format.
      */
-    public byte[] getImageData() {
+    public ubyte[] getImageData() {
         return getImageData(getInternalFormat());
     }
 
@@ -1127,7 +1144,7 @@ public abstract class Texture : Creatable, GLVersioned {
      * @param format The format to return the data in
      * @return The image data in the desired format
      */
-    public abstract byte[] getImageData(immutable InternalFormat format);
+    public abstract ubyte[] getImageData(InternalFormat format);
 
     /**
      * Returns the width of the image.
@@ -1144,16 +1161,19 @@ public abstract class Texture : Creatable, GLVersioned {
     public abstract uint getHeight();
 }
 
+public enum : Format {
+    RED = new Format(0x1903, 1, true, false, false, false, false, false), // GL11.GL_RED
+    RGB = new Format(0x1907, 3, true, true, true, false, false, false), // GL11.GL_RGB
+    RGBA = new Format(0x1908, 4, true, true, true, true, false, false), // GL11.GL_RGBA
+    DEPTH = new Format(0x1902, 1, false, false, false, false, true, false), // GL11.GL_DEPTH_COMPONENT
+    RG = new Format(0x8227, 2, true, true, false, false, false, false), // GL30.GL_RG
+    DEPTH_STENCIL = new Format(0x84F9, 1, false, false, false, false, false, true) // GL30.GL_DEPTH_STENCIL
+}
+
 /**
  * An enum of texture component formats.
  */
-public final immutable class Format {
-    public static immutable Format RED = new immutable(Format)(0x1903, 1, true, false, false, false, false, false); // GL11.GL_RED
-    public static immutable Format RGB = new immutable(Format)(0x1907, 3, true, true, true, false, false, false); // GL11.GL_RGB
-    public static immutable Format RGBA = new immutable(Format)(0x1908, 4, true, true, true, true, false, false); // GL11.GL_RGBA
-    public static immutable Format DEPTH = new immutable(Format)(0x1902, 1, false, false, false, false, true, false); // GL11.GL_DEPTH_COMPONENT
-    public static immutable Format RG = new immutable(Format)(0x8227, 2, true, true, false, false, false, false); // GL30.GL_RG
-    public static immutable Format DEPTH_STENCIL = new immutable(Format)(0x84F9, 1, false, false, false, false, false, true); // GL30.GL_DEPTH_STENCIL
+public final class Format {
     private immutable uint glConstant;
     private immutable uint components;
     private immutable bool red;
@@ -1247,35 +1267,38 @@ public final immutable class Format {
     }
 }
 
+public enum : InternalFormat {
+    RGB8 = new InternalFormat(0x8051, RGB, UNSIGNED_BYTE), // GL11.GL_RGB8
+    RGBA8 = new InternalFormat(0x8058, RGBA, UNSIGNED_BYTE), // GL11.GL_RGBA8
+    RGB16 = new InternalFormat(32852, RGB, UNSIGNED_SHORT), // GL11.GL_RGB16
+    RGBA16 = new InternalFormat(0x805B, RGBA, UNSIGNED_SHORT), // GL11.GL_RGBA16
+    DEPTH_COMPONENT16 = new InternalFormat(0x81A5, DEPTH, UNSIGNED_SHORT), // GL14.GL_DEPTH_COMPONENT16
+    DEPTH_COMPONENT24 = new InternalFormat(0x81A6, DEPTH, UNSIGNED_INT), // GL14.GL_DEPTH_COMPONENT24
+    DEPTH_COMPONENT32 = new InternalFormat(0x81A7, DEPTH, UNSIGNED_INT), // GL14.GL_DEPTH_COMPONENT32
+    R8 = new InternalFormat(0x8229, RED, UNSIGNED_BYTE), // GL30.GL_R8
+    R16 = new InternalFormat(0x822A, RED, UNSIGNED_SHORT), // GL30.GL_R16
+    RG8 = new InternalFormat(0x822B, RG, UNSIGNED_BYTE), // GL30.GL_RG8
+    RG16 = new InternalFormat(0x822C, RG, UNSIGNED_SHORT), // GL30.GL_RG16
+    R16F = new InternalFormat(0x822D, RED, HALF_FLOAT), // GL30.GL_R16F
+    R32F = new InternalFormat(0x822E, RED, FLOAT), // GL30.GL_R32F
+    RG16F = new InternalFormat(0x822F, RG, HALF_FLOAT), // GL30.GL_RG16F
+    RG32F = new InternalFormat(0x8230, RGB, FLOAT), // GL30.GL_RG32F
+    RGBA32F = new InternalFormat(0x8814, RGBA, FLOAT), // GL30.GL_RGBA32F
+    RGB32F = new InternalFormat(0x8815, RGB, FLOAT), // GL30.GL_RGB32F
+    RGBA16F = new InternalFormat(0x881A, RGBA, HALF_FLOAT), // GL30.GL_RGBA16F
+    RGB16F = new InternalFormat(0x881B, RGB, HALF_FLOAT) // GL30.GL_RGB16F
+}
+
 /**
  * An enum of sized texture component formats.
  */
-public final immutable class InternalFormat {
-    public static immutable InternalFormat RGB8 = new immutable(InternalFormat)(0x8051, Format.RGB, DataType.UNSIGNED_BYTE); // GL11.GL_RGB8
-    public static immutable InternalFormat RGBA8 = new immutable(InternalFormat)(0x8058, Format.RGBA, DataType.UNSIGNED_BYTE); // GL11.GL_RGBA8
-    public static immutable InternalFormat RGB16 = new immutable(InternalFormat)(32852, Format.RGB, DataType.UNSIGNED_SHORT); // GL11.GL_RGB16
-    public static immutable InternalFormat RGBA16 = new immutable(InternalFormat)(0x805B, Format.RGBA, DataType.UNSIGNED_SHORT); // GL11.GL_RGBA16
-    public static immutable InternalFormat DEPTH_COMPONENT16 = new immutable(InternalFormat)(0x81A5, Format.DEPTH, DataType.UNSIGNED_SHORT); // GL14.GL_DEPTH_COMPONENT16
-    public static immutable InternalFormat DEPTH_COMPONENT24 = new immutable(InternalFormat)(0x81A6, Format.DEPTH, DataType.UNSIGNED_INT); // GL14.GL_DEPTH_COMPONENT24
-    public static immutable InternalFormat DEPTH_COMPONENT32 = new immutable(InternalFormat)(0x81A7, Format.DEPTH, DataType.UNSIGNED_INT); // GL14.GL_DEPTH_COMPONENT32
-    public static immutable InternalFormat R8 = new immutable(InternalFormat)(0x8229, Format.RED, DataType.UNSIGNED_BYTE); // GL30.GL_R8
-    public static immutable InternalFormat R16 = new immutable(InternalFormat)(0x822A, Format.RED, DataType.UNSIGNED_SHORT); // GL30.GL_R16
-    public static immutable InternalFormat RG8 = new immutable(InternalFormat)(0x822B, Format.RG, DataType.UNSIGNED_BYTE); // GL30.GL_RG8
-    public static immutable InternalFormat RG16 = new immutable(InternalFormat)(0x822C, Format.RG, DataType.UNSIGNED_SHORT); // GL30.GL_RG16
-    public static immutable InternalFormat R16F = new immutable(InternalFormat)(0x822D, Format.RED, DataType.HALF_FLOAT); // GL30.GL_R16F
-    public static immutable InternalFormat R32F = new immutable(InternalFormat)(0x822E, Format.RED, DataType.FLOAT); // GL30.GL_R32F
-    public static immutable InternalFormat RG16F = new immutable(InternalFormat)(0x822F, Format.RG, DataType.HALF_FLOAT); // GL30.GL_RG16F
-    public static immutable InternalFormat RG32F = new immutable(InternalFormat)(0x8230, Format.RGB, DataType.FLOAT); // GL30.GL_RG32F
-    public static immutable InternalFormat RGBA32F = new immutable(InternalFormat)(0x8814, Format.RGBA, DataType.FLOAT); // GL30.GL_RGBA32F
-    public static immutable InternalFormat RGB32F = new immutable(InternalFormat)(0x8815, Format.RGB, DataType.FLOAT); // GL30.GL_RGB32F
-    public static immutable InternalFormat RGBA16F = new immutable(InternalFormat)(0x881A, Format.RGBA, DataType.HALF_FLOAT); // GL30.GL_RGBA16F
-    public static immutable InternalFormat RGB16F = new immutable(InternalFormat)(0x881B, Format.RGB, DataType.HALF_FLOAT); // GL30.GL_RGB16F
+public final class InternalFormat {
     private immutable uint glConstant;
-    private immutable Format format;
+    private Format format;
     private immutable uint bytes;
-    private immutable DataType componentType;
+    private DataType componentType;
 
-    private this(uint glConstant, immutable Format format, immutable DataType componentType) {
+    private this(uint glConstant, Format format, DataType componentType) {
         this.glConstant = glConstant;
         this.format = format;
         this.componentType = componentType;
@@ -1296,7 +1319,7 @@ public final immutable class InternalFormat {
      *
      * @return The associated format
      */
-    public immutable(Format) getFormat() {
+    public Format getFormat() {
         return format;
     }
 
@@ -1314,7 +1337,7 @@ public final immutable class InternalFormat {
      *
      * @return The component type
      */
-    public immutable(DataType) getComponentType() {
+    public DataType getComponentType() {
         return componentType;
     }
 
@@ -1382,14 +1405,17 @@ public final immutable class InternalFormat {
     }
 }
 
+public enum : WrapMode {
+    REPEAT = new WrapMode(0x2901), // GL11.GL_REPEAT
+    CLAMP_TO_EDGE = new WrapMode(0x812F), // GL12.GL_CLAMP_TO_EDGE
+    CLAMP_TO_BORDER = new WrapMode(0x812D), // GL13.GL_CLAMP_TO_BORDER
+    MIRRORED_REPEAT = new WrapMode(0x8370) // GL14.GL_MIRRORED_REPEAT
+}
+
 /**
  * An enum for the texture wrapping modes.
  */
-public final immutable class WrapMode {
-    public static immutable WrapMode REPEAT = new immutable(WrapMode)(0x2901); // GL11.GL_REPEAT
-    public static immutable WrapMode CLAMP_TO_EDGE = new immutable(WrapMode)(0x812F); // GL12.GL_CLAMP_TO_EDGE
-    public static immutable WrapMode CLAMP_TO_BORDER = new immutable(WrapMode)(0x812D); // GL13.GL_CLAMP_TO_BORDER
-    public static immutable WrapMode MIRRORED_REPEAT = new immutable(WrapMode)(0x8370); // GL14.GL_MIRRORED_REPEAT
+public final class WrapMode {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -1406,16 +1432,19 @@ public final immutable class WrapMode {
     }
 }
 
+public enum : FilterMode {
+    LINEAR = new FilterMode(0x2601, false), // GL11.GL_LINEAR
+    NEAREST = new FilterMode(0x2600, false), // GL11.GL_NEAREST
+    NEAREST_MIPMAP_NEAREST = new FilterMode(0x2700, true), // GL11.GL_NEAREST_MIPMAP_NEAREST
+    LINEAR_MIPMAP_NEAREST = new FilterMode(0x2701, true), //GL11.GL_LINEAR_MIPMAP_NEAREST
+    NEAREST_MIPMAP_LINEAR = new FilterMode(0x2702, true), // GL11.GL_NEAREST_MIPMAP_LINEAR
+    LINEAR_MIPMAP_LINEAR = new FilterMode(0x2703, true) // GL11.GL_LINEAR_MIPMAP_LINEAR
+}
+
 /**
  * An enum for the texture filtering modes.
  */
-public final immutable class FilterMode {
-    public static immutable FilterMode LINEAR = new immutable(FilterMode)(0x2601, false); // GL11.GL_LINEAR
-    public static immutable FilterMode NEAREST = new immutable(FilterMode)(0x2600, false); // GL11.GL_NEAREST
-    public static immutable FilterMode NEAREST_MIPMAP_NEAREST = new immutable(FilterMode)(0x2700, true); // GL11.GL_NEAREST_MIPMAP_NEAREST
-    public static immutable FilterMode LINEAR_MIPMAP_NEAREST = new immutable(FilterMode)(0x2701, true); //GL11.GL_LINEAR_MIPMAP_NEAREST
-    public static immutable FilterMode NEAREST_MIPMAP_LINEAR = new immutable(FilterMode)(0x2702, true); // GL11.GL_NEAREST_MIPMAP_LINEAR
-    public static immutable FilterMode LINEAR_MIPMAP_LINEAR = new immutable(FilterMode)(0x2703, true); // GL11.GL_LINEAR_MIPMAP_LINEAR
+public final class FilterMode {
     private immutable uint glConstant;
     private immutable bool mimpaps;
 
@@ -1443,15 +1472,18 @@ public final immutable class FilterMode {
     }
 }
 
-public final immutable class CompareMode {
-    public static immutable CompareMode LEQUAL = new immutable(CompareMode)(0x203); // GL11.GL_LEQUAL
-    public static immutable CompareMode GEQUAL = new immutable(CompareMode)(0x206); // GL11.GL_GEQUAL
-    public static immutable CompareMode LESS = new immutable(CompareMode)(0x201); // GL11.GL_LESS
-    public static immutable CompareMode GREATER = new immutable(CompareMode)(0x204); // GL11.GL_GREATER
-    public static immutable CompareMode EQUAL = new immutable(CompareMode)(0x202); // GL11.GL_EQUAL
-    public static immutable CompareMode NOTEQUAL = new immutable(CompareMode)(0x205); // GL11.GL_NOTEQUAL
-    public static immutable CompareMode ALWAYS = new immutable(CompareMode)(0x206); // GL11.GL_ALWAYS
-    public static immutable CompareMode NEVER = new immutable(CompareMode)(0x200); // GL11.GL_NEVER
+public enum : CompareMode {
+    LEQUAL = new CompareMode(0x203), // GL11.GL_LEQUAL
+    GEQUAL = new CompareMode(0x206), // GL11.GL_GEQUAL
+    LESS = new CompareMode(0x201), // GL11.GL_LESS
+    GREATER = new CompareMode(0x204), // GL11.GL_GREATER
+    EQUAL = new CompareMode(0x202), // GL11.GL_EQUAL
+    NOTEQUAL = new CompareMode(0x205), // GL11.GL_NOTEQUAL
+    ALWAYS = new CompareMode(0x206), // GL11.GL_ALWAYS
+    NEVER = new CompareMode(0x200) // GL11.GL_NEVER
+}
+
+public final class CompareMode {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -1491,7 +1523,7 @@ public abstract class VertexArray : Creatable, GLVersioned {
      *
      * @param mode The drawing mode to use
      */
-    public abstract void setDrawingMode(immutable DrawingMode mode);
+    public abstract void setDrawingMode(DrawingMode mode);
 
     /**
      * Sets the vertex array's polygon mode. This describes how to rasterize each primitive. The default is {@link org.spout.renderer.api.gl.VertexArray.PolygonMode#FILL}. This can be used to draw
@@ -1499,7 +1531,7 @@ public abstract class VertexArray : Creatable, GLVersioned {
      *
      * @param mode The polygon mode
      */
-    public abstract void setPolygonMode(immutable PolygonMode mode);
+    public abstract void setPolygonMode(PolygonMode mode);
 
     /**
      * Sets the starting offset in the indices buffer. Defaults to 0.
@@ -1531,22 +1563,25 @@ public abstract class VertexArray : Creatable, GLVersioned {
     }
 }
 
+public enum : DrawingMode {
+    POINTS = new DrawingMode(0x0), // GL11.GL_POINTS
+    LINES = new DrawingMode(0x1), // GL11.GL_LINES
+    LINE_LOOP = new DrawingMode(0x2), // GL11.GL_LINE_LOOP
+    LINE_STRIP = new DrawingMode(0x3), // GL11.GL_LINE_STRIP
+    TRIANGLES = new DrawingMode(0x4), // GL11.GL_TRIANGLES
+    TRIANGLES_STRIP = new DrawingMode(0x5), // GL11.GL_TRIANGLE_STRIP
+    TRIANGLE_FAN = new DrawingMode(0x7), // GL11.GL_TRIANGLE_FAN
+    LINES_ADJACENCY = new DrawingMode(0xA), // GL32.GL_LINES_ADJACENCY
+    LINE_STRIP_ADJACENCY = new DrawingMode(0xB), // GL32.GL_LINE_STRIP_ADJACENCY
+    TRIANGLES_ADJACENCY = new DrawingMode(0xC), // GL32.GL_TRIANGLES_ADJACENCY
+    TRIANGLE_STRIP_ADJACENCY = new DrawingMode(0xD), // GL32.GL_TRIANGLE_STRIP_ADJACENCY
+    PATCHES = new DrawingMode(0xE) // GL40.GL_PATCHES
+}
+
 /**
  * Represents the different drawing modes for the vertex array
  */
-public final immutable class DrawingMode {
-    public static immutable DrawingMode POINTS = new immutable(DrawingMode)(0x0); // GL11.GL_POINTS
-    public static immutable DrawingMode LINES = new immutable(DrawingMode)(0x1); // GL11.GL_LINES
-    public static immutable DrawingMode LINE_LOOP = new immutable(DrawingMode)(0x2); // GL11.GL_LINE_LOOP
-    public static immutable DrawingMode LINE_STRIP = new immutable(DrawingMode)(0x3); // GL11.GL_LINE_STRIP
-    public static immutable DrawingMode TRIANGLES = new immutable(DrawingMode)(0x4); // GL11.GL_TRIANGLES
-    public static immutable DrawingMode TRIANGLES_STRIP = new immutable(DrawingMode)(0x5); // GL11.GL_TRIANGLE_STRIP
-    public static immutable DrawingMode TRIANGLE_FAN = new immutable(DrawingMode)(0x7); // GL11.GL_TRIANGLE_FAN
-    public static immutable DrawingMode LINES_ADJACENCY = new immutable(DrawingMode)(0xA); // GL32.GL_LINES_ADJACENCY
-    public static immutable DrawingMode LINE_STRIP_ADJACENCY = new immutable(DrawingMode)(0xB); // GL32.GL_LINE_STRIP_ADJACENCY
-    public static immutable DrawingMode TRIANGLES_ADJACENCY = new immutable(DrawingMode)(0xC); // GL32.GL_TRIANGLES_ADJACENCY
-    public static immutable DrawingMode TRIANGLE_STRIP_ADJACENCY = new immutable(DrawingMode)(0xD); // GL32.GL_TRIANGLE_STRIP_ADJACENCY
-    public static immutable DrawingMode PATCHES = new immutable(DrawingMode)(0xE); // GL40.GL_PATCHES
+public final class DrawingMode {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -1563,13 +1598,16 @@ public final immutable class DrawingMode {
     }
 }
 
+public enum : PolygonMode {
+    POINT = new PolygonMode(0x1B00), // GL11.GL_POINT
+    LINE = new PolygonMode(0x1B01), // GL11.GL_LINE
+    FILL = new PolygonMode(0x1B02) // GL11.GL_FILL
+}
+
 /**
  * Represents the different polygon modes for the vertex array
  */
-public final immutable class PolygonMode {
-    public static immutable PolygonMode POINT = new immutable(PolygonMode)(0x1B00); // GL11.GL_POINT
-    public static immutable PolygonMode LINE = new immutable(PolygonMode)(0x1B01); // GL11.GL_LINE
-    public static immutable PolygonMode FILL = new immutable(PolygonMode)(0x1B02); // GL11.GL_FILL
+public final class PolygonMode {
     private immutable uint glConstant;
 
     private this(uint glConstant) {
@@ -1590,11 +1628,11 @@ public final immutable class PolygonMode {
  * Represents a vertex attribute. It has a name, a data type, a size (the number of components) and data.
  */
 public class VertexAttribute {
-    protected immutable string name;
-    protected immutable DataType type;
-    protected immutable uint size;
-    protected immutable UploadMode uploadMode;
-    private byte[] buffer;
+    protected string name;
+    protected DataType type;
+    protected uint size;
+    protected UploadMode uploadMode;
+    private ubyte[] buffer;
 
     /**
      * Creates a new vertex attribute from the name, the data type and the size. The upload mode will be {@link UploadMode#TO_FLOAT}.
@@ -1603,8 +1641,8 @@ public class VertexAttribute {
      * @param type The type
      * @param size The size
      */
-    public this(string name, immutable DataType type, uint size) {
-        this(name, type, size, UploadMode.TO_FLOAT);
+    public this(string name, DataType type, uint size) {
+        this(name, type, size, TO_FLOAT);
     }
 
     /**
@@ -1615,7 +1653,7 @@ public class VertexAttribute {
      * @param size The size
      * @param uploadMode the upload mode
      */
-    public this(string name, immutable DataType type, uint size, immutable UploadMode uploadMode) {
+    public this(string name, DataType type, uint size, UploadMode uploadMode) {
         this.name = name;
         this.type = type;
         this.size = size;
@@ -1636,7 +1674,7 @@ public class VertexAttribute {
      *
      * @return The data type
      */
-    public immutable(DataType) getType() {
+    public DataType getType() {
         return type;
     }
 
@@ -1654,7 +1692,7 @@ public class VertexAttribute {
      *
      * @return The upload mode
      */
-    public immutable(UploadMode) getUploadMode() {
+    public UploadMode getUploadMode() {
         return uploadMode;
     }
 
@@ -1663,8 +1701,8 @@ public class VertexAttribute {
      *
      * @return The buffer
      */
-    public byte[] getData() {
-        if (buffer == null) {
+    public ubyte[] getData() {
+        if (buffer is null) {
             throw new Exception("ByteBuffer must have data before it is ready for use.");
         }
         return buffer.dup;
@@ -1676,7 +1714,7 @@ public class VertexAttribute {
      *
      * @param buffer to set
      */
-    public void setData(byte[] buffer) {
+    public void setData(ubyte[] buffer) {
         this.buffer = buffer.dup;
     }
 
@@ -1694,19 +1732,22 @@ public class VertexAttribute {
     }
 }
 
+public enum : DataType {
+    BYTE = new DataType(0x1400, 1, true, true), // GL11.GL_BYTE
+    UNSIGNED_BYTE = new DataType(0x1401, 1, true, false), // GL11.GL_UNSIGNED_BYTE
+    SHORT = new DataType(0x1402, 2, true, true), // GL11.GL_SHORT
+    UNSIGNED_SHORT = new DataType(0x1403, 2, true, false), // GL11.GL_UNSIGNED_SHORT
+    INT = new DataType(0x1404, 4, true, true), // GL11.GL_INT
+    UNSIGNED_INT = new DataType(0x1405, 4, true, false), // GL11.GL_UNSIGNED_INT
+    HALF_FLOAT = new DataType(0x140B, 2, false, true), // GL30.GL_HALF_FLOAT
+    FLOAT = new DataType(0x1406, 4, false, true), // GL11.GL_FLOAT
+    DOUBLE = new DataType(0x140A, 8, false, true) // GL11.GL_DOUBLE
+}
+
 /**
  * Represents an attribute data type.
  */
-public final immutable class DataType {
-    public static immutable DataType BYTE = new immutable(DataType)(0x1400, 1, true, true); // GL11.GL_BYTE
-    public static immutable DataType UNSIGNED_BYTE = new immutable(DataType)(0x1401, 1, true, false); // GL11.GL_UNSIGNED_BYTE
-    public static immutable DataType SHORT = new immutable(DataType)(0x1402, 2, true, true); // GL11.GL_SHORT
-    public static immutable DataType UNSIGNED_SHORT = new immutable(DataType)(0x1403, 2, true, false); // GL11.GL_UNSIGNED_SHORT
-    public static immutable DataType INT = new immutable(DataType)(0x1404, 4, true, true); // GL11.GL_INT
-    public static immutable DataType UNSIGNED_INT = new immutable(DataType)(0x1405, 4, true, false); // GL11.GL_UNSIGNED_INT
-    public static immutable DataType HALF_FLOAT = new immutable(DataType)(0x140B, 2, false, true); // GL30.GL_HALF_FLOAT
-    public static immutable DataType FLOAT = new immutable(DataType)(0x1406, 4, false, true); // GL11.GL_FLOAT
-    public static immutable DataType DOUBLE = new immutable(DataType)(0x140A, 8, false, true); // GL11.GL_DOUBLE
+public final class DataType {
     private immutable uint glConstant;
     private immutable uint byteSize;
     private immutable bool integer;
@@ -1771,18 +1812,20 @@ public final immutable class DataType {
     }
 }
 
+public enum : UploadMode {
+    TO_FLOAT = new UploadMode(),
+    TO_FLOAT_NORMALIZE = new UploadMode(),
+    /**
+     * Only supported in OpenGL 3.0 and after.
+     */
+    KEEP_INT = new UploadMode()
+}
+
 /**
  * The uploading mode. When uploading attribute data to OpenGL, integer data can be either converted to float or not (the later is only possible with version 3.0+). When converting to float, the
  * data can be normalized or not. By default, {@link UploadMode#TO_FLOAT} is used as it provides the best compatibility.
  */
-public final immutable class UploadMode {
-    public static immutable TO_FLOAT = new immutable(UploadMode)();
-    public static immutable TO_FLOAT_NORMALIZE = new immutable(UploadMode)();
-    /**
-     * Only supported in OpenGL 3.0 and after.
-     */
-    public static immutable KEEP_INT = new immutable(UploadMode)();
-
+public final class UploadMode {
     /**
      * Returns true if this upload mode converts integer data to normalized floats.
      *
@@ -1815,12 +1858,21 @@ public class VertexData {
     private uint[string] nameToIndex;
 
     /**
-     * Returns the list of indices used by OpenGL to pick the vertices to draw the object with in the correct order. Use it to add mesh data.
+     * Returns the list of indices used by OpenGL to pick the vertices to draw the object with in the correct order.
      *
      * @return The indices list
      */
     public uint[] getIndices() {
-        return indices;
+        return indices.dup;
+    }
+
+    /**
+     * Sets the list of indices used by OpenGL to pick the vertices to draw the object with in the correct order.
+     *
+     * @param indices The indices list
+     */
+    public void setIndices(uint[] indices) {
+        this.indices = indices.dup;
     }
 
     /**
@@ -1828,8 +1880,8 @@ public class VertexData {
      *
      * @return The number of indices
      */
-    public ulong getIndicesCount() {
-        return indices.length;
+    public uint getIndicesCount() {
+        return cast(uint) indices.length;
     }
 
     /**
@@ -1837,8 +1889,8 @@ public class VertexData {
      *
      * @return A buffer of the indices
      */
-    public byte[] getIndicesBuffer() {
-        return cast(byte[]) cast(void[]) indices.dup;
+    public ubyte[] getIndicesBuffer() {
+        return cast(ubyte[]) cast(void[]) indices.dup;
     }
 
     /**
@@ -1951,7 +2003,7 @@ public class VertexData {
      * @param name The name to lookup
      * @return The type of the attribute, or null if none can be found
      */
-    public immutable(DataType) getAttributeType(string name) {
+    public DataType getAttributeType(string name) {
         return getAttributeType(getAttributeIndex(name));
     }
 
@@ -1961,7 +2013,7 @@ public class VertexData {
      * @param index The index to lookup
      * @return The type of the attribute, or null if none can be found
      */
-    public immutable(DataType) getAttributeType(uint index) {
+    public DataType getAttributeType(uint index) {
         VertexAttribute attribute = getAttribute(index);
         if (attribute is null) {
             return null;
@@ -1988,8 +2040,8 @@ public class VertexData {
      *
      * @return The number of attributes
      */
-    public ulong getAttributeCount() {
-        return attributes.length;
+    public uint getAttributeCount() {
+        return cast(uint) attributes.length;
     }
 
     /**
@@ -2007,7 +2059,7 @@ public class VertexData {
      * @param name The name to lookup
      * @return The attribute buffer, filled and flipped
      */
-    public byte[] getAttributeBuffer(string name) {
+    public ubyte[] getAttributeBuffer(string name) {
         return getAttributeBuffer(getAttributeIndex(name));
     }
 
@@ -2017,7 +2069,7 @@ public class VertexData {
      * @param index The index to lookup
      * @return The attribute buffer, filled and flipped
      */
-    public byte[] getAttributeBuffer(uint index) {
+    public ubyte[] getAttributeBuffer(uint index) {
         VertexAttribute attribute = getAttribute(index);
         if (attribute is null) {
             return null;
@@ -2046,7 +2098,7 @@ public class VertexData {
     }
 }
 
-immutable bool DEBUG_ENABLED = true;
+public immutable bool DEBUG_ENABLED = true;
 
 /**
  * Throws an exception if OpenGL reports an error.
