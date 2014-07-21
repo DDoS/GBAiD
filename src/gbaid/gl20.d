@@ -4,6 +4,9 @@ import std.stdio;
 import std.conv;
 import std.string;
 import std.container;
+import std.variant;
+import std.regex;
+import std.algorithm;
 
 import derelict.sdl2.sdl;
 import derelict.opengl3.gl3;
@@ -371,8 +374,6 @@ public class GL20FrameBuffer : FrameBuffer {
  * @see Program
  */
 public class GL20Program : Program {
-    import std.variant;
-    import std.regex;
     // Represents an unset value for a uniform
     private static immutable Object UNSET = new immutable(Object)();
     // Regex to remove the array notation from attribute names
@@ -459,7 +460,6 @@ public class GL20Program : Program {
             // Check program validation status
             glGetProgramiv(id, GL_VALIDATE_STATUS, &status);
             if (status == GL_FALSE) {
-                import std.stdio;
                 writeln("Program validation failed. This doesn't mean it won't work, so you maybe able to ignore it\n" ~ getInfoLog());
             }
         }
@@ -1086,7 +1086,6 @@ public class GL20Texture : Texture {
  * @see VertexArray
  */
 public class GL20VertexArray : VertexArray {
-    import std.algorithm, std.stdio;
     private static immutable uint[0] EMPTY_ARRAY = [];
     // Buffers IDs
     private uint indicesBufferID = 0;

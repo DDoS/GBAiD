@@ -1,6 +1,10 @@
 module gbaid.gl;
 
-import gbaid.gl20;
+import std.regex;
+import std.file;
+import std.string;
+import std.conv;
+import derelict.opengl3.gl3 : glGetError;
 
 /**
  * Represents an object that has an OpenGL version associated to it.
@@ -875,7 +879,6 @@ public final class ShaderType {
  * layout tokens. These tokens can be used to declare various parameters directly in the shader code instead of in the software code, which simplifies loading.
  */
 public class ShaderSource {
-    import std.regex;
     private static immutable string TOKEN_SYMBOL = "$";
     private static immutable string SHADER_TYPE_TOKEN = "shader_type";
     private static auto SHADER_TYPE_TOKEN_PATTERN = ctRegex!("\\" ~ TOKEN_SYMBOL ~ SHADER_TYPE_TOKEN ~ " *: *(\\w+)", "g");
@@ -899,7 +902,6 @@ public class ShaderSource {
         if (directSource) {
             this.source = source;
         } else {
-            import std.file;
             this.source = readText(source);
         }
         parse();
@@ -909,8 +911,6 @@ public class ShaderSource {
         // Look for layout tokens
         // Used for setting the shader type automatically.
         // Also replaces the GL30 "layout(location = x)" and GL42 "layout(binding = x) features missing from GL20 and/or GL30
-        import std.string;
-        import std.conv;
         string[] lines = splitLines(source);
         foreach (string line; lines) {
             foreach (match; matchAll(line, SHADER_TYPE_TOKEN_PATTERN)) {
@@ -2107,7 +2107,6 @@ public immutable bool DEBUG_ENABLED = true;
  */
 public void checkForGLError() {
     if (DEBUG_ENABLED) {
-        import derelict.opengl3.gl3;
         final switch (glGetError()) {
             case 0x0:
                 return;

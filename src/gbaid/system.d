@@ -1,7 +1,7 @@
 module gbaid.system;
 
 import std.stdio;
-import std.string : string;
+import std.string;
 
 import gbaid.arm;
 import gbaid.memory;

@@ -1,5 +1,7 @@
 module gbaid.util;
 
+import std.conv;
+
 public ulong ucast(int v) {
     return cast(ulong) v & 0xFFFFFFFF;
 }
@@ -60,7 +62,6 @@ template removeAll(K, V) {
 }
 
 public string toString(char[] cs) {
-    import std.conv;
     ulong end;
     foreach (i; 0 .. cs.length) {
         if (cs[i] == '\0') {

@@ -1,8 +1,8 @@
 module gbaid.memory;
 
-import std.string : string, format;
-import std.file : read, FileException;
-import std.path : expandTilde;
+import std.string;
+import std.file;
+import std.path;
 
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
