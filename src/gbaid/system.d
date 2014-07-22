@@ -4,19 +4,24 @@ import std.stdio;
 import std.string;
 
 import gbaid.arm;
+import gbaid.graphics;
 import gbaid.memory;
 
 public class GameBoyAdvance {
-    private ARM7TDMI processor = new ARM7TDMI();
-    private GBAMemory memory = null;
+    private ARM7TDMI processor;
+    private Display display;
+    private GBAMemory memory;
     private bool running = false;
 
     public this(string biosFile) {
         if (biosFile is null) {
             throw new NullPathException("BIOS");
         }
+        processor = new ARM7TDMI();
+        display = new Display();
         memory = new GBAMemory(biosFile);
         processor.setMemory(memory);
+        display.setMemory(memory);
     }
 
     public void loadROM(string file) {
