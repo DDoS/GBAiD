@@ -21,6 +21,7 @@ public class GameBoyAdvance {
         display = new Display();
         memory = new GBAMemory(biosFile);
         processor.setMemory(memory);
+        processor.setEntryPointAddress(GBAMemory.GAMEPAK_ROM_START);
         display.setMemory(memory);
     }
 
@@ -48,7 +49,9 @@ public class GameBoyAdvance {
         if (!memory.hasGamepakSRAM()) {
             memory.loadEmptyGamepakSRAM();
         }
-        processor.run(GBAMemory.GAMEPAK_ROM_START);
+        processor.start();
+        display.run();
+        processor.stop();
     }
 
     private void checkNotRunning() {

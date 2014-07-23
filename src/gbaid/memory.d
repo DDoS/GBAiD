@@ -7,7 +7,7 @@ import std.path;
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
-public interface Memory {
+public synchronized interface Memory {
     ulong getCapacity();
 
     byte getByte(uint address);

@@ -1,29 +1,52 @@
 module gbaid.arm;
 
 import std.stdio;
+import core.atomic;
+import core.thread;
 
 import gbaid.memory;
 import gbaid.util;
 
 public class ARM7TDMI {
+	private Memory memory;
+	private shared uint entryPointAddress;
+	private Thread thread;
+	private shared bool running = false;
 	private int[37] registers = new int[37];
 	private Mode mode;
 	private Pipeline armPipeline;
 	private Pipeline thumbPipeline;
-	private Memory memory;
 	private Pipeline pipeline;
 	private int instruction;
 	private int decoded;
 	private bool branchSignal;
 	private bool exchangeSignal;
-	// TODO: thread safety
-	private bool running = false;
+	private shared bool irqSignal;
 
 	public void setMemory(Memory memory) {
 		this.memory = memory;
 	}
 
-	public void run(uint entryPointAddress) {
+	public void setEntryPointAddress(uint entryPointAddress) {
+		atomicStore(this.entryPointAddress, entryPointAddress);
+	}
+
+	public void start() {
+		if (thread is null) {
+			thread = new Thread(&run);
+			thread.start();
+		}
+	}
+
+	public void stop() {
+		if (thread !is null) {
+			atomicStore(running, false);
+			thread.join();
+			thread = null;
+		}
+	}
+
+	private void run() {
 		armPipeline = new ARMPipeline();
 		thumbPipeline = new THUMBPipeline();
 		// initialize to ARM in system mode
@@ -38,7 +61,12 @@ public class ARM7TDMI {
 		// start ticking
 		running = true;
 		while (running) {
-			tick();
+			if (irqSignal && !getFlag(CPSRFlag.I)) {
+				processIRQ();
+			} else {
+				tick();
+			}
+			updateModeAndSet();
 			if (branchSignal) {
 				branch();
 			} else {
@@ -47,12 +75,8 @@ public class ARM7TDMI {
 		}
 	}
 
-	public bool isRunning() {
-		return running;
-	}
-
-	public void stop() {
-		running = false;
+	public void signalIRQ() {
+		atomicStore(irqSignal, true);
 	}
 
 	private void branch() {
@@ -77,8 +101,6 @@ public class ARM7TDMI {
 		// execute
 		pipeline.execute(decoded);
 		decoded = nextDecoded;
-		// update the mode and set
-		updateModeAndSet();
 	}
 
 	private void updateModeAndSet() {
@@ -91,6 +113,20 @@ public class ARM7TDMI {
 			}
 			exchangeSignal = false;
 		}
+	}
+
+	private void processIRQ() {
+		// writeln("IRQ");
+		setMode(Mode.IRQ);
+		setRegister(Register.SPSR, Register.CPSR);
+		setFlag(CPSRFlag.I, 1);
+		int oldT = getFlag(CPSRFlag.T);
+		setFlag(CPSRFlag.T, Set.ARM);
+		setRegister(Register.LR, getRegister(Register.PC) - (oldT ? 2 : 4));
+		setRegister(Register.PC, 0x18);
+		branchSignal = true;
+		exchangeSignal = true;
+		irqSignal = false;
 	}
 
 	private interface Pipeline {
@@ -111,7 +147,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
-			writef("%x ", getRegister(Register.PC) - 8);
+			// writef("%x ", getRegister(Register.PC) - 8);
 			int category = getBits(instruction, 25, 27);
 			final switch (category) {
 				case 0:
@@ -215,7 +251,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
-			writeln("BX");
+			// writeln("BX");
 			int address = getRegister(instruction & 0xF);
 			if (address & 0b1) {
 				// switch to THUMB
@@ -239,10 +275,10 @@ public class ARM7TDMI {
 			offset >>= 8;
 			int pc = getRegister(Register.PC);
 			if (opCode) {
-				writeln("BL");
+				// writeln("BL");
 				setRegister(Register.LR, pc - 4);
 			} else {
-				writeln("B");
+				// writeln("B");
 			}
 			setRegister(Register.PC, pc + offset * 4);
 			branchSignal = true;
@@ -289,7 +325,7 @@ public class ARM7TDMI {
 			final switch (opCode) {
 				case 0x0:
 					// AND
-					writeln("AND");
+					// writeln("AND");
 					res = op1 & op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -300,7 +336,7 @@ public class ARM7TDMI {
 					break;
 				case 0x1:
 					// EOR
-					writeln("EOR");
+					// writeln("EOR");
 					res = op1 ^ op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -311,7 +347,7 @@ public class ARM7TDMI {
 					break;
 				case 0x2:
 					// SUB
-					writeln("SUB");
+					// writeln("SUB");
 					res = op1 - op2;
 					if (setFlags) {
 						overflow = overflowed(op1, -op2, res);
@@ -323,7 +359,7 @@ public class ARM7TDMI {
 					break;
 				case 0x3:
 					// RSB
-					writeln("RSB");
+					// writeln("RSB");
 					res = op2 - op1;
 					if (setFlags) {
 						overflow = overflowed(op2, -op1, res);
@@ -335,7 +371,7 @@ public class ARM7TDMI {
 					break;
 				case 0x4:
 					// ADD
-					writeln("ADD");
+					// writeln("ADD");
 					res = op1 + op2;
 					if (setFlags) {
 						overflow = overflowed(op1, op2, res);
@@ -347,7 +383,7 @@ public class ARM7TDMI {
 					break;
 				case 0x5:
 					// ADC
-					writeln("ADC");
+					// writeln("ADC");
 					res = op1 + op2 + carry;
 					if (setFlags) {
 						overflow = overflowed(op1, op2 + carry, res);
@@ -359,7 +395,7 @@ public class ARM7TDMI {
 					break;
 				case 0x6:
 					// SBC
-					writeln("SBC");
+					// writeln("SBC");
 					res = op1 - op2 + carry - 1;
 					if (setFlags) {
 						overflow = overflowed(op1, -op2 + carry - 1, res);
@@ -371,7 +407,7 @@ public class ARM7TDMI {
 					break;
 				case 0x7:
 					// RSC
-					writeln("RSC");
+					// writeln("RSC");
 					res = op2 - op1 + carry - 1;
 					if (setFlags) {
 						overflow = overflowed(op2, -op1 + carry - 1, res);
@@ -383,7 +419,7 @@ public class ARM7TDMI {
 					break;
 				case 0x8:
 					// TST
-					writeln("TST");
+					// writeln("TST");
 					int v = op1 & op2;
 					overflow = getFlag(CPSRFlag.V);
 					zero = v == 0;
@@ -391,7 +427,7 @@ public class ARM7TDMI {
 					break;
 				case 0x9:
 					// TEQ
-					writeln("TEQ");
+					// writeln("TEQ");
 					int v = op1 ^ op2;
 					overflow = getFlag(CPSRFlag.V);
 					zero = v == 0;
@@ -399,7 +435,7 @@ public class ARM7TDMI {
 					break;
 				case 0xA:
 					// CMP
-					writeln("CMP");
+					// writeln("CMP");
 					int v = op1 - op2;
 					overflow = overflowed(op1, -op2, v);
 					carry = v >= 0;
@@ -408,7 +444,7 @@ public class ARM7TDMI {
 					break;
 				case 0xB:
 					// CMN
-					writeln("CMN");
+					// writeln("CMN");
 					int v = op1 + op2;
 					overflow = overflowed(op1, op2, v);
 					carry = carried(op1, op2, v);
@@ -417,7 +453,7 @@ public class ARM7TDMI {
 					break;
 				case 0xC:
 					// ORR
-					writeln("ORR");
+					// writeln("ORR");
 					res = op1 | op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -428,7 +464,7 @@ public class ARM7TDMI {
 					break;
 				case 0xD:
 					// MOV
-					writeln("MOV");
+					// writeln("MOV");
 					res = op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -439,7 +475,7 @@ public class ARM7TDMI {
 					break;
 				case 0xE:
 					// BIC
-					writeln("BIC");
+					// writeln("BIC");
 					res = op1 & ~op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -450,7 +486,7 @@ public class ARM7TDMI {
 					break;
 				case 0xF:
 					// MVN
-					writeln("MVN");
+					// writeln("MVN");
 					res = ~op2;
 					if (setFlags) {
 						overflow = getFlag(CPSRFlag.V);
@@ -476,7 +512,7 @@ public class ARM7TDMI {
 			int psrSrc = getBit(instruction, 22);
 			int opCode = getBit(instruction, 21);
 			if (opCode) {
-				writeln("MSR");
+				// writeln("MSR");
 				// MSR
 				int opSrc = getBit(instruction, 25);
 				int writeFlags = getBit(instruction, 19);
@@ -511,7 +547,7 @@ public class ARM7TDMI {
 				}
 			} else {
 				// MRS
-				writeln("MRS");
+				// writeln("MRS");
 				int rd = getBits(instruction, 12, 15);
 				if (psrSrc) {
 					setRegister(rd, getRegister(Register.SPSR));
@@ -532,7 +568,7 @@ public class ARM7TDMI {
 			int op1 = getRegister(instruction & 0xF);
 			final switch (opCode) {
 				case 0:
-					writeln("MUL");
+					// writeln("MUL");
 					int res = op1 * op2;
 					setRegister(rd, res);
 					if (setFlags) {
@@ -540,7 +576,7 @@ public class ARM7TDMI {
 					}
 					break;
 				case 1:
-					writeln("MLA");
+					// writeln("MLA");
 					int op3 = getRegister(getBits(instruction, 12, 15));
 					int res = op1 * op2 + op3;
 					setRegister(rd, res);
@@ -549,7 +585,7 @@ public class ARM7TDMI {
 					}
 					break;
 				case 4:
-					writeln("UMULL");
+					// writeln("UMULL");
 					int rn = getBits(instruction, 12, 15);
 					ulong res = ucast(op1) * ucast(op2);
 					int resLo = cast(int) res;
@@ -561,7 +597,7 @@ public class ARM7TDMI {
 					}
 					break;
 				case 5:
-					writeln("UMLAL");
+					// writeln("UMLAL");
 					int rn = getBits(instruction, 12, 15);
 					ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
 					ulong res = ucast(op1) * ucast(op2) + op3;
@@ -574,7 +610,7 @@ public class ARM7TDMI {
 					}
 					break;
 				case 6:
-					writeln("SMULL");
+					// writeln("SMULL");
 					int rn = getBits(instruction, 12, 15);
 					long res = cast(long) op1 * cast(long) op2;
 					int resLo = cast(int) res;
@@ -586,7 +622,7 @@ public class ARM7TDMI {
 					}
 					break;
 				case 7:
-					writeln("SMLAL");
+					// writeln("SMLAL");
 					int rn = getBits(instruction, 12, 15);
 					long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
 					long res = cast(long) op1 * cast(long) op2 + op3;
@@ -634,11 +670,11 @@ public class ARM7TDMI {
 				}
 				if (load) {
 					if (byteQuantity) {
-						writeln("LDRB");
+						// writeln("LDRB");
 						int b = memory.getByte(address) & 0xFF;
 						setRegister(rd, b);
 					} else {
-						writeln("LDR");
+						// writeln("LDR");
 						int w = memory.getInt(address);
 						if (address & 0b10) {
 							w >>>= 16;
@@ -647,11 +683,11 @@ public class ARM7TDMI {
 					}
 				} else {
 					if (byteQuantity) {
-						writeln("STRB");
+						// writeln("STRB");
 						byte b = cast(byte) getRegister(rd);
 						memory.setByte(address, b);
 					} else {
-						writeln("STR");
+						// writeln("STR");
 						int w = getRegister(rd);
 						memory.setInt(address, w);
 					}
@@ -662,11 +698,11 @@ public class ARM7TDMI {
 			} else {
 				if (load) {
 					if (byteQuantity) {
-						writeln("LDRB");
+						// writeln("LDRB");
 						int b = memory.getByte(address) & 0xFF;
 						setRegister(rd, b);
 					} else {
-						writeln("LDR");
+						// writeln("LDR");
 						int w = memory.getInt(address);
 						if (address & 0b10) {
 							w >>>= 16;
@@ -675,11 +711,11 @@ public class ARM7TDMI {
 					}
 				} else {
 					if (byteQuantity) {
-						writeln("STRB");
+						// writeln("STRB");
 						byte b = cast(byte) getRegister(rd);
 						memory.setByte(address, b);
 					} else {
-						writeln("STR");
+						// writeln("STR");
 						int w = getRegister(rd);
 						memory.setInt(address, w);
 					}
@@ -725,17 +761,17 @@ public class ARM7TDMI {
 			if (load) {
 				final switch (opCode) {
 					case 1:
-						writeln("LDRH");
+						// writeln("LDRH");
 						int hw = memory.getShort(address) & 0xFFFF;
 						setRegister(rd, hw);
 						break;
 					case 2:
-						writeln("LDRSB");
+						// writeln("LDRSB");
 						int b = memory.getByte(address);
 						setRegister(rd, b);
 						break;
 					case 3:
-						writeln("LDRSH");
+						// writeln("LDRSH");
 						int hw = memory.getShort(address);
 						setRegister(rd, hw);
 						break;
@@ -743,7 +779,7 @@ public class ARM7TDMI {
 			} else {
 				final switch (opCode) {
 					case 1:
-						writeln("STRH");
+						// writeln("STRH");
 						short hw = cast(short) getRegister(rd);
 						memory.setShort(address, hw);
 						break;
@@ -777,9 +813,9 @@ public class ARM7TDMI {
 			int registerList = instruction & 0xFFFF;
 			int address = getRegister(rn);
 			if (load) {
-				writeln("LDM");
+				// writeln("LDM");
 			} else {
-				writeln("STM");
+				// writeln("STM");
 			}
 			Mode mode = this.outer.mode;
 			if (loadPSR) {
@@ -844,7 +880,7 @@ public class ARM7TDMI {
 			int rd = getBits(instruction, 12, 15);
 			int rm = instruction & 0xF;
 			int address = getRegister(rn);
-			writeln("SWP");
+			// writeln("SWP");
 			if (byteQuantity) {
 				int b = memory.getByte(address) & 0xFF;
 				memory.setByte(address, cast(byte) getRegister(rm));
@@ -863,7 +899,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
-			writeln("SWI");
+			// writeln("SWI");
 			setMode(Mode.SUPERVISOR);
 			setRegister(Register.SPSR, Register.CPSR);
 			setFlag(CPSRFlag.I, 1);
@@ -876,6 +912,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
+			// writeln("Undefined");
 			setMode(Mode.UNDEFINED);
 			setRegister(Register.SPSR, Register.CPSR);
 			setFlag(CPSRFlag.I, 1);
@@ -900,7 +937,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
-			writef("%x ", getRegister(Register.PC) - 4);
+			// writef("%x ", getRegister(Register.PC) - 4);
 			int category = getBits(instruction, 13, 15);
 			final switch (category) {
 				case 0:
@@ -1006,16 +1043,16 @@ public class ARM7TDMI {
 			int rd = instruction & 0b111;
 			final switch (shiftType) {
 				case 0:
-					writeln("LSL");
+					// writeln("LSL");
 					break;
 				case 1:
-					writeln("LSR");
+					// writeln("LSR");
 					break;
 				case 2:
-					writeln("ASR");
+					// writeln("ASR");
 					break;
 				case 3:
-					writeln("ROR");
+					// writeln("ROR");
 					break;
 			}
 			int carry;
@@ -1042,13 +1079,13 @@ public class ARM7TDMI {
 			int negative, zero, carry, overflow;
 			if (opCode) {
 				// SUB
-				writeln("SUB");
+				// writeln("SUB");
 				res = op1 - op2;
 				carry = res >= 0;
 				overflow = overflowed(op1, -op2, res);
 			} else {
 				// ADD
-				writeln("ADD");
+				// writeln("ADD");
 				res = op1 + op2;
 				carry = carried(op1, op2, res);
 				overflow = overflowed(op1, op2, res);
@@ -1066,20 +1103,20 @@ public class ARM7TDMI {
 			final switch (opCode) {
 				case 0:
 					// MOV
-					writeln("MOV");
+					// writeln("MOV");
 					setRegister(rd, op2);
 					setAPSRFlags(op2 < 0, op2 == 0);
 					break;
 				case 1:
 					// CMP
-					writeln("CMP");
+					// writeln("CMP");
 					int op1 = getRegister(rd);
 					int v = op1 - op2;
 					setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
 					break;
 				case 2:
 					// ADD
-					writeln("ADD");
+					// writeln("ADD");
 					int op1 = getRegister(rd);
 					int res = op1 + op2;
 					setRegister(rd, res);
@@ -1087,7 +1124,7 @@ public class ARM7TDMI {
 					break;
 				case 3:
 					// SUB
-					writeln("SUB");
+					// writeln("SUB");
 					int op1 = getRegister(rd);
 					int res = op1 - op2;
 					setRegister(rd, res);
@@ -1104,21 +1141,21 @@ public class ARM7TDMI {
 			final switch (opCode) {
 				case 0x0:
 					// AND
-					writeln("AND");
+					// writeln("AND");
 					int res = op1 & op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
 					break;
 				case 0x1:
 					// EOR
-					writeln("EOR");
+					// writeln("EOR");
 					int res = op1 ^ op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
 					break;
 				case 0x2:
 					// LSL
-					writeln("LSL");
+					// writeln("LSL");
 					int shift = op2 & 0xFF;
 					int res = op1 << shift;
 					setRegister(rd, res);
@@ -1130,7 +1167,7 @@ public class ARM7TDMI {
 					break;
 				case 0x3:
 					// LSR
-					writeln("LSR");
+					// writeln("LSR");
 					int shift = op2 & 0xFF;
 					int res = op1 >>> shift;
 					setRegister(rd, res);
@@ -1142,7 +1179,7 @@ public class ARM7TDMI {
 					break;
 				case 0x4:
 					// ASR
-					writeln("ASR");
+					// writeln("ASR");
 					int shift = op2 & 0xFF;
 					int res = op1 >> shift;
 					setRegister(rd, res);
@@ -1154,7 +1191,7 @@ public class ARM7TDMI {
 					break;
 				case 0x5:
 					// ADC
-					writeln("ADC");
+					// writeln("ADC");
 					int carry = getFlag(CPSRFlag.C);
 					int res = op1 + op2 + carry;
 					setRegister(rd, res);
@@ -1162,7 +1199,7 @@ public class ARM7TDMI {
 					break;
 				case 0x6:
 					// SBC
-					writeln("SBC");
+					// writeln("SBC");
 					int carry = getFlag(CPSRFlag.C);
 					int res = op1 - op2 + carry - 1;
 					setRegister(rd, res);
@@ -1170,7 +1207,7 @@ public class ARM7TDMI {
 					break;
 				case 0x7:
 					// ROR
-					writeln("ROR");
+					// writeln("ROR");
 					byte shift = cast(byte) op2;
 					asm {
 						mov CL, shift;
@@ -1186,53 +1223,53 @@ public class ARM7TDMI {
 					break;
 				case 0x8:
 					// TST
-					writeln("TST");
+					// writeln("TST");
 					int v = op1 & op2;
 					setAPSRFlags(v < 0, v == 0);
 					break;
 				case 0x9:
 					// NEG
-					writeln("NEG");
+					// writeln("NEG");
 					int res = 0 - op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(0, -op2, res));
 					break;
 				case 0xA:
 					// CMP
-					writeln("CMP");
+					// writeln("CMP");
 					int v = op1 - op2;
 					setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
 					break;
 				case 0xB:
 					// CMN
-					writeln("CMN");
+					// writeln("CMN");
 					int v = op1 + op2;
 					setAPSRFlags(v < 0, v == 0, carried(op1, op2, v), overflowed(op1, op2, v));
 					break;
 				case 0xC:
 					// ORR
-					writeln("ORR");
+					// writeln("ORR");
 					int res = op1 | op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
 					break;
 				case 0xD:
 					// MUL
-					writeln("MUL");
+					// writeln("MUL");
 					int res = op1 * op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
 					break;
 				case 0xE:
 					// BIC
-					writeln("BIC");
+					// writeln("BIC");
 					int res = op1 & ~op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
 					break;
 				case 0xF:
 					// MNV
-					writeln("MNV");
+					// writeln("MNV");
 					int res = ~op2;
 					setRegister(rd, res);
 					setAPSRFlags(res < 0, res == 0);
@@ -1247,12 +1284,12 @@ public class ARM7TDMI {
 			final switch (opCode) {
 				case 0:
 					// ADD
-					writeln("ADD");
+					// writeln("ADD");
 					setRegister(rd, getRegister(rd) + getRegister(rs));
 					break;
 				case 1:
 					// CMP
-					writeln("CMP");
+					// writeln("CMP");
 					int op1 = getRegister(rd);
 					int op2 = getRegister(rs);
 					int v = op1 - op2;
@@ -1260,12 +1297,12 @@ public class ARM7TDMI {
 					break;
 				case 2:
 					// MOV
-					writeln("MOV");
+					// writeln("MOV");
 					setRegister(rd, getRegister(rs));
 					break;
 				case 3:
 					// BX
-					writeln("BX");
+					// writeln("BX");
 					int address = getRegister(rs);
 					if (address & 0b1) {
 						address -= 1;
@@ -1283,7 +1320,7 @@ public class ARM7TDMI {
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
 			int pc = getRegister(Register.PC);
-			writeln("LDR");
+			// writeln("LDR");
 			setRegister(rd, memory.getInt(pc + offset));
 		}
 
@@ -1295,19 +1332,19 @@ public class ARM7TDMI {
 			int address = base + offset;
 			final switch (opCode) {
 				case 0:
-					writeln("STR");
+					// writeln("STR");
 					memory.setInt(address, getRegister(rd));
 					break;
 				case 1:
-					writeln("STRB");
+					// writeln("STRB");
 					memory.setByte(address, cast(byte) getRegister(rd));
 					break;
 				case 2:
-					writeln("LDR");
+					// writeln("LDR");
 					setRegister(rd, memory.getInt(address));
 					break;
 				case 3:
-					writeln("LDRB");
+					// writeln("LDRB");
 					setRegister(rd, memory.getByte(address) & 0xFF);
 					break;
 			}
@@ -1321,19 +1358,19 @@ public class ARM7TDMI {
 			int address = base + offset;
 			final switch (opCode) {
 				case 0:
-					writeln("STRH");
+					// writeln("STRH");
 					memory.setShort(address, cast(short) getRegister(rd));
 					break;
 				case 1:
-					writeln("LDSB");
+					// writeln("LDSB");
 					setRegister(rd, memory.getByte(address));
 					break;
 				case 2:
-					writeln("LDRH");
+					// writeln("LDRH");
 					setRegister(rd, memory.getShort(address) & 0xFFFF);
 					break;
 				case 3:
-					writeln("LDSH");
+					// writeln("LDSH");
 					setRegister(rd, memory.getShort(address));
 					break;
 			}
@@ -1346,19 +1383,19 @@ public class ARM7TDMI {
 			int rd = instruction & 0b111;
 			final switch (opCode) {
 				case 0:
-					writeln("STR");
+					// writeln("STR");
 					memory.setInt(base + offset * 4, getRegister(rd));
 					break;
 				case 1:
-					writeln("LDR");
+					// writeln("LDR");
 					setRegister(rd, memory.getInt(base + offset * 4));
 					break;
 				case 2:
-					writeln("STRB");
+					// writeln("STRB");
 					memory.setByte(base + offset, cast(byte) getRegister(rd));
 					break;
 				case 3:
-					writeln("LDRB");
+					// writeln("LDRB");
 					setRegister(rd, memory.getByte(base + offset) & 0xFF);
 			}
 		}
@@ -1370,10 +1407,10 @@ public class ARM7TDMI {
 			int rd = instruction & 0b111;
 			int address = base + offset;
 			if (opCode) {
-				writeln("LDRH");
+				// writeln("LDRH");
 				setRegister(rd, memory.getShort(address) & 0xFFFF);
 			} else {
-				writeln("STRH");
+				// writeln("STRH");
 				memory.setShort(address, cast(short) getRegister(rd));
 			}
 		}
@@ -1385,10 +1422,10 @@ public class ARM7TDMI {
 			int sp = getRegister(Register.SP);
 			int address = sp + offset;
 			if (opCode) {
-				writeln("LDR");
+				// writeln("LDR");
 				setRegister(rd, memory.getInt(address));
 			} else {
-				writeln("STR");
+				// writeln("STR");
 				memory.setInt(address, getRegister(rd));
 			}
 		}
@@ -1398,10 +1435,10 @@ public class ARM7TDMI {
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
 			if (opCode) {
-				writeln("ADD");
+				// writeln("ADD");
 				setRegister(rd, getRegister(Register.SP) + offset);
 			} else {
-				writeln("ADD");
+				// writeln("ADD");
 				setRegister(rd, (getRegister(Register.PC) & 0xFFFFFFFD) + offset);
 			}
 		}
@@ -1410,10 +1447,10 @@ public class ARM7TDMI {
 			int opCode = getBit(instruction, 7);
 			int offset = (instruction & 0b111111) * 4;
 			if (opCode) {
-				writeln("ADD");
+				// writeln("ADD");
 				setRegister(Register.SP, getRegister(Register.SP) - offset);
 			} else {
-				writeln("ADD");
+				// writeln("ADD");
 				setRegister(Register.SP, getRegister(Register.SP) + offset);
 			}
 		}
@@ -1424,7 +1461,7 @@ public class ARM7TDMI {
 			int registerList = instruction & 0xFF;
 			int sp = getRegister(Register.SP);
 			if (opCode) {
-				writeln("POP");
+				// writeln("POP");
 				if (pcAndLR) {
 					setRegister(Register.PC, memory.getInt(sp));
 					sp += 4;
@@ -1436,7 +1473,7 @@ public class ARM7TDMI {
 					}
 				}
 			} else {
-				writeln("PUSH");
+				// writeln("PUSH");
 				for (int i = 0; i <= 7; i++) {
 					if (checkBit(registerList, i)) {
 						sp -= 4;
@@ -1457,7 +1494,7 @@ public class ARM7TDMI {
 			int registerList = instruction & 0xFF;
 			int address = getRegister(rb);
 			if (opCode) {
-				writeln("LDMIA");
+				// writeln("LDMIA");
 				for (int i = 0; i <= 7; i++) {
 					if (checkBit(registerList, i)) {
 						setRegister(i, memory.getInt(address));
@@ -1465,7 +1502,7 @@ public class ARM7TDMI {
 					}
 				}
 			} else {
-				writeln("STMIA");
+				// writeln("STMIA");
 				for (int i = 0; i <= 7; i++) {
 					if (checkBit(registerList, i)) {
 						memory.setInt(address, getRegister(i));
@@ -1480,7 +1517,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getBits(instruction, 8, 11))) {
 				return;
 			}
-			writeln("B");
+			// writeln("B");
 			int offset = instruction & 0xFF;
 			// sign extend the offset
 			offset <<= 24;
@@ -1490,7 +1527,7 @@ public class ARM7TDMI {
 		}
 
 		private void softwareInterrupt(int instruction) {
-			writeln("SWI");
+			// writeln("SWI");
 			setMode(Mode.SUPERVISOR);
 			setRegister(Register.SPSR, Register.CPSR);
 			setFlag(CPSRFlag.I, 1);
@@ -1498,10 +1535,11 @@ public class ARM7TDMI {
 			setRegister(Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x8);
 			branchSignal = true;
+			exchangeSignal = true;
 		}
 
 		private void unconditionalBranch(int instruction) {
-			writeln("B");
+			// writeln("B");
 			int offset = instruction & 0x7FF;
 			// sign extend the offset
 			offset <<= 21;
@@ -1514,7 +1552,7 @@ public class ARM7TDMI {
 			int opCode = getBit(instruction, 11);
 			int offset = instruction & 0x7FF;
 			if (opCode) {
-				writeln("BL");
+				// writeln("BL");
 				int address = getRegister(Register.LR) + (offset << 1);
 				setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
 				setRegister(Register.PC, address);
@@ -1525,6 +1563,7 @@ public class ARM7TDMI {
 		}
 
 		private void undefined(int instruction) {
+			// writeln("Undefined");
 			setMode(Mode.UNDEFINED);
 			setRegister(Register.SPSR, Register.CPSR);
 			setFlag(CPSRFlag.I, 1);
@@ -1532,6 +1571,7 @@ public class ARM7TDMI {
 			setRegister(Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x4);
 			branchSignal = true;
+			exchangeSignal = true;
 		}
 
 		private void unsupported(int instruction) {
