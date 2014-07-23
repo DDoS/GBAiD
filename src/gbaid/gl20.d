@@ -132,6 +132,7 @@ public class GL20Context : Context {
     public override void updateDisplay() {
         checkCreated();
         SDL_GL_SwapWindow(window);
+        SDL_PumpEvents();
     }
 
     public override void setClearColor(float red, float green, float blue, float alpha) {

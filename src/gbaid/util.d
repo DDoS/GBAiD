@@ -46,7 +46,7 @@ template getSafe(T) {
 }
 
 template addAll(K, V) {
-    public void addAll(V[K] to, V[K] from) {
+    public void addAll(ref V[K] to, V[K] from) {
         foreach (k; from.byKey()) {
             to[k] = from[k];
         }
@@ -54,7 +54,7 @@ template addAll(K, V) {
 }
 
 template removeAll(K, V) {
-    public void removeAll(V[K] to, V[K] from) {
+    public void removeAll(ref V[K] to, V[K] from) {
         foreach (k; from.byKey()) {
             to.remove(k);
         }
