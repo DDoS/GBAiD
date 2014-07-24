@@ -178,40 +178,40 @@ public class GameBoyAdvance {
         }
 
         private Memory map(ref uint address) {
-            if (address <= BIOS_END) {
+            if (address >= BIOS_START && address <= BIOS_END) {
                 address -= BIOS_START;
                 return bios;
             }
-            if (address <= BOARD_WRAM_END) {
+            if (address >= BOARD_WRAM_START && address <= BOARD_WRAM_END) {
                 address -= BOARD_WRAM_START;
                 return boardWRAM;
             }
-            if (address <= CHIP_WRAM_END) {
+            if (address >= CHIP_WRAM_START && address <= CHIP_WRAM_END) {
                 address -= CHIP_WRAM_START;
                 return chipWRAM;
             }
-            if (address <= IO_REGISTERS_END) {
+            if (address >= IO_REGISTERS_START && address <= IO_REGISTERS_END) {
                 address -= IO_REGISTERS_START;
                 return ioRegisters;
             }
-            if (address <= PALETTE_RAM_END) {
+            if (address >= PALETTE_RAM_START && address <= PALETTE_RAM_END) {
                 address -= PALETTE_RAM_START;
                 return paletteRAM;
             }
-            if (address <= VRAM_END) {
+            if (address >= VRAM_START && address <= VRAM_END) {
                 address -= VRAM_START;
                 return vram;
             }
-            if (address <= OAM_END) {
+            if (address >= OAM_START && address <= OAM_END) {
                 address -= OAM_START;
                 return oam;
             }
-            if (address <= GAMEPAK_ROM_END) {
+            if (address >= GAMEPAK_ROM_START && address <= GAMEPAK_ROM_END) {
                 address -= GAMEPAK_ROM_START;
                 address %= MAX_GAMEPAK_ROM_SIZE;
                 return gamepakROM;
             }
-            if (address <= GAMEPAK_SRAM_END) {
+            if (address >= GAMEPAK_SRAM_START && address <= GAMEPAK_SRAM_END) {
                 address -= GAMEPAK_SRAM_START;
                 return gamepackSRAM;
             }
