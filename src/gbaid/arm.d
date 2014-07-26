@@ -121,13 +121,13 @@ public class ARM7TDMI {
 
 	private void processIRQ() {
 		debug(outputInstructions) writeln("IRQ");
-		setMode(Mode.IRQ);
 		setRegister(Mode.IRQ, Register.SPSR, Register.CPSR);
 		setFlag(CPSRFlag.I, 1);
 		int oldT = getFlag(CPSRFlag.T);
 		setFlag(CPSRFlag.T, Set.ARM);
 		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - (oldT ? 2 : 4));
 		setRegister(Register.PC, 0x18);
+		setMode(Mode.IRQ);
 		branchSignal = true;
 		exchangeSignal = true;
 		irqSignal = false;
@@ -501,8 +501,10 @@ public class ARM7TDMI {
 					break;
 			}
 			if (setFlags) {
-				if (rd == 15) {
+				if (rd == Register.PC) {
 					setRegister(Register.CPSR, getRegister(Register.SPSR));
+					branchSignal = true;
+					exchangeSignal = true;
 				} else {
 					setAPSRFlags(negative, zero, carry, overflow);
 				}
@@ -825,6 +827,7 @@ public class ARM7TDMI {
 			if (loadPSR) {
 				if (load && checkBit(registerList, 15)) {
 					setRegister(Register.CPSR, getRegister(Register.SPSR));
+					exchangeSignal = true;
 				} else {
 					mode = Mode.USER;
 				}
@@ -904,11 +907,11 @@ public class ARM7TDMI {
 				return;
 			}
 			debug(outputInstructions) writeln("SWI");
-			setMode(Mode.SUPERVISOR);
-			setRegister(Mode.SUPERVISOR, Register.SPSR, Register.CPSR);
+			setRegister(Mode.SUPERVISOR, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 4);
 			setRegister(Register.PC, 0x8);
+			setMode(Mode.SUPERVISOR);
 			branchSignal = true;
 		}
 
@@ -917,11 +920,11 @@ public class ARM7TDMI {
 				return;
 			}
 			debug(outputInstructions) writeln("Undefined");
-			setMode(Mode.UNDEFINED);
-			setRegister(Mode.UNDEFINED, Register.SPSR, Register.CPSR);
+			setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 4);
 			setRegister(Register.PC, 0x4);
+			setMode(Mode.UNDEFINED);
 			branchSignal = true;
 		}
 
@@ -1041,7 +1044,7 @@ public class ARM7TDMI {
 		}
 
 		private void moveShiftedRegister(int instruction) {
-			int shiftType = getBits(instruction, 12, 15);
+			int shiftType = getBits(instruction, 11, 12);
 			int shift = getBits(instruction, 6, 10);
 			int op = getRegister(getBits(instruction, 3, 5));
 			int rd = instruction & 0b111;
@@ -1054,9 +1057,6 @@ public class ARM7TDMI {
 					break;
 				case 2:
 					debug(outputInstructions) writeln("ASR");
-					break;
-				case 3:
-					debug(outputInstructions) writeln("ROR");
 					break;
 			}
 			int carry;
@@ -1532,12 +1532,12 @@ public class ARM7TDMI {
 
 		private void softwareInterrupt(int instruction) {
 			debug(outputInstructions) writeln("SWI");
-			setMode(Mode.SUPERVISOR);
-			setRegister(Mode.SUPERVISOR, Register.SPSR, Register.CPSR);
+			setRegister(Mode.SUPERVISOR, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setFlag(CPSRFlag.T, Set.ARM);
 			setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x8);
+			setMode(Mode.SUPERVISOR);
 			branchSignal = true;
 			exchangeSignal = true;
 		}
@@ -1562,18 +1562,21 @@ public class ARM7TDMI {
 				setRegister(Register.PC, address);
 				branchSignal = true;
 			} else {
+				// sign extend the offset
+				offset <<= 21;
+				offset >>= 21;
 				setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
 			}
 		}
 
 		private void undefined(int instruction) {
 			debug(outputInstructions) writeln("Undefined");
-			setMode(Mode.UNDEFINED);
-			setRegister(Mode.UNDEFINED, Register.SPSR, Register.CPSR);
+			setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setFlag(CPSRFlag.T, Set.ARM);
 			setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x4);
+			setMode(Mode.UNDEFINED);
 			branchSignal = true;
 			exchangeSignal = true;
 		}
@@ -1652,7 +1655,7 @@ public class ARM7TDMI {
 	}
 
 	private void setAPSRFlags(int n, int z, int c) {
-		setBits(registers[Register.CPSR], 29, 31, c << 1 | z << 2 | n << 3);
+		setBits(registers[Register.CPSR], 29, 31, c | z << 1 | n << 2);
 	}
 
 	private void setAPSRFlags(int n, int z, int c, int v) {
