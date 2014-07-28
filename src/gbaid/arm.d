@@ -151,7 +151,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
-			debug(outputInstructions) writef("%x ", getRegister(Register.PC) - 8);
+			debug(outputInstructions) writef("%08x: %08x ", getRegister(Register.PC) - 8, instruction);
 			int category = getBits(instruction, 25, 27);
 			final switch (category) {
 				case 0:
@@ -248,11 +248,12 @@ public class ARM7TDMI {
 		}
 
 		protected override void incrementPC() {
-			setRegister(Register.PC, getRegister(Register.PC) + 4);
+			setRegister(Register.PC, (getRegister(Register.PC) & ~3) + 4);
 		}
 
 		private void branchAndExchange(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			debug(outputInstructions) writeln("BX");
@@ -270,6 +271,7 @@ public class ARM7TDMI {
 
 		private void branchAndBranchWithLink(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int opCode = getBit(instruction, 24);
@@ -290,6 +292,7 @@ public class ARM7TDMI {
 
 		private void dataProcessing(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int op2Src = getBit(instruction, 25);
@@ -513,6 +516,7 @@ public class ARM7TDMI {
 
 		private void psrTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int psrSrc = getBit(instruction, 22);
@@ -565,6 +569,7 @@ public class ARM7TDMI {
 
 		private void multiplyAndMultiplyAccumulate(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int opCode = getBits(instruction, 21, 24);
@@ -645,6 +650,7 @@ public class ARM7TDMI {
 
 		private void singleDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int offsetSrc = getBit(instruction, 25);
@@ -737,6 +743,7 @@ public class ARM7TDMI {
 
 		private void halfwordAndSignedDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int preIncr = getBit(instruction, 24);
@@ -808,6 +815,7 @@ public class ARM7TDMI {
 
 		private void blockDataTransfer(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int preIncr = getBit(instruction, 24);
@@ -880,6 +888,7 @@ public class ARM7TDMI {
 
 		private void singeDataSwap(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			int byteQuantity = getBit(instruction, 22);
@@ -904,6 +913,7 @@ public class ARM7TDMI {
 
 		private void softwareInterrupt(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			debug(outputInstructions) writeln("SWI");
@@ -917,6 +927,7 @@ public class ARM7TDMI {
 
 		private void undefined(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			debug(outputInstructions) writeln("Undefined");
@@ -944,7 +955,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
-			debug(outputInstructions) writef("%x ", getRegister(Register.PC) - 4);
+			debug(outputInstructions) writef("%08x: %04x     ", getRegister(Register.PC) - 4, instruction & 0xFFFF);
 			int category = getBits(instruction, 13, 15);
 			final switch (category) {
 				case 0:
@@ -1040,7 +1051,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void incrementPC() {
-			setRegister(Register.PC, getRegister(Register.PC) + 2);
+			setRegister(Register.PC, (getRegister(Register.PC) & ~1) + 2);
 		}
 
 		private void moveShiftedRegister(int instruction) {
@@ -1469,27 +1480,58 @@ public class ARM7TDMI {
 				for (int i = 0; i <= 7; i++) {
 					if (checkBit(registerList, i)) {
 						setRegister(i, memory.getInt(sp));
+						debug(outputStack) {
+							indent--;
+							printTabs();
+							writefln("popped R%s from %x, %x", i, sp, memory.getInt(sp));
+						}
 						sp += 4;
 					}
 				}
 				if (pcAndLR) {
 					setRegister(Register.PC, memory.getInt(sp));
+					debug(outputStack) {
+						indent--;
+						printTabs();
+						writefln("popped PC from %x, %x", sp, memory.getInt(sp));
+					}
 					sp += 4;
+					branchSignal = true;
 				}
 			} else {
 				debug(outputInstructions) writeln("PUSH");
 				if (pcAndLR) {
 					sp -= 4;
 					memory.setInt(sp, getRegister(Register.LR));
+					debug(outputStack) {
+						printTabs();
+						writefln("pushed LR to %x, %x", sp, getRegister(Register.LR));
+						indent++;
+					}
 				}
 				for (int i = 7; i >= 0; i--) {
 					if (checkBit(registerList, i)) {
 						sp -= 4;
 						memory.setInt(sp, getRegister(i));
+						debug(outputStack) {
+							printTabs();
+							writefln("pushed R%s to %x, %x", i, sp, getRegister(i));
+							indent++;
+						}
 					}
 				}
 			}
 			setRegister(Register.SP, sp);
+		}
+
+		debug(outputStack) {
+			private int indent = 0;
+
+			private void printTabs() {
+				foreach (i; 0 .. indent) {
+					write("  ");
+				}
+			}
 		}
 
 		private void multipleLoadAndStore(int instruction) {
@@ -1519,6 +1561,7 @@ public class ARM7TDMI {
 
 		private void conditionalBranch(int instruction) {
 			if (!checkCondition(getBits(instruction, 8, 11))) {
+				debug(outputInstructions) writeln();
 				return;
 			}
 			debug(outputInstructions) writeln("B");
@@ -1562,6 +1605,7 @@ public class ARM7TDMI {
 				setRegister(Register.PC, address);
 				branchSignal = true;
 			} else {
+				debug(outputInstructions) writeln();
 				// sign extend the offset
 				offset <<= 21;
 				offset >>= 21;
