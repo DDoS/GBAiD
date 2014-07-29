@@ -19,8 +19,6 @@ public class ARM7TDMI {
 	private Pipeline pipeline;
 	private int instruction;
 	private int decoded;
-	private bool branchSignal;
-	private bool exchangeSignal;
 	private shared bool irqSignal;
 
 	public void setMemory(Memory memory) {
@@ -56,7 +54,6 @@ public class ARM7TDMI {
 		// initialize to ARM in system mode
 		setFlag(CPSRFlag.T, Set.ARM);
 		setMode(Mode.SYSTEM);
-		exchangeSignal = true;
 		updateModeAndSet();
 		// set first instruction
 		setRegister(Register.PC, entryPointAddress);
@@ -65,13 +62,15 @@ public class ARM7TDMI {
 		// start ticking
 		running = true;
 		while (running) {
+			int oldPC = getRegister(Register.PC);
 			if (irqSignal && !getFlag(CPSRFlag.I)) {
 				processIRQ();
 			} else {
 				tick();
 			}
+			int newPC = getRegister(Register.PC);
 			updateModeAndSet();
-			if (branchSignal) {
+			if (newPC != oldPC) {
 				branch();
 			} else {
 				pipeline.incrementPC();
@@ -92,8 +91,6 @@ public class ARM7TDMI {
 		decoded = pipeline.decode(instruction);
 		instruction = nextInstruction;
 		pipeline.incrementPC();
-		// remove branch signal flag
-		branchSignal = false;
 	}
 
 	private void tick() {
@@ -109,13 +106,10 @@ public class ARM7TDMI {
 
 	private void updateModeAndSet() {
 		mode = getMode();
-		if (exchangeSignal) {
-			if (getFlag(CPSRFlag.T)) {
-				pipeline = thumbPipeline;
-			} else {
-				pipeline = armPipeline;
-			}
-			exchangeSignal = false;
+		if (getFlag(CPSRFlag.T)) {
+			pipeline = thumbPipeline;
+		} else {
+			pipeline = armPipeline;
 		}
 	}
 
@@ -128,8 +122,6 @@ public class ARM7TDMI {
 		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - (oldT ? 2 : 4));
 		setRegister(Register.PC, 0x18);
 		setMode(Mode.IRQ);
-		branchSignal = true;
-		exchangeSignal = true;
 		irqSignal = false;
 	}
 
@@ -265,8 +257,6 @@ public class ARM7TDMI {
 				address -= 1;
 			}
 			setRegister(Register.PC, address);
-			branchSignal = true;
-			exchangeSignal = true;
 		}
 
 		private void branchAndBranchWithLink(int instruction) {
@@ -287,7 +277,6 @@ public class ARM7TDMI {
 				debug(outputInstructions) writeln("B");
 			}
 			setRegister(Register.PC, pc + offset * 4);
-			branchSignal = true;
 		}
 
 		private void dataProcessing(int instruction) {
@@ -506,8 +495,6 @@ public class ARM7TDMI {
 			if (setFlags) {
 				if (rd == Register.PC) {
 					setRegister(Register.CPSR, getRegister(Register.SPSR));
-					branchSignal = true;
-					exchangeSignal = true;
 				} else {
 					setAPSRFlags(negative, zero, carry, overflow);
 				}
@@ -835,7 +822,6 @@ public class ARM7TDMI {
 			if (loadPSR) {
 				if (load && checkBit(registerList, 15)) {
 					setRegister(Register.CPSR, getRegister(Register.SPSR));
-					exchangeSignal = true;
 				} else {
 					mode = Mode.USER;
 				}
@@ -922,7 +908,6 @@ public class ARM7TDMI {
 			setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 4);
 			setRegister(Register.PC, 0x8);
 			setMode(Mode.SUPERVISOR);
-			branchSignal = true;
 		}
 
 		private void undefined(int instruction) {
@@ -936,7 +921,6 @@ public class ARM7TDMI {
 			setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 4);
 			setRegister(Register.PC, 0x4);
 			setMode(Mode.UNDEFINED);
-			branchSignal = true;
 		}
 
 		private void unsupported(int instruction) {
@@ -1325,8 +1309,6 @@ public class ARM7TDMI {
 						setFlag(CPSRFlag.T, Set.ARM);
 					}
 					setRegister(Register.PC, address);
-					branchSignal = true;
-					exchangeSignal = true;
 					break;
 			}
 		}
@@ -1475,6 +1457,9 @@ public class ARM7TDMI {
 			int pcAndLR = getBit(instruction, 8);
 			int registerList = instruction & 0xFF;
 			int sp = getRegister(Register.SP);
+			debug (outputStack) {
+				int pc = getRegister(Register.PC);
+			}
 			if (opCode) {
 				debug(outputInstructions) writeln("POP");
 				for (int i = 0; i <= 7; i++) {
@@ -1483,7 +1468,7 @@ public class ARM7TDMI {
 						debug(outputStack) {
 							indent--;
 							printTabs();
-							writefln("popped R%s from %x, %x", i, sp, memory.getInt(sp));
+							writefln("%08x: popped R%s from %08x, %08x", pc, i, sp, memory.getInt(sp));
 						}
 						sp += 4;
 					}
@@ -1493,10 +1478,9 @@ public class ARM7TDMI {
 					debug(outputStack) {
 						indent--;
 						printTabs();
-						writefln("popped PC from %x, %x", sp, memory.getInt(sp));
+						writefln("%08x: popped PC from %08x, %08x", pc, sp, memory.getInt(sp));
 					}
 					sp += 4;
-					branchSignal = true;
 				}
 			} else {
 				debug(outputInstructions) writeln("PUSH");
@@ -1505,7 +1489,7 @@ public class ARM7TDMI {
 					memory.setInt(sp, getRegister(Register.LR));
 					debug(outputStack) {
 						printTabs();
-						writefln("pushed LR to %x, %x", sp, getRegister(Register.LR));
+						writefln("%08x: pushed LR to %08x, %08x", pc, sp, getRegister(Register.LR));
 						indent++;
 					}
 				}
@@ -1515,7 +1499,7 @@ public class ARM7TDMI {
 						memory.setInt(sp, getRegister(i));
 						debug(outputStack) {
 							printTabs();
-							writefln("pushed R%s to %x, %x", i, sp, getRegister(i));
+							writefln("%08x: pushed R%s to %08x, %08x", pc, i, sp, getRegister(i));
 							indent++;
 						}
 					}
@@ -1570,7 +1554,6 @@ public class ARM7TDMI {
 			offset <<= 24;
 			offset >>= 24;
 			setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
-			branchSignal = true;
 		}
 
 		private void softwareInterrupt(int instruction) {
@@ -1581,8 +1564,6 @@ public class ARM7TDMI {
 			setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x8);
 			setMode(Mode.SUPERVISOR);
-			branchSignal = true;
-			exchangeSignal = true;
 		}
 
 		private void unconditionalBranch(int instruction) {
@@ -1592,7 +1573,6 @@ public class ARM7TDMI {
 			offset <<= 21;
 			offset >>= 21;
 			setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
-			branchSignal = true;
 		}
 
 		private void longBranchWithLink(int instruction) {
@@ -1603,7 +1583,6 @@ public class ARM7TDMI {
 				int address = getRegister(Register.LR) + (offset << 1);
 				setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
 				setRegister(Register.PC, address);
-				branchSignal = true;
 			} else {
 				debug(outputInstructions) writeln();
 				// sign extend the offset
@@ -1621,8 +1600,6 @@ public class ARM7TDMI {
 			setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 2);
 			setRegister(Register.PC, 0x4);
 			setMode(Mode.UNDEFINED);
-			branchSignal = true;
-			exchangeSignal = true;
 		}
 
 		private void unsupported(int instruction) {
