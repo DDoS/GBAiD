@@ -8,14 +8,5 @@
 	"dependencies": {
 		"derelict-sdl2":"1.2.4",
 		"derelict-gl3":"1.0.3"
-	},
-	"buildTypes": {
-		"release": {
-			"buildOptions": []
-		},
-		"debug": {
-			"buildOptions": ["debugMode", "debugInfo"],
-			"dflags": ["-debug=outputInstructions"]
-		}
 	}
 }
