@@ -10,7 +10,7 @@ import gbaid.memory;
 public class GameBoyAdvance {
     private ARM7TDMI processor;
     private Display display;
-    private GBAMemory memory;
+    private GameBoyAdvanceMemory memory;
     private bool running = false;
 
     public this(string biosFile) {
@@ -19,9 +19,9 @@ public class GameBoyAdvance {
         }
         processor = new ARM7TDMI();
         display = new Display();
-        memory = new GBAMemory(biosFile);
+        memory = new GameBoyAdvanceMemory(biosFile);
         processor.setMemory(memory);
-        processor.setEntryPointAddress(GBAMemory.GAMEPAK_ROM_START);
+        processor.setEntryPointAddress(GameBoyAdvanceMemory.GAMEPAK_ROM_START);
         display.setMemory(memory);
     }
 
@@ -60,7 +60,7 @@ public class GameBoyAdvance {
         }
     }
 
-    public class GBAMemory : Memory {
+    private class GameBoyAdvanceMemory : Memory {
         private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
         private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
         private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
@@ -102,30 +102,30 @@ public class GameBoyAdvance {
         private RAM gamepackSRAM;
         private ulong capacity;
 
-        public this(string biosFile) {
+        private this(string biosFile) {
             bios = new ROM(biosFile, BIOS_SIZE);
             updateCapacity();
         }
 
-        public void loadGamepakROM(string romFile) {
+        private void loadGamepakROM(string romFile) {
             gamepakROM = new ROM(romFile, MAX_GAMEPAK_ROM_SIZE);
             updateCapacity();
         }
 
-        public void loadGamepakSRAM(string sramFile) {
+        private void loadGamepakSRAM(string sramFile) {
             gamepackSRAM = new RAM(sramFile, MAX_GAMEPAK_SRAM_SIZE);
             updateCapacity();
         }
 
-        public bool hasGamepakROM() {
+        private bool hasGamepakROM() {
             return gamepakROM !is null;
         }
 
-        public bool hasGamepakSRAM() {
+        private bool hasGamepakSRAM() {
             return gamepackSRAM !is null;
         }
 
-        public void loadEmptyGamepakSRAM() {
+        private void loadEmptyGamepakSRAM() {
             gamepackSRAM = new RAM(MAX_GAMEPAK_SRAM_SIZE);
         }
 
