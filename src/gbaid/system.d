@@ -70,12 +70,15 @@ public class GameBoyAdvance {
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
         private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
+        private static immutable uint CHIP_WRAM_MIRROR_OFFSET = 0xFF8000;
         private static immutable uint BIOS_START = 0x00000000;
         private static immutable uint BIOS_END = 0x00003FFF;
         private static immutable uint BOARD_WRAM_START = 0x02000000;
         private static immutable uint BOARD_WRAM_END = 0x0203FFFF;
         private static immutable uint CHIP_WRAM_START = 0x03000000;
         private static immutable uint CHIP_WRAM_END = 0x03007FFF;
+        private static immutable uint CHIP_WRAM_MIRROR_START = 0x03FFFF00;
+        private static immutable uint CHIP_WRAM_MIRROR_END = 0x03FFFFFF;
         private static immutable uint IO_REGISTERS_START = 0x04000000;
         private static immutable uint IO_REGISTERS_END = 0x040003FE;
         private static immutable uint PALETTE_RAM_START = 0x05000000;
@@ -188,6 +191,10 @@ public class GameBoyAdvance {
             }
             if (address >= CHIP_WRAM_START && address <= CHIP_WRAM_END) {
                 address -= CHIP_WRAM_START;
+                return chipWRAM;
+            }
+            if (address >= CHIP_WRAM_MIRROR_START && address <= CHIP_WRAM_MIRROR_END) {
+                address -= CHIP_WRAM_MIRROR_OFFSET + CHIP_WRAM_START;
                 return chipWRAM;
             }
             if (address >= IO_REGISTERS_START && address <= IO_REGISTERS_END) {
