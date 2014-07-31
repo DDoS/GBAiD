@@ -1,7 +1,7 @@
 module gbaid.graphics;
 
-import core.atomic;
 import core.thread;
+import core.time;
 
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
@@ -60,7 +60,6 @@ public class Display {
 
         while (!context.isWindowCloseRequested()) {
             update();
-            import core.time;
             Thread.sleep(dur!"msecs"(16));
         }
 
@@ -70,7 +69,7 @@ public class Display {
     private void update() {
         uint i = 0x6000000, p = 0;
         for (ushort line = 0; line < VERTICAL_RESOLUTION; line++) {
-            memory.setShort(0x4000006, line);
+            setVCOUNT(line);
             for (ushort column = 0; column < HORIZONTAL_RESOLUTION; column++) {
                 short pixel = memory.getShort(i);
                 frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
@@ -80,19 +79,36 @@ public class Display {
                 p += COMPONENTS_PER_PIXEL;
             }
         }
-        memory.setShort(0x4000006, 161);
+        setVCOUNT(160);
         texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
         texture.bind(0);
         program.use();
         vertexArray.draw();
         context.updateDisplay();
-        memory.setShort(0x4000006, 227);
+        setVCOUNT(227);
+    }
+
+    private void setVCOUNT(short vcount) {
+        memory.setShort(0x4000006, vcount);
+        int displayStatus = memory.getShort(0x4000004);
+        bool vblank = vcount >= 160 && vcount < 227;
+        setBit(displayStatus, 0, vblank);
+        bool hblank = true;
+        setBit(displayStatus, 1, hblank);
+        bool vcounter = getBits(displayStatus, 8, 15) == vcount;
+        setBit(displayStatus, 2, vcounter);
+        memory.setShort(0x4000004, cast(short) displayStatus);
+        int interrupts = memory.getShort(0x4000202);
+        setBit(interrupts, 0, checkBit(displayStatus, 3) && vblank);
+        setBit(interrupts, 1, checkBit(displayStatus, 4) && hblank);
+        setBit(interrupts, 2, checkBit(displayStatus, 5) && vcounter);
+        memory.setShort(0x4000202, cast(short) interrupts);
     }
 }
 
 private VertexData generatePlane(float width, float height) {
     width /= 2;
-    height /=2;
+    height /= 2;
     VertexData vertexData = new VertexData();
     VertexAttribute positionsAttribute = new VertexAttribute("positions", FLOAT, 3);
     vertexData.addAttribute(0, positionsAttribute);
