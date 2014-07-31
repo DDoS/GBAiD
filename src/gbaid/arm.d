@@ -1,7 +1,6 @@
 module gbaid.arm;
 
 import std.stdio;
-import core.atomic;
 import core.thread;
 
 import gbaid.memory;
@@ -13,20 +12,24 @@ public class ARM7TDMI {
 	private Thread thread;
 	private shared bool running = false;
 	private int[37] registers = new int[37];
-	private Mode mode;
+	private shared Mode mode;
 	private Pipeline armPipeline;
 	private Pipeline thumbPipeline;
 	private Pipeline pipeline;
 	private int instruction;
 	private int decoded;
-	private shared bool irqSignal;
+
+	public this() {
+		armPipeline = new ARMPipeline();
+		thumbPipeline = new THUMBPipeline();
+	}
 
 	public void setMemory(Memory memory) {
 		this.memory = memory;
 	}
 
 	public void setEntryPointAddress(uint entryPointAddress) {
-		atomicStore(this.entryPointAddress, entryPointAddress);
+		this.entryPointAddress = entryPointAddress;
 	}
 
 	public void start() {
@@ -38,15 +41,13 @@ public class ARM7TDMI {
 
 	public void stop() {
 		if (thread !is null) {
-			atomicStore(running, false);
+			running = false;
 			thread.join();
 			thread = null;
 		}
 	}
 
 	private void run() {
-		armPipeline = new ARMPipeline();
-		thumbPipeline = new THUMBPipeline();
 		// initialize the stack pointers
 		setRegister(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
 		setRegister(Mode.IRQ, Register.SP, 0x3007FA0);
@@ -63,7 +64,7 @@ public class ARM7TDMI {
 		running = true;
 		while (running) {
 			int oldPC = getRegister(Register.PC);
-			if (irqSignal && !getFlag(CPSRFlag.I)) {
+			if (checkForInterrupt()) {
 				processIRQ();
 			} else {
 				tick();
@@ -78,8 +79,8 @@ public class ARM7TDMI {
 		}
 	}
 
-	public void signalIRQ() {
-		atomicStore(irqSignal, true);
+	public bool isProcessingIRQ() {
+		return mode == Mode.IRQ;
 	}
 
 	private void branch() {
@@ -91,6 +92,10 @@ public class ARM7TDMI {
 		decoded = pipeline.decode(instruction);
 		instruction = nextInstruction;
 		pipeline.incrementPC();
+	}
+
+	private bool checkForInterrupt() {
+		return !getFlag(CPSRFlag.I) && (memory.getShort(0x04000202) & 0x3FFF) != 0;
 	}
 
 	private void tick() {
@@ -119,16 +124,16 @@ public class ARM7TDMI {
 		setFlag(CPSRFlag.I, 1);
 		int oldT = getFlag(CPSRFlag.T);
 		setFlag(CPSRFlag.T, Set.ARM);
-		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - (oldT ? 2 : 4));
+		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement());
 		setRegister(Register.PC, 0x18);
 		setMode(Mode.IRQ);
-		irqSignal = false;
 	}
 
 	private interface Pipeline {
 		protected int fetch();
 		protected int decode(int instruction);
 		protected void execute(int instruction);
+		protected uint getPCIncrement();
 		protected void incrementPC();
 	}
 
@@ -237,6 +242,10 @@ public class ARM7TDMI {
 					}
 					break;
 			}
+		}
+
+		protected override uint getPCIncrement() {
+			return 4;
 		}
 
 		protected override void incrementPC() {
@@ -1032,6 +1041,10 @@ public class ARM7TDMI {
 					}
 					break;
 			}
+		}
+
+		protected override uint getPCIncrement() {
+			return 2;
 		}
 
 		protected override void incrementPC() {

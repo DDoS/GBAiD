@@ -6,6 +6,7 @@ import std.string;
 import gbaid.arm;
 import gbaid.graphics;
 import gbaid.memory;
+import gbaid.util;
 
 public class GameBoyAdvance {
     private ARM7TDMI processor;
@@ -21,7 +22,7 @@ public class GameBoyAdvance {
         display = new Display();
         memory = new GameBoyAdvanceMemory(biosFile);
         processor.setMemory(memory);
-        processor.setEntryPointAddress(GameBoyAdvanceMemory.GAMEPAK_ROM_START);
+        processor.setEntryPointAddress(GameBoyAdvanceMemory.BIOS_START);
         display.setMemory(memory);
     }
 
@@ -39,6 +40,10 @@ public class GameBoyAdvance {
         }
         checkNotRunning();
         memory.loadGamepakSRAM(file);
+    }
+
+    public Memory getMemory() {
+        return memory;
     }
 
     public void start() {
@@ -91,19 +96,21 @@ public class GameBoyAdvance {
         private static immutable uint GAMEPAK_ROM_END = 0x0DFFFFFF;
         private static immutable uint GAMEPAK_SRAM_START = 0x0E000000;
         private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
-        private ROM bios;
-        private RAM boardWRAM = new RAM(BOARD_WRAM_SIZE);
-        private RAM chipWRAM = new RAM(CHIP_WRAM_SIZE);
-        private RAM ioRegisters = new RAM(IO_REGISTERS_SIZE);
-        private RAM vram = new RAM(VRAM_SIZE);
-        private RAM oam = new RAM(OAM_SIZE);
-        private RAM paletteRAM = new RAM(PALETTE_RAM_SIZE);
-        private ROM gamepakROM;
-        private RAM gamepackSRAM;
+        private Memory bios;
+        private Memory boardWRAM = new RAM(BOARD_WRAM_SIZE);
+        private Memory chipWRAM = new RAM(CHIP_WRAM_SIZE);
+        private Memory ioRegisters;
+        private Memory vram = new RAM(VRAM_SIZE);
+        private Memory oam = new RAM(OAM_SIZE);
+        private Memory paletteRAM = new RAM(PALETTE_RAM_SIZE);
+        private Memory gamepakROM;
+        private Memory gamepackSRAM;
+        private Memory unusedMemory = new UnusedMemory();
         private ulong capacity;
 
         private this(string biosFile) {
             bios = new ROM(biosFile, BIOS_SIZE);
+            ioRegisters = new IORegisters();
             updateCapacity();
         }
 
@@ -170,16 +177,6 @@ public class GameBoyAdvance {
             memory.setInt(address, i);
         }
 
-        public long getLong(uint address) {
-            Memory memory = map(address);
-            return memory.getLong(address);
-        }
-
-        public void setLong(uint address, long l) {
-            Memory memory = map(address);
-            memory.setLong(address, l);
-        }
-
         private Memory map(ref uint address) {
             if (address >= BIOS_START && address <= BIOS_END) {
                 address -= BIOS_START;
@@ -222,8 +219,112 @@ public class GameBoyAdvance {
                 address -= GAMEPAK_SRAM_START;
                 return gamepackSRAM;
             }
-            throw new BadAddressException(address);
+            return unusedMemory;
         }
+
+        private static class UnusedMemory : Memory {
+            public override ulong getCapacity() {
+                return 0;
+            }
+
+            public override byte getByte(uint address) {
+                return 0;
+            }
+
+            public override void setByte(uint address, byte b) {
+            }
+
+            public override short getShort(uint address) {
+                return 0;
+            }
+
+            public override void setShort(uint address, short s) {
+            }
+
+            public override int getInt(uint address) {
+                return 0;
+            }
+
+            public override void setInt(uint address, int i) {
+            }
+        }
+
+        private class IORegisters : RAM {
+            private static immutable uint INTERRUPT_ENABLE_REGISTER = 0x00000200;
+            private static immutable uint INTERRUPT_REQUEST_FLAGS = 0x00000202;
+            private static immutable uint INTERRUPT_MASTER_ENABLE_REGISTER = 0x00000208;
+
+            private this() {
+                super(IO_REGISTERS_SIZE);
+            }
+
+            public override byte getByte(uint address) {
+                return super.getByte(address);
+            }
+
+            public override void setByte(uint address, byte b) {
+                if (!handleSpecialWrite(address, b)) {
+                    super.setByte(address, b);
+                }
+            }
+
+            public override short getShort(uint address) {
+                return super.getShort(address);
+            }
+
+            public override void setShort(uint address, short s) {
+                if (!handleSpecialWrite(address, s)) {
+                    super.setShort(address, s);
+                }
+            }
+
+            public override int getInt(uint address) {
+                return super.getInt(address);
+            }
+
+            public override void setInt(uint address, int i) {
+                if (!handleSpecialWrite(address, i)) {
+                    super.setInt(address, i);
+                }
+            }
+
+            private bool handleSpecialWrite(uint address, int i) {
+                switch (address) {
+                    case 0x00000202: .. case 0x00000203:
+                        handleInterruptRequestFlagWrite(i);
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
+            private void handleInterruptRequestFlagWrite(int i) {
+                int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
+                if (processor.isProcessingIRQ()) {
+                    flags &= ~i;
+                } else if (getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && (getShort(INTERRUPT_ENABLE_REGISTER) & i) == i) {
+                    flags |= i;
+                }
+                super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
+            }
+        }
+    }
+
+    public static enum InterruptSource : uint {
+        LCD_V_BLANK = 0,
+        LCD_H_BLANK = 1,
+        LCD_V_COUNTER_MATCH = 2,
+        TIMER_0_OVERFLOW = 3,
+        TIMER_1_OVERFLOW = 4,
+        TIMER_2_OVERFLOW = 5,
+        TIMER_3_OVERFLOW = 6,
+        SERIAL_COMMUNICATION = 7,
+        DMA_0 = 8,
+        DMA_1 = 9,
+        DMA_2 = 10,
+        DMA_3 = 11,
+        KEYPAD = 12,
+        GAMEPAK = 13
     }
 }
 
