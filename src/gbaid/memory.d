@@ -21,10 +21,6 @@ public synchronized interface Memory {
     int getInt(uint address);
 
     void setInt(uint address, int i);
-
-    long getLong(uint address);
-
-    void setLong(uint address, long l);
 }
 
 public class ROM : Memory {
@@ -70,15 +66,6 @@ public class ROM : Memory {
     public void setInt(uint address, int i) {
         throw new ReadOnlyException();
     }
-
-    public long getLong(uint address) {
-        address /= 4;
-        return cast(long) memory[address] & 0xFFFFFFFF | cast(long) memory[address + 1] << 32;
-    }
-
-    public void setLong(uint address, long l) {
-        throw new ReadOnlyException();
-    }
 }
 
 public class RAM : ROM {
@@ -109,12 +96,6 @@ public class RAM : ROM {
 
     public override void setInt(uint address, int i) {
         memory[address / 4] = i;
-    }
-
-    public override void setLong(uint address, long l) {
-        address /= 4;
-        memory[address] = cast(int) l;
-        memory[address + 1] = cast(int) (l >> 32);
     }
 }
 
