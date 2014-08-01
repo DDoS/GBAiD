@@ -1,5 +1,6 @@
 module gbaid.graphics;
 
+import std.stdio;
 import core.thread;
 import core.time;
 
@@ -99,9 +100,15 @@ public class Display {
         setBit(displayStatus, 2, vcounter);
         memory.setShort(0x4000004, cast(short) displayStatus);
         int interrupts = memory.getShort(0x4000202);
-        setBit(interrupts, 0, checkBit(displayStatus, 3) && vblank);
-        setBit(interrupts, 1, checkBit(displayStatus, 4) && hblank);
-        setBit(interrupts, 2, checkBit(displayStatus, 5) && vcounter);
+        if (checkBit(displayStatus, 3) && vblank) {
+            setBit(interrupts, 0, 1);
+        }
+        if (checkBit(displayStatus, 4) && hblank) {
+            setBit(interrupts, 1, 1);
+        }
+        if (checkBit(displayStatus, 5) && vcounter) {
+            setBit(interrupts, 2, 1);
+        }
         memory.setShort(0x4000202, cast(short) interrupts);
     }
 }
