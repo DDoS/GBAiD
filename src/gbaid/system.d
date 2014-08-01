@@ -213,11 +213,19 @@ public class GameBoyAdvance {
             if (address >= GAMEPAK_ROM_START && address <= GAMEPAK_ROM_END) {
                 address -= GAMEPAK_ROM_START;
                 address %= MAX_GAMEPAK_ROM_SIZE;
-                return gamepakROM;
+                if (address < gamepakROM.getCapacity()) {
+                    return gamepakROM;
+                } else {
+                    return unusedMemory;
+                }
             }
             if (address >= GAMEPAK_SRAM_START && address <= GAMEPAK_SRAM_END) {
                 address -= GAMEPAK_SRAM_START;
-                return gamepackSRAM;
+                if (address < gamepackSRAM.getCapacity()) {
+                    return gamepackSRAM;
+                } else {
+                    return unusedMemory;
+                }
             }
             return unusedMemory;
         }
