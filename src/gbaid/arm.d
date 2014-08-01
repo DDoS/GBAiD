@@ -18,6 +18,7 @@ public class ARM7TDMI {
 	private Pipeline pipeline;
 	private int instruction;
 	private int decoded;
+	private bool branchSignal = false;
 
 	public this() {
 		armPipeline = new ARMPipeline();
@@ -63,15 +64,13 @@ public class ARM7TDMI {
 		// start ticking
 		running = true;
 		while (running) {
-			int oldPC = getRegister(Register.PC);
 			if (checkForInterrupt()) {
 				processIRQ();
 			} else {
 				tick();
 			}
-			int newPC = getRegister(Register.PC);
 			updateModeAndSet();
-			if (newPC != oldPC) {
+			if (branchSignal) {
 				branch();
 			} else {
 				pipeline.incrementPC();
@@ -92,6 +91,7 @@ public class ARM7TDMI {
 		decoded = pipeline.decode(instruction);
 		instruction = nextInstruction;
 		pipeline.incrementPC();
+		branchSignal = false;
 	}
 
 	private bool checkForInterrupt() {
@@ -120,11 +120,10 @@ public class ARM7TDMI {
 
 	private void processIRQ() {
 		debug(outputInstructions) writeln("IRQ");
-		setRegister(Mode.IRQ, Register.SPSR, Register.CPSR);
+		setRegister(Mode.IRQ, Register.SPSR, getRegister(Register.CPSR));
 		setFlag(CPSRFlag.I, 1);
-		int oldT = getFlag(CPSRFlag.T);
 		setFlag(CPSRFlag.T, Set.ARM);
-		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement());
+		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC));
 		setRegister(Register.PC, 0x18);
 		setMode(Mode.IRQ);
 	}
@@ -249,7 +248,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void incrementPC() {
-			setRegister(Register.PC, (getRegister(Register.PC) & ~3) + 4);
+			registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
 		}
 
 		private void branchAndExchange(int instruction) {
@@ -1048,7 +1047,7 @@ public class ARM7TDMI {
 		}
 
 		protected override void incrementPC() {
-			setRegister(Register.PC, (getRegister(Register.PC) & ~1) + 2);
+			registers[Register.PC] = (registers[Register.PC] & ~1) + 2;
 		}
 
 		private void moveShiftedRegister(int instruction) {
@@ -1771,6 +1770,9 @@ public class ARM7TDMI {
 	}
 
 	private void setRegister(Mode mode, int register, int value) {
+		if (register == Register.PC) {
+			branchSignal = true;
+		}
 		registers[getRegisterIndex(mode, register)] = value;
 	}
 }
