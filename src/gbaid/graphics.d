@@ -1,8 +1,10 @@
 module gbaid.graphics;
 
-import std.stdio;
 import core.thread;
 import core.time;
+
+import std.stdio;
+import std.algorithm;
 
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
@@ -13,7 +15,7 @@ public class Display {
     private static immutable uint VERTICAL_RESOLUTION = 160;
     private static immutable uint SCREEN_AREA = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static immutable uint BYTES_PER_PIXEL = 2;
-    private static immutable uint COMPONENTS_PER_PIXEL = 3;
+    private static immutable uint COMPONENTS_PER_PIXEL = 4;
     private static immutable uint BYTES_PER_COMPONENT = 1;
     private static immutable uint FRAME_SIZE = SCREEN_AREA * COMPONENTS_PER_PIXEL * BYTES_PER_COMPONENT;
     private Memory memory;
@@ -33,6 +35,8 @@ public class Display {
         context.setWindowTitle("GBAiD");
         context.create();
         context.enableCapability(CULL_FACE);
+        context.enableCapability(BLEND);
+        context.setBlendingFunctions(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         Shader vertexShader = context.newShader();
         vertexShader.create();
@@ -52,7 +56,7 @@ public class Display {
 
         texture = context.newTexture();
         texture.create();
-        texture.setFormat(RGB, RGB8);
+        texture.setFormat(RGBA, RGBA8);
         texture.setFilters(NEAREST, NEAREST);
 
         vertexArray = context.newVertexArray();
@@ -68,14 +72,166 @@ public class Display {
     }
 
     private void update() {
-        uint i = 0x6000000, p = 0;
-        for (ushort line = 0; line < VERTICAL_RESOLUTION; line++) {
+        if (checkBit(memory.getShort(0x4000000), 7)) {
+            updateBlank();
+        } else {
+            final switch (getMode()) {
+                case Mode.BACKGROUND_4:
+                    update0();
+                    break;
+                case Mode.BACKGROUND_3:
+                    break;
+                case Mode.BACKGROUND_2:
+                    break;
+                case Mode.BITMAP_16_DIRECT_SINGLE:
+                    update3();
+                    break;
+                case Mode.BITMAP_8_PALETTE_DOUBLE:
+                    break;
+                case Mode.BITMAP_16_DIRECT_DOUBLE:
+                    break;
+            }
+        }
+    }
+
+    private void updateBlank() {
+        uint p = 0;
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
             setVCOUNT(line);
-            for (ushort column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                short pixel = memory.getShort(i);
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                frame[p] = 255;
+                frame[p + 1] = 255;
+                frame[p + 2] = 255;
+                frame[p + 3] = 255;
+                p += COMPONENTS_PER_PIXEL;
+            }
+        }
+        setVCOUNT(160);
+        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.bind(0);
+        program.use();
+        vertexArray.draw();
+        context.updateDisplay();
+        setVCOUNT(227);
+    }
+
+    private void update0() {
+        int backColor = memory.getShort(0x5000000);
+        float backRed = getBits(backColor, 0, 4) / 31f;
+        float backGreen = getBits(backColor, 5, 9) / 31f;
+        float backBlue = getBits(backColor, 10, 14) / 31f;
+
+        context.setClearColor(backRed, backGreen, backBlue, 0);
+        context.clearCurrentBuffer();
+
+        int bg0Priority = memory.getShort(0x4000008) & 0b11;
+        int bg1Priority = memory.getShort(0x400000A) & 0b11;
+        int bg2Priority = memory.getShort(0x400000C) & 0b11;
+        int bg3Priority = memory.getShort(0x400000E) & 0b11;
+
+        int[] bgControlAddresses = [0x4000008, 0x400000A, 0x400000C, 0x400000E];
+
+        bool gbLessThan(int bgA, int bgB) {
+            int bgAPriority = memory.getShort(bgA) & 0b11;
+            int bgBPriority = memory.getShort(bgB) & 0b11;
+            if (bgAPriority == bgBPriority) {
+                return bgA < bgB;
+            }
+            return bgAPriority < bgBPriority;
+        }
+
+        sort!gbLessThan(bgControlAddresses);
+
+        int bgEnables = getBits(memory.getShort(0x4000000), 8, 11);
+
+        immutable uint tileCount = 32;
+        immutable uint tileLength = 8;
+
+        uint p = 0;
+
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
+
+            setVCOUNT(line);
+
+            int mapLine = line / tileLength;
+            int tileLine = line % tileLength;
+
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+                for (int layer = 0; layer < 4; layer++) {
+
+                    if (!(bgEnables & 1 << layer)) {
+                        return;
+                    }
+
+                    int bgControl = memory.getShort(bgControlAddresses[layer]);
+
+                    int priority = bgControl & 0b11;
+                    int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+                    int mosaic = getBit(bgControl, 6);
+                    int singlePalette = getBit(bgControl, 7);
+                    int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+                    int displayOverflow = getBit(bgControl, 13);
+                    int screenSize = getBits(bgControl, 14, 15);
+
+                    int tile4Bit = singlePalette ? 1 : 2;
+                    int tileSize = tileLength * tileLength / tile4Bit;
+
+                    uint xOffset = 0, yOffset = 0;
+
+                    int mapColumn = column / tileLength;
+                    int tileColumn = column % tileLength;
+
+                    int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
+
+                    int tile = memory.getShort(mapAddress);
+
+                    int tileNumber = tile & 0x3FF;
+                    int horizontalFlip = getBit(tile, 10);
+                    int verticalFlip = getBit(tile, 11);
+
+                    int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
+
+                    int paletteAddress;
+                    if (singlePalette) {
+                        paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+                    } else {
+                        int paletteNumber = getBits(tile, 12, 15);
+                        paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
+                    }
+
+                    if (paletteAddress != 0) {
+                        int color = memory.getShort(0x5000000 + paletteAddress);
+                        frame[p] = cast(ubyte) (getBits(color, 0, 4) / 31f * 255);
+                        frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
+                        frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+                        frame[p + 3] = 255;
+                    }
+                }
+
+                p += 4;
+            }
+        }
+
+        setVCOUNT(160);
+        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.bind(0);
+        program.use();
+        vertexArray.draw();
+        context.updateDisplay();
+        setVCOUNT(227);
+    }
+
+    private void update3() {
+        uint i = 0x6000000, p = 0;
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
+            setVCOUNT(line);
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                int pixel = memory.getShort(i);
                 frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
                 frame[p + 1] = cast(ubyte) (getBits(pixel, 5, 9) / 31f * 255);
                 frame[p + 2] = cast(ubyte) (getBits(pixel, 10, 14) / 31f * 255);
+                frame[p + 3] = 255;
                 i += BYTES_PER_PIXEL;
                 p += COMPONENTS_PER_PIXEL;
             }
@@ -89,8 +245,12 @@ public class Display {
         setVCOUNT(227);
     }
 
-    private void setVCOUNT(short vcount) {
-        memory.setShort(0x4000006, vcount);
+    private Mode getMode() {
+        return cast(Mode) (memory.getShort(0x4000000) & 0b111);
+    }
+
+    private void setVCOUNT(int vcount) {
+        memory.setShort(0x4000006, cast(short) vcount);
         int displayStatus = memory.getShort(0x4000004);
         bool vblank = vcount >= 160 && vcount < 227;
         setBit(displayStatus, 0, vblank);
@@ -144,7 +304,7 @@ attribute vec3 position;
 varying vec2 textureCoords;
 
 void main() {
-    textureCoords = (position.xy + 1) / 2;
+    textureCoords = vec2(position.x + 1, 1 - position.y) / 2;
     gl_Position = vec4(position, 1);
 }
 `;
@@ -161,7 +321,7 @@ varying vec2 textureCoords;
 uniform sampler2D color;
 
 void main() {
-    gl_FragColor = vec4(texture2D(color, textureCoords).rgb, 1);
+    gl_FragColor = texture2D(color, textureCoords);
 }
 `;
 

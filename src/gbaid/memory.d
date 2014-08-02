@@ -47,7 +47,7 @@ public class ROM : Memory {
     }
 
     public void setByte(uint address, byte b) {
-        throw new ReadOnlyException();
+        throw new ReadOnlyException(address);
     }
 
     public short getShort(uint address) {
@@ -56,7 +56,7 @@ public class ROM : Memory {
     }
 
     public void setShort(uint address, short s) {
-        throw new ReadOnlyException();
+        throw new ReadOnlyException(address);
     }
 
     public int getInt(uint address) {
@@ -64,7 +64,7 @@ public class ROM : Memory {
     }
 
     public void setInt(uint address, int i) {
-        throw new ReadOnlyException();
+        throw new ReadOnlyException(address);
     }
 }
 
@@ -100,8 +100,8 @@ public class RAM : ROM {
 }
 
 public class ReadOnlyException : Exception {
-    public this() {
-        super("Memory is read only");
+    public this(uint address) {
+        super(format("Memory is read only: 0x%X", address));
     }
 }
 
