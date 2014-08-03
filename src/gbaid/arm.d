@@ -123,7 +123,7 @@ public class ARM7TDMI {
 		setRegister(Mode.IRQ, Register.SPSR, getRegister(Register.CPSR));
 		setFlag(CPSRFlag.I, 1);
 		setFlag(CPSRFlag.T, Set.ARM);
-		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement());
+		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement() * 2 + 4);
 		setRegister(Register.PC, 0x18);
 		setMode(Mode.IRQ);
 	}
