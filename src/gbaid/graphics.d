@@ -80,15 +80,19 @@ public class Display {
                     update0();
                     break;
                 case Mode.BACKGROUND_3:
+                    update0();
                     break;
                 case Mode.BACKGROUND_2:
+                    update0();
                     break;
                 case Mode.BITMAP_16_DIRECT_SINGLE:
                     update3();
                     break;
                 case Mode.BITMAP_8_PALETTE_DOUBLE:
+                    update3();
                     break;
                 case Mode.BITMAP_16_DIRECT_DOUBLE:
+                    update3();
                     break;
             }
         }
@@ -124,11 +128,6 @@ public class Display {
         context.setClearColor(backRed, backGreen, backBlue, 0);
         context.clearCurrentBuffer();
 
-        int bg0Priority = memory.getShort(0x4000008) & 0b11;
-        int bg1Priority = memory.getShort(0x400000A) & 0b11;
-        int bg2Priority = memory.getShort(0x400000C) & 0b11;
-        int bg3Priority = memory.getShort(0x400000E) & 0b11;
-
         int[] bgControlAddresses = [0x4000008, 0x400000A, 0x400000C, 0x400000E];
 
         bool gbLessThan(int bgA, int bgB) {
@@ -161,7 +160,7 @@ public class Display {
                 for (int layer = 0; layer < 4; layer++) {
 
                     if (!(bgEnables & 1 << layer)) {
-                        return;
+                        continue;
                     }
 
                     int bgControl = memory.getShort(bgControlAddresses[layer]);
