@@ -130,16 +130,8 @@ public class Display {
 
         int[] bgControlAddresses = [0x4000008, 0x400000A, 0x400000C, 0x400000E];
 
-        bool gbLessThan(int bgA, int bgB) {
-            int bgAPriority = memory.getShort(bgA) & 0b11;
-            int bgBPriority = memory.getShort(bgB) & 0b11;
-            if (bgAPriority == bgBPriority) {
-                return bgA < bgB;
-            }
-            return bgAPriority < bgBPriority;
-        }
-
-        sort!gbLessThan(bgControlAddresses);
+        auto lessThan = &bgLessThan;
+        sort!lessThan(bgControlAddresses);
 
         int bgEnables = getBits(memory.getShort(0x4000000), 8, 11);
 
@@ -271,16 +263,8 @@ public class Display {
 
         int[] bgControlAddresses = [0x400000C, 0x400000E];
 
-        bool gbLessThan(int bgA, int bgB) {
-            int bgAPriority = memory.getShort(bgA) & 0b11;
-            int bgBPriority = memory.getShort(bgB) & 0b11;
-            if (bgAPriority == bgBPriority) {
-                return bgA < bgB;
-            }
-            return bgAPriority < bgBPriority;
-        }
-
-        sort!gbLessThan(bgControlAddresses);
+        auto lessThan = &bgLessThan;
+        sort!lessThan(bgControlAddresses);
 
         int bgEnables = getBits(memory.getShort(0x4000000), 10, 11);
 
@@ -444,6 +428,15 @@ public class Display {
             setBit(interrupts, 2, 1);
         }
         memory.setShort(0x4000202, cast(short) interrupts);
+    }
+
+    protected bool bgLessThan(int bgA, int bgB) {
+        int bgAPriority = memory.getShort(bgA) & 0b11;
+        int bgBPriority = memory.getShort(bgB) & 0b11;
+        if (bgAPriority == bgBPriority) {
+            return bgA < bgB;
+        }
+        return bgAPriority < bgBPriority;
     }
 }
 
