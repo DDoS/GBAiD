@@ -4,9 +4,6 @@ import std.string;
 
 import gbaid.system;
 import gbaid.util;
-import gbaid.graphics;
-import gbaid.gl;
-import gbaid.gl20;
 
 public void main(string[] args) {
 	string bios;
