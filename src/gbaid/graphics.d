@@ -179,6 +179,18 @@ public class Display {
                     int x = column + xOffset;
                     int y = line + yOffset;
 
+                    if (mosaic) {
+                        int mosaicControl = memory.getInt(0x400004C);
+                        int hSize = (mosaicControl & 0b1111) + 1;
+                        int vSize = getBits(mosaicControl, 4, 7) + 1;
+
+                        x /= hSize;
+                        x *= hSize;
+
+                        y /= vSize;
+                        y *= vSize;
+                    }
+
                     if (x > bgSize) {
                         x %= bgSize;
                         if (screenSize == 1 || screenSize == 3) {
@@ -317,6 +329,18 @@ public class Display {
 
                     x = x + 128 >> 8;
                     y = y + 128 >> 8;
+
+                    if (mosaic) {
+                        int mosaicControl = memory.getInt(0x400004C);
+                        int hSize = (mosaicControl & 0b1111) + 1;
+                        int vSize = getBits(mosaicControl, 4, 7) + 1;
+
+                        x /= hSize;
+                        x *= hSize;
+
+                        y /= vSize;
+                        y *= vSize;
+                    }
 
                     if (x > bgSize) {
                         if (displayOverflow) {
