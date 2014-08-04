@@ -83,7 +83,7 @@ public class Display {
                     update0();
                     break;
                 case Mode.BACKGROUND_2:
-                    update0();
+                    update2();
                     break;
                 case Mode.BITMAP_16_DIRECT_SINGLE:
                     update3();
@@ -145,15 +145,13 @@ public class Display {
 
         immutable uint tileCount = 32;
         immutable uint tileLength = 8;
+        immutable uint bgSize = tileCount * tileLength;
 
         uint p = 0;
 
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
-
-            int mapLine = line / tileLength;
-            int tileLine = line % tileLength;
 
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
@@ -165,21 +163,35 @@ public class Display {
 
                     int bgControl = memory.getShort(bgControlAddresses[layer]);
 
-                    int priority = bgControl & 0b11;
                     int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
                     int mosaic = getBit(bgControl, 6);
                     int singlePalette = getBit(bgControl, 7);
                     int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
-                    int displayOverflow = getBit(bgControl, 13);
                     int screenSize = getBits(bgControl, 14, 15);
 
                     int tile4Bit = singlePalette ? 1 : 2;
                     int tileSize = tileLength * tileLength / tile4Bit;
 
-                    uint xOffset = 0, yOffset = 0;
+                    int layerAddressOffset = layer * 4;
+                    int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
+                    int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
 
-                    int mapColumn = column / tileLength;
-                    int tileColumn = column % tileLength;
+                    int x = column + xOffset;
+                    int y = line + yOffset;
+
+                    if (x > bgSize) {
+                        x %= bgSize;
+                    }
+
+                    if (y > bgSize) {
+                        y %= bgSize;
+                    }
+
+                    int mapColumn = x / tileLength;
+                    int mapLine = y / tileLength;
+
+                    int tileColumn = x % tileLength;
+                    int tileLine = y % tileLength;
 
                     int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
 
@@ -206,6 +218,130 @@ public class Display {
                         frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
                         frame[p + 3] = 255;
                     }
+                }
+
+                p += 4;
+            }
+        }
+
+        setVCOUNT(160);
+        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.bind(0);
+        program.use();
+        vertexArray.draw();
+        context.updateDisplay();
+        setVCOUNT(227);
+    }
+
+    private void update2() {
+        int backColor = memory.getShort(0x5000000);
+        float backRed = getBits(backColor, 0, 4) / 31f;
+        float backGreen = getBits(backColor, 5, 9) / 31f;
+        float backBlue = getBits(backColor, 10, 14) / 31f;
+
+        context.setClearColor(backRed, backGreen, backBlue, 0);
+        context.clearCurrentBuffer();
+
+        int[] bgControlAddresses = [0x400000C, 0x400000E];
+
+        bool gbLessThan(int bgA, int bgB) {
+            int bgAPriority = memory.getShort(bgA) & 0b11;
+            int bgBPriority = memory.getShort(bgB) & 0b11;
+            if (bgAPriority == bgBPriority) {
+                return bgA < bgB;
+            }
+            return bgAPriority < bgBPriority;
+        }
+
+        sort!gbLessThan(bgControlAddresses);
+
+        int bgEnables = getBits(memory.getShort(0x4000000), 10, 11);
+
+        immutable uint tileLength = 8;
+        immutable uint tileSize = tileLength * tileLength;
+
+        uint p = 0;
+
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
+
+            setVCOUNT(line);
+
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+                for (int layer = 0; layer < 2; layer++) {
+
+                    if (!(bgEnables & 1 << layer)) {
+                        continue;
+                    }
+
+                    int bgControl = memory.getShort(bgControlAddresses[layer]);
+
+                    int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+                    int mosaic = getBit(bgControl, 6);
+                    int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+                    int displayOverflow = getBit(bgControl, 13);
+                    int screenSize = getBits(bgControl, 14, 15);
+
+                    uint tileCount = 16 * (1 << screenSize);
+                    uint bgSize = tileCount * tileLength;
+
+                    int layerAddressOffset = layer * 16;
+                    int pa = memory.getShort(0x4000020 + layerAddressOffset);
+                    int pc = memory.getShort(0x4000022 + layerAddressOffset);
+                    int pb = memory.getShort(0x4000024 + layerAddressOffset);
+                    int pd = memory.getShort(0x4000026 + layerAddressOffset);
+                    int refX = memory.getInt(0x4000028 + layerAddressOffset) & 0xFFFFFFF;
+                    refX <<= 4;
+                    refX >>= 4;
+                    int refY = memory.getInt(0x400002C + layerAddressOffset) & 0xFFFFFFF;
+                    refY <<= 4;
+                    refY >>= 4;
+
+                    int x = (pa * ((column << 8) - refX) >> 8) + (pc * ((line << 8) - refY) >> 8) + refX;
+                    int y = (pc * ((column << 8) - refX) >> 8) + (pd * ((line << 8) - refY) >> 8) + refY;
+
+                    x = x + 128 >> 8;
+                    y = y + 128 >> 8;
+
+                    if (x > bgSize) {
+                        if (displayOverflow) {
+                            x %= bgSize;
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    if (y > bgSize) {
+                        if (displayOverflow) {
+                            y %= bgSize;
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    int mapColumn = x / tileLength;
+                    int mapLine = y / tileLength;
+
+                    int tileColumn = x % tileLength;
+                    int tileLine = y % tileLength;
+
+                    int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
+
+                    int tileNumber = memory.getByte(mapAddress) & 0xFF;
+
+                    int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
+
+                    int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+
+                    if (paletteAddress == 0) {
+                        continue;
+                    }
+
+                    int color = memory.getShort(0x5000000 + paletteAddress);
+                    frame[p] = cast(ubyte) (getBits(color, 0, 4) / 31f * 255);
+                    frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
+                    frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+                    frame[p + 3] = 255;
                 }
 
                 p += 4;
@@ -303,7 +439,7 @@ attribute vec3 position;
 varying vec2 textureCoords;
 
 void main() {
-    textureCoords = vec2(position.x + 1, 1 - position.y) / 2;
+    textureCoords = (position.xy + 1) / 2;
     gl_Position = vec4(position, 1);
 }
 `;
