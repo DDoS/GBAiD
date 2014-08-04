@@ -181,10 +181,18 @@ public class Display {
 
                     if (x > bgSize) {
                         x %= bgSize;
+                        if (screenSize == 1 || screenSize == 3) {
+                            mapBase += 2 * BYTES_PER_KIB;
+                        }
                     }
 
                     if (y > bgSize) {
                         y %= bgSize;
+                        if (screenSize == 2) {
+                            mapBase += 2 * BYTES_PER_KIB;
+                        } else if (screenSize == 3) {
+                            mapBase += 4 * BYTES_PER_KIB;
+                        }
                     }
 
                     int mapColumn = x / tileLength;
@@ -200,6 +208,13 @@ public class Display {
                     int tileNumber = tile & 0x3FF;
                     int horizontalFlip = getBit(tile, 10);
                     int verticalFlip = getBit(tile, 11);
+
+                    if (horizontalFlip) {
+                        tileLine = tileLength - tileLine - 1;
+                    }
+                    if (verticalFlip) {
+                        tileColumn = tileLength - tileColumn - 1;
+                    }
 
                     int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
 
