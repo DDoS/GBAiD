@@ -87,13 +87,20 @@ public class Display {
                     update3();
                     break;
                 case Mode.BITMAP_8_PALETTE_DOUBLE:
-                    update3();
+                    update4();
                     break;
                 case Mode.BITMAP_16_DIRECT_DOUBLE:
-                    update3();
+                    update5();
                     break;
             }
         }
+        setVCOUNT(160);
+        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.bind(0);
+        program.use();
+        vertexArray.draw();
+        context.updateDisplay();
+        setVCOUNT(227);
     }
 
     private void updateBlank() {
@@ -104,16 +111,9 @@ public class Display {
                 frame[p] = 255;
                 frame[p + 1] = 255;
                 frame[p + 2] = 255;
-                p += COMPONENTS_PER_PIXEL;
+                p += 3;
             }
         }
-        setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
     }
 
     private void update0() {
@@ -157,14 +157,6 @@ public class Display {
                 p += 3;
             }
         }
-
-        setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
     }
 
     private void update1() {
@@ -197,23 +189,15 @@ public class Display {
                 frame[p + 1] = backGreen;
                 frame[p + 2] = backBlue;
 
-                layer0(layer, line, column, p, bgEnables, bgControlAddresses[0], windowEnables, enabledLayerCount);
+                layer0(0, line, column, p, bgEnables, bgControlAddresses[0], windowEnables, enabledLayerCount);
 
-                layer0(layer, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
+                layer0(1, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
 
-                layer2(layer, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
+                layer2(2, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
 
                 p += 3;
             }
         }
-
-        setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
     }
 
     private void update2() {
@@ -232,7 +216,7 @@ public class Display {
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 14);
 
-        int enabledLayerCount = countBits(bgEnables & 0b11);
+        int enabledLayerCount = countBits(bgEnables & 0b1100);
 
         uint p = 0;
 
@@ -257,14 +241,6 @@ public class Display {
                 p += 3;
             }
         }
-
-        setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
     }
 
     private void update3() {
@@ -276,17 +252,49 @@ public class Display {
                 frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
                 frame[p + 1] = cast(ubyte) (getBits(pixel, 5, 9) / 31f * 255);
                 frame[p + 2] = cast(ubyte) (getBits(pixel, 10, 14) / 31f * 255);
-                i += BYTES_PER_PIXEL;
-                p += COMPONENTS_PER_PIXEL;
+                i += 2;
+                p += 3;
             }
         }
-        setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
+    }
+
+    private void update4() {
+        int displayControl = memory.getShort(0x4000000);
+        uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
+        uint p = 0;
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
+            setVCOUNT(line);
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                int paletteAddress = (memory.getByte(i) & 0xFF) * 2;
+                if (paletteAddress == 0) {
+                    // obj
+                } else {
+                    int color = memory.getShort(0x5000000 + paletteAddress);
+                    frame[p] = cast(ubyte) (getBits(color, 0, 4) / 31f * 255);
+                    frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
+                    frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+                }
+                i += 1;
+                p += 3;
+            }
+        }
+    }
+
+    private void update5() {
+        int displayControl = memory.getShort(0x4000000);
+        uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
+        uint p = 0;
+        for (int line = 0; line < 128; line++) {
+            setVCOUNT(line);
+            for (int column = 0; column < 160; column++) {
+                int pixel = memory.getShort(i);
+                frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
+                frame[p + 1] = cast(ubyte) (getBits(pixel, 5, 9) / 31f * 255);
+                frame[p + 2] = cast(ubyte) (getBits(pixel, 10, 14) / 31f * 255);
+                i += 2;
+                p += 3;
+            }
+        }
     }
 
     private void layer0(int layer, int line, int column, int p, int bgEnables, int bgControlAddress, int windowEnables, int enabledLayerCount) {
