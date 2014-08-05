@@ -36,6 +36,12 @@ public bool overflowed(int a, int b, int r) {
     return getBit(a, 31) != rn && getBit(b, 31) != rn;
 }
 
+public uint countBits(uint i) {
+     i = i - (i >>> 1 & 0x55555555);
+     i = (i & 0x33333333) + (i >>> 2 & 0x33333333);
+     return (i + (i >>> 4) & 0x0F0F0F0F) * 0x01010101 >>> 24;
+}
+
 template getSafe(T) {
     public T getSafe(T[] array, int index, T def) {
         if (index < 0 || index >= array.length) {
