@@ -78,7 +78,7 @@ public class Display {
                     update0();
                     break;
                 case Mode.BACKGROUND_3:
-                    update0();
+                    update1();
                     break;
                 case Mode.BACKGROUND_2:
                     update2();
@@ -134,10 +134,56 @@ public class Display {
 
         int enabledLayerCount = countBits(bgEnables);
 
-        immutable uint tileCount = 32;
-        immutable uint tileLength = 8;
-        immutable uint bgSize = tileCount * tileLength;
-        immutable uint layerCount = 4;
+        uint p = 0;
+
+        for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
+
+            setVCOUNT(line);
+
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+                frame[p] = backRed;
+                frame[p + 1] = backGreen;
+                frame[p + 2] = backBlue;
+
+                for (int layer = 0; layer < 4; layer++) {
+
+                    int bgControlAddress = bgControlAddresses[layer];
+
+                    layer0(layer, line, column, p, bgEnables, bgControlAddress, windowEnables, enabledLayerCount);
+
+                }
+
+                p += 3;
+            }
+        }
+
+        setVCOUNT(160);
+        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.bind(0);
+        program.use();
+        vertexArray.draw();
+        context.updateDisplay();
+        setVCOUNT(227);
+    }
+
+    private void update1() {
+        int backColor = memory.getShort(0x5000000);
+        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
+        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
+        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
+
+        int[] bgControlAddresses = [0x400000C, 0x400000A, 0x4000008];
+
+        auto lessThan = &bgLessThan;
+        sort!lessThan(bgControlAddresses);
+
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
+        int enabledLayerCount = countBits(bgEnables & 0b111);
 
         uint p = 0;
 
@@ -151,109 +197,11 @@ public class Display {
                 frame[p + 1] = backGreen;
                 frame[p + 2] = backBlue;
 
-                for (int layer = 0; layer < layerCount; layer++) {
+                layer0(layer, line, column, p, bgEnables, bgControlAddresses[0], windowEnables, enabledLayerCount);
 
-                    int bgControlAddress = bgControlAddresses[layer];
+                layer0(layer, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
 
-                    int layerNumber = (bgControlAddress - 0x4000008) / 2;
-
-                    if (!checkBit(bgEnables, layerNumber)) {
-                        continue;
-                    }
-
-                    int window = getWindow(windowEnables, line, column);
-
-                    bool specialEffectEnabled;
-
-                    if (window != 0) {
-                        int windowControl = memory.getByte(window);
-
-                        if (!checkBit(windowControl, layerNumber)) {
-                            continue;
-                        }
-
-                        specialEffectEnabled = checkBit(windowControl, 5);
-                    } else {
-                        specialEffectEnabled = true;
-                    }
-
-                    int bgControl = memory.getShort(bgControlAddress);
-
-                    int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
-                    int mosaic = getBit(bgControl, 6);
-                    int singlePalette = getBit(bgControl, 7);
-                    int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
-                    int screenSize = getBits(bgControl, 14, 15);
-
-                    int tile4Bit = singlePalette ? 1 : 2;
-                    int tileSize = tileLength * tileLength / tile4Bit;
-
-                    int layerAddressOffset = layerNumber * 4;
-                    int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
-                    int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
-
-                    int x = column + xOffset;
-                    int y = line + yOffset;
-
-                    if (x > bgSize) {
-                        x %= bgSize;
-                        if (screenSize == 1 || screenSize == 3) {
-                            mapBase += 2 * BYTES_PER_KIB;
-                        }
-                    }
-
-                    if (y > bgSize) {
-                        y %= bgSize;
-                        if (screenSize == 2) {
-                            mapBase += 2 * BYTES_PER_KIB;
-                        } else if (screenSize == 3) {
-                            mapBase += 4 * BYTES_PER_KIB;
-                        }
-                    }
-
-                    if (mosaic) {
-                        applyMosaic(x, y);
-                    }
-
-                    int mapColumn = x / tileLength;
-                    int mapLine = y / tileLength;
-
-                    int tileColumn = x % tileLength;
-                    int tileLine = y % tileLength;
-
-                    int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
-
-                    int tile = memory.getShort(mapAddress);
-
-                    int tileNumber = tile & 0x3FF;
-                    int horizontalFlip = getBit(tile, 10);
-                    int verticalFlip = getBit(tile, 11);
-
-                    if (horizontalFlip) {
-                        tileLine = tileLength - tileLine - 1;
-                    }
-                    if (verticalFlip) {
-                        tileColumn = tileLength - tileColumn - 1;
-                    }
-
-                    int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
-
-                    int paletteAddress;
-                    if (singlePalette) {
-                        paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-                    } else {
-                        int paletteNumber = getBits(tile, 12, 15);
-                        paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
-                    }
-
-                    if (paletteAddress == 0) {
-                        continue;
-                    }
-
-                    int color = memory.getShort(0x5000000 + paletteAddress);
-
-                    writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
-                }
+                layer2(layer, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
 
                 p += 3;
             }
@@ -284,11 +232,7 @@ public class Display {
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 14);
 
-        int enabledLayerCount = countBits(bgEnables);
-
-        immutable uint tileLength = 8;
-        immutable uint tileSize = tileLength * tileLength;
-        immutable uint layerCount = 2;
+        int enabledLayerCount = countBits(bgEnables & 0b11);
 
         uint p = 0;
 
@@ -302,108 +246,12 @@ public class Display {
                 frame[p + 1] = backGreen;
                 frame[p + 2] = backBlue;
 
-                for (int layer = 0; layer < layerCount; layer++) {
+                for (int layer = 0; layer < 2; layer++) {
 
                     int bgControlAddress = bgControlAddresses[layer];
 
-                    int layerNumber = (bgControlAddress - 0x4000008) / 2;
+                    layer2(layer, line, column, p, bgEnables, bgControlAddress, windowEnables, enabledLayerCount);
 
-                    if (!checkBit(bgEnables, layerNumber)) {
-                        continue;
-                    }
-
-                    int window = getWindow(windowEnables, line, column);
-
-                    bool specialEffectEnabled;
-
-                    if (window != 0) {
-                        int windowControl = memory.getByte(window);
-
-                        if (!checkBit(windowControl, layerNumber)) {
-                            continue;
-                        }
-
-                        specialEffectEnabled = checkBit(windowControl, 5);
-                    } else {
-                        specialEffectEnabled = true;
-                    }
-
-                    int bgControl = memory.getShort(bgControlAddress);
-
-                    int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
-                    int mosaic = getBit(bgControl, 6);
-                    int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
-                    int displayOverflow = getBit(bgControl, 13);
-                    int screenSize = getBits(bgControl, 14, 15);
-
-                    uint tileCount = 16 * (1 << screenSize);
-                    uint bgSize = tileCount * tileLength;
-
-                    int layerAddressOffset = (layerNumber - 2) * 16;
-                    int pa = memory.getShort(0x4000020 + layerAddressOffset);
-                    int pc = memory.getShort(0x4000022 + layerAddressOffset);
-                    int pb = memory.getShort(0x4000024 + layerAddressOffset);
-                    int pd = memory.getShort(0x4000026 + layerAddressOffset);
-                    int dx = memory.getInt(0x4000028 + layerAddressOffset) & 0xFFFFFFF;
-                    dx <<= 4;
-                    dx >>= 4;
-                    int dy = memory.getInt(0x400002C + layerAddressOffset) & 0xFFFFFFF;
-                    dy <<= 4;
-                    dy >>= 4;
-
-                    int x = (pa * ((column << 8) + dx) >> 8) + (pc * ((line << 8) + dy) >> 8);
-                    int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8);
-
-                    x = x + 128 >> 8;
-                    y = y + 128 >> 8;
-
-                    if (x < 0 || x > bgSize) {
-                        if (displayOverflow) {
-                            x %= bgSize;
-                            if (x < 0) {
-                                x += bgSize;
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    if (y < 0 || y > bgSize) {
-                        if (displayOverflow) {
-                            y %= bgSize;
-                            if (y < 0) {
-                                y += bgSize;
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    if (mosaic) {
-                        applyMosaic(x, y);
-                    }
-
-                    int mapColumn = x / tileLength;
-                    int mapLine = y / tileLength;
-
-                    int tileColumn = x % tileLength;
-                    int tileLine = y % tileLength;
-
-                    int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
-
-                    int tileNumber = memory.getByte(mapAddress) & 0xFF;
-
-                    int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
-
-                    int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-
-                    if (paletteAddress == 0) {
-                        continue;
-                    }
-
-                    int color = memory.getShort(0x5000000 + paletteAddress);
-
-                    writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
                 }
 
                 p += 3;
@@ -439,6 +287,215 @@ public class Display {
         vertexArray.draw();
         context.updateDisplay();
         setVCOUNT(227);
+    }
+
+    private void layer0(int layer, int line, int column, int p, int bgEnables, int bgControlAddress, int windowEnables, int enabledLayerCount) {
+        int layerNumber = (bgControlAddress - 0x4000008) / 2;
+
+        if (!checkBit(bgEnables, layerNumber)) {
+            return;
+        }
+
+        int window = getWindow(windowEnables, line, column);
+
+        bool specialEffectEnabled;
+
+        if (window != 0) {
+            int windowControl = memory.getByte(window);
+
+            if (!checkBit(windowControl, layerNumber)) {
+                return;
+            }
+
+            specialEffectEnabled = checkBit(windowControl, 5);
+        } else {
+            specialEffectEnabled = true;
+        }
+
+        int bgControl = memory.getShort(bgControlAddress);
+
+        int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+        int mosaic = getBit(bgControl, 6);
+        int singlePalette = getBit(bgControl, 7);
+        int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+        int screenSize = getBits(bgControl, 14, 15);
+
+        int tileLength = 8;
+        int tile4Bit = singlePalette ? 1 : 2;
+        int tileSize = tileLength * tileLength / tile4Bit;
+
+        int tileCount = 32;
+        int bgSize = tileCount * tileLength;
+
+        int layerAddressOffset = layerNumber * 4;
+        int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
+        int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
+
+        int x = column + xOffset;
+        int y = line + yOffset;
+
+        if (x > bgSize) {
+            x %= bgSize;
+            if (screenSize == 1 || screenSize == 3) {
+                mapBase += 2 * BYTES_PER_KIB;
+            }
+        }
+
+        if (y > bgSize) {
+            y %= bgSize;
+            if (screenSize == 2) {
+                mapBase += 2 * BYTES_PER_KIB;
+            } else if (screenSize == 3) {
+                mapBase += 4 * BYTES_PER_KIB;
+            }
+        }
+
+        if (mosaic) {
+            applyMosaic(x, y);
+        }
+
+        int mapColumn = x / tileLength;
+        int mapLine = y / tileLength;
+
+        int tileColumn = x % tileLength;
+        int tileLine = y % tileLength;
+
+        int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
+
+        int tile = memory.getShort(mapAddress);
+
+        int tileNumber = tile & 0x3FF;
+        int horizontalFlip = getBit(tile, 10);
+        int verticalFlip = getBit(tile, 11);
+
+        if (horizontalFlip) {
+            tileLine = tileLength - tileLine - 1;
+        }
+        if (verticalFlip) {
+            tileColumn = tileLength - tileColumn - 1;
+        }
+
+        int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
+
+        int paletteAddress;
+        if (singlePalette) {
+            paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+        } else {
+            int paletteNumber = getBits(tile, 12, 15);
+            paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
+        }
+
+        if (paletteAddress == 0) {
+            return;
+        }
+
+        int color = memory.getShort(0x5000000 + paletteAddress);
+
+        writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
+    }
+
+    private void layer2(int layer, int line, int column, int p, int bgEnables, int bgControlAddress, int windowEnables, int enabledLayerCount) {
+        int layerNumber = (bgControlAddress - 0x4000008) / 2;
+
+        if (!checkBit(bgEnables, layerNumber)) {
+            return;
+        }
+
+        int window = getWindow(windowEnables, line, column);
+
+        bool specialEffectEnabled;
+
+        if (window != 0) {
+            int windowControl = memory.getByte(window);
+
+            if (!checkBit(windowControl, layerNumber)) {
+                return;
+            }
+
+            specialEffectEnabled = checkBit(windowControl, 5);
+        } else {
+            specialEffectEnabled = true;
+        }
+
+        int bgControl = memory.getShort(bgControlAddress);
+
+        int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+        int mosaic = getBit(bgControl, 6);
+        int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+        int displayOverflow = getBit(bgControl, 13);
+        int screenSize = getBits(bgControl, 14, 15);
+
+        int tileLength = 8;
+        int tileSize = tileLength * tileLength;
+
+        int tileCount = 16 * (1 << screenSize);
+        int bgSize = tileCount * tileLength;
+
+        int layerAddressOffset = (layerNumber - 2) * 16;
+        int pa = memory.getShort(0x4000020 + layerAddressOffset);
+        int pc = memory.getShort(0x4000022 + layerAddressOffset);
+        int pb = memory.getShort(0x4000024 + layerAddressOffset);
+        int pd = memory.getShort(0x4000026 + layerAddressOffset);
+        int dx = memory.getInt(0x4000028 + layerAddressOffset) & 0xFFFFFFF;
+        dx <<= 4;
+        dx >>= 4;
+        int dy = memory.getInt(0x400002C + layerAddressOffset) & 0xFFFFFFF;
+        dy <<= 4;
+        dy >>= 4;
+
+        int x = (pa * ((column << 8) + dx) >> 8) + (pc * ((line << 8) + dy) >> 8);
+        int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8);
+
+        x = x + 128 >> 8;
+        y = y + 128 >> 8;
+
+        if (x < 0 || x > bgSize) {
+            if (displayOverflow) {
+                x %= bgSize;
+                if (x < 0) {
+                    x += bgSize;
+                }
+            } else {
+                return;
+            }
+        }
+
+        if (y < 0 || y > bgSize) {
+            if (displayOverflow) {
+                y %= bgSize;
+                if (y < 0) {
+                    y += bgSize;
+                }
+            } else {
+                return;
+            }
+        }
+
+        if (mosaic) {
+            applyMosaic(x, y);
+        }
+
+        int mapColumn = x / tileLength;
+        int mapLine = y / tileLength;
+
+        int tileColumn = x % tileLength;
+        int tileLine = y % tileLength;
+
+        int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
+
+        int tileNumber = memory.getByte(mapAddress) & 0xFF;
+
+        int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
+
+        int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+
+        if (paletteAddress == 0) {
+            return;
+        }
+
+        int color = memory.getShort(0x5000000 + paletteAddress);
+
+        writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
     }
 
     private int getWindow(int windowEnables, int line, int column) {
