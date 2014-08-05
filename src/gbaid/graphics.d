@@ -127,7 +127,11 @@ public class Display {
         auto lessThan = &bgLessThan;
         sort!lessThan(bgControlAddresses);
 
-        int bgEnables = getBits(memory.getShort(0x4000000), 8, 11);
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
         int enabledLayerCount = countBits(bgEnables);
 
         immutable uint tileCount = 32;
@@ -155,6 +159,22 @@ public class Display {
 
                     if (!checkBit(bgEnables, layerNumber)) {
                         continue;
+                    }
+
+                    int window = getWindow(windowEnables, line, column);
+
+                    bool specialEffectEnabled;
+
+                    if (window != 0) {
+                        int windowControl = memory.getByte(window);
+
+                        if (!checkBit(windowControl, layerNumber)) {
+                            continue;
+                        }
+
+                        specialEffectEnabled = checkBit(windowControl, 5);
+                    } else {
+                        specialEffectEnabled = true;
                     }
 
                     int bgControl = memory.getShort(bgControlAddress);
@@ -192,15 +212,7 @@ public class Display {
                     }
 
                     if (mosaic) {
-                        int mosaicControl = memory.getInt(0x400004C);
-                        int hSize = (mosaicControl & 0b1111) + 1;
-                        int vSize = getBits(mosaicControl, 4, 7) + 1;
-
-                        x /= hSize;
-                        x *= hSize;
-
-                        y /= vSize;
-                        y *= vSize;
+                        applyMosaic(x, y);
                     }
 
                     int mapColumn = x / tileLength;
@@ -240,60 +252,7 @@ public class Display {
 
                     int color = memory.getShort(0x5000000 + paletteAddress);
 
-                    int red = color & 0b11111;
-                    int green = getBits(color, 5, 9);
-                    int blue = getBits(color, 10, 14);
-
-                    int blendControl = memory.getShort(0x4000050);
-
-                    int specialEffect = getBits(blendControl, 6, 7);
-
-                    final switch (specialEffect) {
-                        case 1:
-                            int blendAlpha = memory.getShort(0x4000052);
-                            bool firstTarget = checkBit(blendControl, layerNumber);
-                            bool secondTarget = checkBit(blendControl, layerNumber + 8);
-                            if (firstTarget && (!secondTarget || layer == enabledLayerCount - 1)) {
-                                int currentRed = cast(int) (frame[p] / 255f * 31);
-                                int currentGreen = cast(int) (frame[p + 1] / 255f * 31);
-                                int currenBlue = cast(int) (frame[p + 2] / 255f * 31);
-
-                                int eva = blendAlpha & 0b11111;
-                                int firstRed = ((red << 4) * eva >> 4) + 8 >> 4;
-                                int firstGreen = ((green << 4) * eva >> 4) + 8 >> 4;
-                                int firstBlue = ((blue << 4) * eva >> 4) + 8 >> 4;
-
-                                int evb = getBits(blendAlpha, 8, 12);
-                                int secondRed = ((currentRed << 4) * evb >> 4) + 8 >> 4;
-                                int secondGreen = ((currentGreen << 4) * evb >> 4) + 8 >> 4;
-                                int secondBlue = ((currenBlue << 4) * evb >> 4) + 8 >> 4;
-
-                                red = min(31, firstRed + secondRed);
-                                green = min(31, firstGreen + secondGreen);
-                                blue = min(31, firstBlue + secondBlue);
-                            }
-                            break;
-                        case 2:
-                            if (checkBit(blendControl, layerNumber)) {
-                                int evy = memory.getInt(0x4000054) & 0b11111;
-                                red += ((31 - red << 4) * evy >> 4) + 8 >> 4;
-                                green += ((31 - green << 4) * evy >> 4) + 8 >> 4;
-                                blue += ((31 - blue << 4) * evy >> 4) + 8 >> 4;
-                            }
-                            break;
-                        case 3:
-                            if (checkBit(blendControl, layerNumber)) {
-                                int evy = memory.getInt(0x4000054) & 0b11111;
-                                red -= ((red << 4) * evy >> 4) + 8 >> 4;
-                                green -= ((green << 4) * evy >> 4) + 8 >> 4;
-                                blue -= ((blue << 4) * evy >> 4) + 8 >> 4;
-                            }
-                            break;
-                    }
-
-                    frame[p] = cast(ubyte) (red / 31f * 255);
-                    frame[p + 1] = cast(ubyte) (green / 31f * 255);
-                    frame[p + 2] = cast(ubyte) (blue / 31f * 255);
+                    writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
                 }
 
                 p += 3;
@@ -320,7 +279,11 @@ public class Display {
         auto lessThan = &bgLessThan;
         sort!lessThan(bgControlAddresses);
 
-        int bgEnables = getBits(memory.getShort(0x4000000), 8, 11);
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
         int enabledLayerCount = countBits(bgEnables);
 
         immutable uint tileLength = 8;
@@ -347,6 +310,22 @@ public class Display {
 
                     if (!checkBit(bgEnables, layerNumber)) {
                         continue;
+                    }
+
+                    int window = getWindow(windowEnables, line, column);
+
+                    bool specialEffectEnabled;
+
+                    if (window != 0) {
+                        int windowControl = memory.getByte(window);
+
+                        if (!checkBit(windowControl, layerNumber)) {
+                            continue;
+                        }
+
+                        specialEffectEnabled = checkBit(windowControl, 5);
+                    } else {
+                        specialEffectEnabled = true;
                     }
 
                     int bgControl = memory.getShort(bgControlAddress);
@@ -401,15 +380,7 @@ public class Display {
                     }
 
                     if (mosaic) {
-                        int mosaicControl = memory.getInt(0x400004C);
-                        int hSize = (mosaicControl & 0b1111) + 1;
-                        int vSize = getBits(mosaicControl, 4, 7) + 1;
-
-                        x /= hSize;
-                        x *= hSize;
-
-                        y /= vSize;
-                        y *= vSize;
+                        applyMosaic(x, y);
                     }
 
                     int mapColumn = x / tileLength;
@@ -432,60 +403,7 @@ public class Display {
 
                     int color = memory.getShort(0x5000000 + paletteAddress);
 
-                    int red = color & 0b11111;
-                    int green = getBits(color, 5, 9);
-                    int blue = getBits(color, 10, 14);
-
-                    int blendControl = memory.getShort(0x4000050);
-
-                    int specialEffect = getBits(blendControl, 6, 7);
-
-                    final switch (specialEffect) {
-                        case 1:
-                            int blendAlpha = memory.getShort(0x4000052);
-                            bool firstTarget = checkBit(blendControl, layerNumber);
-                            bool secondTarget = checkBit(blendControl, layerNumber + 8);
-                            if (firstTarget && (!secondTarget || layer == enabledLayerCount - 1)) {
-                                int currentRed = cast(int) (frame[p] / 255f * 31);
-                                int currentGreen = cast(int) (frame[p + 1] / 255f * 31);
-                                int currenBlue = cast(int) (frame[p + 2] / 255f * 31);
-
-                                int eva = blendAlpha & 0b11111;
-                                int firstRed = ((red << 4) * eva >> 4) + 8 >> 4;
-                                int firstGreen = ((green << 4) * eva >> 4) + 8 >> 4;
-                                int firstBlue = ((blue << 4) * eva >> 4) + 8 >> 4;
-
-                                int evb = getBits(blendAlpha, 8, 12);
-                                int secondRed = ((currentRed << 4) * evb >> 4) + 8 >> 4;
-                                int secondGreen = ((currentGreen << 4) * evb >> 4) + 8 >> 4;
-                                int secondBlue = ((currenBlue << 4) * evb >> 4) + 8 >> 4;
-
-                                red = min(31, firstRed + secondRed);
-                                green = min(31, firstGreen + secondGreen);
-                                blue = min(31, firstBlue + secondBlue);
-                            }
-                            break;
-                        case 2:
-                            if (checkBit(blendControl, layerNumber)) {
-                                int evy = memory.getInt(0x4000054) & 0b11111;
-                                red += ((31 - red << 4) * evy >> 4) + 8 >> 4;
-                                green += ((31 - green << 4) * evy >> 4) + 8 >> 4;
-                                blue += ((31 - blue << 4) * evy >> 4) + 8 >> 4;
-                            }
-                            break;
-                        case 3:
-                            if (checkBit(blendControl, layerNumber)) {
-                                int evy = memory.getInt(0x4000054) & 0b11111;
-                                red -= ((red << 4) * evy >> 4) + 8 >> 4;
-                                green -= ((green << 4) * evy >> 4) + 8 >> 4;
-                                blue -= ((blue << 4) * evy >> 4) + 8 >> 4;
-                            }
-                            break;
-                    }
-
-                    frame[p] = cast(ubyte) (red / 31f * 255);
-                    frame[p + 1] = cast(ubyte) (green / 31f * 255);
-                    frame[p + 2] = cast(ubyte) (blue / 31f * 255);
+                    writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
                 }
 
                 p += 3;
@@ -521,6 +439,115 @@ public class Display {
         vertexArray.draw();
         context.updateDisplay();
         setVCOUNT(227);
+    }
+
+    private int getWindow(int windowEnables, int line, int column) {
+        if (!windowEnables) {
+            return 0;
+        }
+
+        if (windowEnables & 0b1) {
+            int horizontalDimensions = memory.getShort(0x4000040);
+
+            int x1 = getBits(horizontalDimensions, 8, 15);
+            int x2 = horizontalDimensions & 0xFF;
+
+            int verticalDimensions = memory.getShort(0x4000044);
+
+            int y1 = getBits(verticalDimensions, 8, 15);
+            int y2 = verticalDimensions & 0xFF;
+
+            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
+                return 0x4000048;
+            }
+        }
+
+        if (windowEnables & 0b10) {
+            int horizontalDimensions = memory.getShort(0x4000042);
+
+            int x1 = getBits(horizontalDimensions, 8, 15);
+            int x2 = horizontalDimensions & 0xFF;
+
+            int verticalDimensions = memory.getShort(0x4000046);
+
+            int y1 = getBits(verticalDimensions, 8, 15);
+            int y2 = verticalDimensions & 0xFF;
+
+            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
+                return 0x4000049;
+            }
+        }
+
+        return 0x400004A;
+    }
+
+    private void applyMosaic(ref int x, ref int y) {
+        int mosaicControl = memory.getInt(0x400004C);
+        int hSize = (mosaicControl & 0b1111) + 1;
+        int vSize = getBits(mosaicControl, 4, 7) + 1;
+
+        x /= hSize;
+        x *= hSize;
+
+        y /= vSize;
+        y *= vSize;
+    }
+
+    private void writePixel(int p, int color, bool specialEffectEnabled, int layerNumber, bool lastLayer) {
+        int red = color & 0b11111;
+        int green = getBits(color, 5, 9);
+        int blue = getBits(color, 10, 14);
+
+        int blendControl = memory.getShort(0x4000050);
+
+        int specialEffect = specialEffectEnabled ? getBits(blendControl, 6, 7) : 0;
+
+        final switch (specialEffect) {
+            case 1:
+                int blendAlpha = memory.getShort(0x4000052);
+                bool firstTarget = checkBit(blendControl, layerNumber);
+                bool secondTarget = checkBit(blendControl, layerNumber + 8);
+                if (firstTarget && (!secondTarget || lastLayer)) {
+                    int currentRed = cast(int) (frame[p] / 255f * 31);
+                    int currentGreen = cast(int) (frame[p + 1] / 255f * 31);
+                    int currenBlue = cast(int) (frame[p + 2] / 255f * 31);
+
+                    int eva = blendAlpha & 0b11111;
+                    int firstRed = ((red << 4) * eva >> 4) + 8 >> 4;
+                    int firstGreen = ((green << 4) * eva >> 4) + 8 >> 4;
+                    int firstBlue = ((blue << 4) * eva >> 4) + 8 >> 4;
+
+                    int evb = getBits(blendAlpha, 8, 12);
+                    int secondRed = ((currentRed << 4) * evb >> 4) + 8 >> 4;
+                    int secondGreen = ((currentGreen << 4) * evb >> 4) + 8 >> 4;
+                    int secondBlue = ((currenBlue << 4) * evb >> 4) + 8 >> 4;
+
+                    red = min(31, firstRed + secondRed);
+                    green = min(31, firstGreen + secondGreen);
+                    blue = min(31, firstBlue + secondBlue);
+                }
+                break;
+            case 2:
+                if (checkBit(blendControl, layerNumber)) {
+                    int evy = memory.getInt(0x4000054) & 0b11111;
+                    red += ((31 - red << 4) * evy >> 4) + 8 >> 4;
+                    green += ((31 - green << 4) * evy >> 4) + 8 >> 4;
+                    blue += ((31 - blue << 4) * evy >> 4) + 8 >> 4;
+                }
+                break;
+            case 3:
+                if (checkBit(blendControl, layerNumber)) {
+                    int evy = memory.getInt(0x4000054) & 0b11111;
+                    red -= ((red << 4) * evy >> 4) + 8 >> 4;
+                    green -= ((green << 4) * evy >> 4) + 8 >> 4;
+                    blue -= ((blue << 4) * evy >> 4) + 8 >> 4;
+                }
+                break;
+        }
+
+        frame[p] = cast(ubyte) (red / 31f * 255);
+        frame[p + 1] = cast(ubyte) (green / 31f * 255);
+        frame[p + 2] = cast(ubyte) (blue / 31f * 255);
     }
 
     private Mode getMode() {
