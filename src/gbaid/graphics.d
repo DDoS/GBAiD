@@ -117,129 +117,44 @@ public class Display {
     }
 
     private void update0() {
-        int backColor = memory.getShort(0x5000000);
-        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
-        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
-        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
-
         int[] bgControlAddresses = [0x400000E, 0x400000C, 0x400000A, 0x4000008];
 
         auto lessThan = &bgLessThan;
         sort!lessThan(bgControlAddresses);
 
-        int displayControl = memory.getShort(0x4000000);
-
-        int bgEnables = getBits(displayControl, 8, 11);
-        int windowEnables = getBits(displayControl, 13, 14);
-
-        int enabledLayerCount = countBits(bgEnables);
-
-        uint p = 0;
-
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-
-                frame[p] = backRed;
-                frame[p + 1] = backGreen;
-                frame[p + 2] = backBlue;
-
-                for (int layer = 0; layer < 4; layer++) {
-
-                    int bgControlAddress = bgControlAddresses[layer];
-
-                    layer0(layer, line, column, p, bgEnables, bgControlAddress, windowEnables, enabledLayerCount);
-
-                }
-
-                p += 3;
-            }
+            line0(line, bgControlAddresses);
         }
     }
 
     private void update1() {
-        int backColor = memory.getShort(0x5000000);
-        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
-        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
-        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
-
         int[] bgControlAddresses = [0x400000C, 0x400000A, 0x4000008];
 
         auto lessThan = &bgLessThan;
         sort!lessThan(bgControlAddresses);
 
-        int displayControl = memory.getShort(0x4000000);
-
-        int bgEnables = getBits(displayControl, 8, 11);
-        int windowEnables = getBits(displayControl, 13, 14);
-
-        int enabledLayerCount = countBits(bgEnables & 0b111);
-
-        uint p = 0;
-
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-
-                frame[p] = backRed;
-                frame[p + 1] = backGreen;
-                frame[p + 2] = backBlue;
-
-                layer0(0, line, column, p, bgEnables, bgControlAddresses[0], windowEnables, enabledLayerCount);
-
-                layer0(1, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
-
-                layer2(2, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
-
-                p += 3;
-            }
+            line1(line, bgControlAddresses);
         }
     }
 
     private void update2() {
-        int backColor = memory.getShort(0x5000000);
-        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
-        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
-        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
-
         int[] bgControlAddresses = [0x400000E, 0x400000C];
 
         auto lessThan = &bgLessThan;
         sort!lessThan(bgControlAddresses);
 
-        int displayControl = memory.getShort(0x4000000);
-
-        int bgEnables = getBits(displayControl, 8, 11);
-        int windowEnables = getBits(displayControl, 13, 14);
-
-        int enabledLayerCount = countBits(bgEnables & 0b1100);
-
-        uint p = 0;
-
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-
-                frame[p] = backRed;
-                frame[p + 1] = backGreen;
-                frame[p + 2] = backBlue;
-
-                for (int layer = 0; layer < 2; layer++) {
-
-                    int bgControlAddress = bgControlAddresses[layer];
-
-                    layer2(layer, line, column, p, bgEnables, bgControlAddress, windowEnables, enabledLayerCount);
-
-                }
-
-                p += 3;
-            }
+            line2(line, bgControlAddresses);
         }
     }
 
@@ -294,6 +209,38 @@ public class Display {
                 i += 2;
                 p += 3;
             }
+        }
+    }
+
+    private void line0(int line, int[] bgControlAddresses) {
+        int backColor = memory.getShort(0x5000000);
+        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
+        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
+        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
+
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
+        int enabledLayerCount = countBits(bgEnables & 0b111);
+
+        int p = line * HORIZONTAL_RESOLUTION * 3;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            frame[p] = backRed;
+            frame[p + 1] = backGreen;
+            frame[p + 2] = backBlue;
+
+            for (int layer = 0; layer < 4; layer++) {
+
+                int bgControlAddress = bgControlAddresses[layer];
+
+                layer0(layer, line, column, p, bgEnables, bgControlAddress, windowEnables, enabledLayerCount);
+            }
+
+            p += 3;
         }
     }
 
@@ -402,6 +349,69 @@ public class Display {
         writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
     }
 
+    private void line1(int line, int[] bgControlAddresses) {
+        int backColor = memory.getShort(0x5000000);
+        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
+        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
+        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
+
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
+        int enabledLayerCount = countBits(bgEnables & 0b111);
+
+        uint p = line * HORIZONTAL_RESOLUTION * 3;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            frame[p] = backRed;
+            frame[p + 1] = backGreen;
+            frame[p + 2] = backBlue;
+
+            layer0(0, line, column, p, bgEnables, bgControlAddresses[0], windowEnables, enabledLayerCount);
+
+            layer0(1, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
+
+            layer2(2, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
+
+            p += 3;
+        }
+    }
+
+    private void line2(int line, int[] bgControlAddresses) {
+        int backColor = memory.getShort(0x5000000);
+        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
+        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
+        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
+
+        int displayControl = memory.getShort(0x4000000);
+
+        int bgEnables = getBits(displayControl, 8, 11);
+        int windowEnables = getBits(displayControl, 13, 14);
+
+        int enabledLayerCount = countBits(bgEnables & 0b1100);
+
+        uint p = line * HORIZONTAL_RESOLUTION * 3;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            frame[p] = backRed;
+            frame[p + 1] = backGreen;
+            frame[p + 2] = backBlue;
+
+            for (int layer = 0; layer < 2; layer++) {
+
+                layer2(layer, line, column, p, bgEnables, bgControlAddresses[layer], windowEnables, enabledLayerCount);
+
+                obj();
+            }
+
+            p += 3;
+        }
+    }
+
     private void layer2(int layer, int line, int column, int p, int bgEnables, int bgControlAddress, int windowEnables, int enabledLayerCount) {
         int layerNumber = (bgControlAddress - 0x4000008) / 2;
 
@@ -504,6 +514,10 @@ public class Display {
         int color = memory.getShort(0x5000000 + paletteAddress);
 
         writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
+    }
+
+    private void obj() {
+
     }
 
     private int getWindow(int windowEnables, int line, int column) {
