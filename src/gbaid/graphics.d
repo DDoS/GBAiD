@@ -14,16 +14,17 @@ public class Display {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
     private static immutable uint VERTICAL_RESOLUTION = 160;
     private static immutable uint SCREEN_AREA = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
-    private static immutable uint BYTES_PER_PIXEL = 2;
+    private static immutable uint LAYER_COUNT = 6;
     private static immutable uint COMPONENTS_PER_PIXEL = 3;
-    private static immutable uint BYTES_PER_COMPONENT = 1;
-    private static immutable uint FRAME_SIZE = SCREEN_AREA * COMPONENTS_PER_PIXEL * BYTES_PER_COMPONENT;
+    private static immutable uint LAYER_OFFSET = HORIZONTAL_RESOLUTION * COMPONENTS_PER_PIXEL;
+    private static immutable uint FRAME_SIZE = SCREEN_AREA * COMPONENTS_PER_PIXEL;
     private Memory memory;
     private Context context;
     private Program program;
     private Texture texture;
     private VertexArray vertexArray;
     private ubyte[FRAME_SIZE] frame = new ubyte[FRAME_SIZE];
+    private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
 
     public void setMemory(Memory memory) {
         this.memory = memory;
@@ -145,16 +146,11 @@ public class Display {
     }
 
     private void update2() {
-        int[] bgControlAddresses = [0x400000E, 0x400000C];
-
-        auto lessThan = &bgLessThan;
-        sort!lessThan(bgControlAddresses);
-
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            line2(line, bgControlAddresses);
+            line2(line);
         }
     }
 
@@ -374,67 +370,48 @@ public class Display {
 
             layer0(1, line, column, p, bgEnables, bgControlAddresses[1], windowEnables, enabledLayerCount);
 
-            layer2(2, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
+            //layer2(2, line, column, p, bgEnables, bgControlAddresses[2], windowEnables, enabledLayerCount);
 
             p += 3;
         }
     }
 
-    private void line2(int line, int[] bgControlAddresses) {
-        int backColor = memory.getShort(0x5000000);
-        ubyte backRed = cast(ubyte) ((backColor & 0b11111) / 31f * 255);
-        ubyte backGreen = cast(ubyte) (getBits(backColor, 5, 9) / 31f * 255);
-        ubyte backBlue = cast(ubyte) (getBits(backColor, 10, 14) / 31f * 255);
-
+    private void line2(int line) {
         int displayControl = memory.getShort(0x4000000);
 
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 14);
 
-        int enabledLayerCount = countBits(bgEnables & 0b1100);
+        int blendControl = memory.getShort(0x4000050);
 
-        uint p = line * HORIZONTAL_RESOLUTION * 3;
+        short backColor = memory.getShort(0x5000000);
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-
-            frame[p] = backRed;
-            frame[p + 1] = backGreen;
-            frame[p + 2] = backBlue;
-
-            for (int layer = 0; layer < 2; layer++) {
-
-                layer2(layer, line, column, p, bgEnables, bgControlAddresses[layer], windowEnables, enabledLayerCount);
-
-                obj();
-            }
-
-            p += 3;
+            lines[0][column] = backColor;
         }
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            lines[1][column] = backColor;
+        }
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            layer2(line, column, 2, lines[2], bgEnables, backColor);
+        }
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            layer2(line, column, 3, lines[3], bgEnables, backColor);
+        }
+
+        lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layer2(int layer, int line, int column, int p, int bgEnables, int bgControlAddress, int windowEnables, int enabledLayerCount) {
-        int layerNumber = (bgControlAddress - 0x4000008) / 2;
-
-        if (!checkBit(bgEnables, layerNumber)) {
+    private void layer2(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
+        if (!checkBit(bgEnables, layer)) {
+            buffer[column] = backColor;
             return;
         }
 
-        int window = getWindow(windowEnables, line, column);
-
-        bool specialEffectEnabled;
-
-        if (window != 0) {
-            int windowControl = memory.getByte(window);
-
-            if (!checkBit(windowControl, layerNumber)) {
-                return;
-            }
-
-            specialEffectEnabled = checkBit(windowControl, 5);
-        } else {
-            specialEffectEnabled = true;
-        }
-
+        int bgControlAddress = 0x4000008 + layer * 2;
         int bgControl = memory.getShort(bgControlAddress);
 
         int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
@@ -449,7 +426,7 @@ public class Display {
         int tileCount = 16 * (1 << screenSize);
         int bgSize = tileCount * tileLength;
 
-        int layerAddressOffset = (layerNumber - 2) * 16;
+        int layerAddressOffset = (layer - 2) * 16;
         int pa = memory.getShort(0x4000020 + layerAddressOffset);
         int pc = memory.getShort(0x4000022 + layerAddressOffset);
         int pb = memory.getShort(0x4000024 + layerAddressOffset);
@@ -474,6 +451,7 @@ public class Display {
                     x += bgSize;
                 }
             } else {
+                buffer[column] = backColor;
                 return;
             }
         }
@@ -485,6 +463,7 @@ public class Display {
                     y += bgSize;
                 }
             } else {
+                buffer[column] = backColor;
                 return;
             }
         }
@@ -508,16 +487,13 @@ public class Display {
         int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
 
         if (paletteAddress == 0) {
+            buffer[column] = backColor;
             return;
         }
 
-        int color = memory.getShort(0x5000000 + paletteAddress);
+        short color = memory.getShort(0x5000000 + paletteAddress);
 
-        writePixel(p, color, specialEffectEnabled, layerNumber, layer == enabledLayerCount - 1);
-    }
-
-    private void obj() {
-
+        buffer[column] = color;
     }
 
     private int getWindow(int windowEnables, int line, int column) {
@@ -627,6 +603,49 @@ public class Display {
         frame[p] = cast(ubyte) (red / 31f * 255);
         frame[p + 1] = cast(ubyte) (green / 31f * 255);
         frame[p + 2] = cast(ubyte) (blue / 31f * 255);
+    }
+
+    private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
+        uint p = line * HORIZONTAL_RESOLUTION * COMPONENTS_PER_PIXEL;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            bool specialEffectEnabled;
+            int layerEnables;
+
+            int window = getWindow(windowEnables, line, column);
+            if (window != 0) {
+                int windowControl = memory.getByte(window);
+                layerEnables = windowControl & 0b11111;
+                specialEffectEnabled = checkBit(windowControl, 5);
+            } else {
+                layerEnables = 0b11111;
+                specialEffectEnabled = true;
+            }
+
+            short color;
+
+            for (int layer = 0; layer < 4; layer++) {
+                short layerColor = lines[layer][column];
+
+                if (!checkBit(layerEnables, layer) || layerColor == backColor) {
+                    continue;
+                }
+
+                int bgControlAddress = 0x4000008 + layer * 2;
+                int bgControl = memory.getShort(bgControlAddress);
+
+                int priority = bgControl & 0b11;
+
+                color = layerColor;
+            }
+
+            frame[p] = cast(ubyte) ((color & 0b11111) / 31f * 255);
+            frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
+            frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+
+            p += COMPONENTS_PER_PIXEL;
+        }
     }
 
     private Mode getMode() {
