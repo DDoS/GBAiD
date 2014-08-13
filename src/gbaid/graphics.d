@@ -518,65 +518,10 @@ public class Display {
         y *= vSize;
     }
 
-    private void writePixel(int p, int color, bool specialEffectEnabled, int layerNumber, bool lastLayer) {
-        int red = color & 0b11111;
-        int green = getBits(color, 5, 9);
-        int blue = getBits(color, 10, 14);
-
-        int blendControl = memory.getShort(0x4000050);
-
-        int specialEffect = specialEffectEnabled ? getBits(blendControl, 6, 7) : 0;
-
-        final switch (specialEffect) {
-            case 1:
-                int blendAlpha = memory.getShort(0x4000052);
-                bool firstTarget = checkBit(blendControl, layerNumber);
-                bool secondTarget = checkBit(blendControl, layerNumber + 8);
-                if (firstTarget && (!secondTarget || lastLayer)) {
-                    int currentRed = cast(int) (frame[p] / 255f * 31);
-                    int currentGreen = cast(int) (frame[p + 1] / 255f * 31);
-                    int currenBlue = cast(int) (frame[p + 2] / 255f * 31);
-
-                    int eva = blendAlpha & 0b11111;
-                    int firstRed = ((red << 4) * eva >> 4) + 8 >> 4;
-                    int firstGreen = ((green << 4) * eva >> 4) + 8 >> 4;
-                    int firstBlue = ((blue << 4) * eva >> 4) + 8 >> 4;
-
-                    int evb = getBits(blendAlpha, 8, 12);
-                    int secondRed = ((currentRed << 4) * evb >> 4) + 8 >> 4;
-                    int secondGreen = ((currentGreen << 4) * evb >> 4) + 8 >> 4;
-                    int secondBlue = ((currenBlue << 4) * evb >> 4) + 8 >> 4;
-
-                    red = min(31, firstRed + secondRed);
-                    green = min(31, firstGreen + secondGreen);
-                    blue = min(31, firstBlue + secondBlue);
-                }
-                break;
-            case 2:
-                if (checkBit(blendControl, layerNumber)) {
-                    int evy = memory.getInt(0x4000054) & 0b11111;
-                    red += ((31 - red << 4) * evy >> 4) + 8 >> 4;
-                    green += ((31 - green << 4) * evy >> 4) + 8 >> 4;
-                    blue += ((31 - blue << 4) * evy >> 4) + 8 >> 4;
-                }
-                break;
-            case 3:
-                if (checkBit(blendControl, layerNumber)) {
-                    int evy = memory.getInt(0x4000054) & 0b11111;
-                    red -= ((red << 4) * evy >> 4) + 8 >> 4;
-                    green -= ((green << 4) * evy >> 4) + 8 >> 4;
-                    blue -= ((blue << 4) * evy >> 4) + 8 >> 4;
-                }
-                break;
-        }
-
-        frame[p] = cast(ubyte) (red / 31f * 255);
-        frame[p + 1] = cast(ubyte) (green / 31f * 255);
-        frame[p + 2] = cast(ubyte) (blue / 31f * 255);
-    }
-
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
         uint p = line * HORIZONTAL_RESOLUTION * COMPONENTS_PER_PIXEL;
+
+        int colorEffect = getBits(blendControl, 6, 7);
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
@@ -595,6 +540,9 @@ public class Display {
 
             short color = lines[3][column];
             int previousPriority = memory.getShort(0x400000E) & 0b11;
+            if (checkBit(blendControl, 3)) {
+                applyBrightnessEffect(colorEffect, color);
+            }
 
             for (int layer = 2; layer >= 0; layer--) {
                 int currentPriority = memory.getShort(0x4000008 + layer * 2) & 0b11;
@@ -604,6 +552,9 @@ public class Display {
                         if (layerColor != backColor) {
                             color = layerColor;
                             previousPriority = currentPriority;
+                            if (checkBit(blendControl, layer)) {
+                                applyBrightnessEffect(colorEffect, color);
+                            }
                         }
                     }
                 }
@@ -615,6 +566,65 @@ public class Display {
 
             p += COMPONENTS_PER_PIXEL;
         }
+    }
+
+    private void applyBrightnessEffect(int colorEffect, ref short first) {
+        if (!(colorEffect & 0b10)) {
+            return;
+        }
+
+        int firstRed = first & 0b11111;
+        int firstGreen = getBits(first, 5, 9);
+        int firstBlue = getBits(first, 10, 14);
+
+        final switch (colorEffect) {
+            case 2:
+                int evy = memory.getInt(0x4000054) & 0b11111;
+                firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
+                firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
+                firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
+                break;
+            case 3:
+                int evy = memory.getInt(0x4000054) & 0b11111;
+                firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
+                firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
+                firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
+                break;
+        }
+
+        first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
+    }
+
+    private short applyBlendEffect(int colorEffect, short first, short second) {
+        if (colorEffect != 1) {
+            return first;
+        }
+
+        int firstRed = first & 0b11111;
+        int firstGreen = getBits(first, 5, 9);
+        int firstBlue = getBits(first, 10, 14);
+
+        int secondRed = second & 0b11111;
+        int secondGreen = getBits(second, 5, 9);
+        int secondBlue = getBits(second, 10, 14);
+
+        int blendAlpha = memory.getShort(0x4000052);
+
+        int eva = blendAlpha & 0b11111;
+        firstRed = ((firstRed << 4) * eva >> 4) + 8 >> 4;
+        firstGreen = ((firstGreen << 4) * eva >> 4) + 8 >> 4;
+        firstBlue = ((firstBlue << 4) * eva >> 4) + 8 >> 4;
+
+        int evb = getBits(blendAlpha, 8, 12);
+        secondRed = ((secondRed << 4) * evb >> 4) + 8 >> 4;
+        secondGreen = ((secondGreen << 4) * evb >> 4) + 8 >> 4;
+        secondBlue = ((secondBlue << 4) * evb >> 4) + 8 >> 4;
+
+        int blendRed = min(31, firstRed + secondRed);
+        int blendGreen = min(31, firstGreen + secondGreen);
+        int blendBlue = min(31, firstBlue + secondBlue);
+
+        return (blendBlue & 31) << 10 | (blendGreen & 31) << 5 | blendRed & 31;
     }
 
     private Mode getMode() {
