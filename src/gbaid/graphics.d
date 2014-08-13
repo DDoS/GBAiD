@@ -538,26 +538,48 @@ public class Display {
                 specialEffectEnabled = true;
             }
 
+            short previousColor = backColor;
             short color = lines[3][column];
+
             int previousPriority = memory.getShort(0x400000E) & 0b11;
+
+            int previousLayer = 5;
+            int topLayer = 3;
+
             if (checkBit(blendControl, 3)) {
                 applyBrightnessEffect(colorEffect, color);
             }
 
             for (int layer = 2; layer >= 0; layer--) {
+
                 int currentPriority = memory.getShort(0x4000008 + layer * 2) & 0b11;
+
                 if (currentPriority <= previousPriority) {
+
                     if (checkBit(layerEnables, layer)) {
+
                         short layerColor = lines[layer][column];
+
                         if (layerColor != backColor) {
+
+                            previousColor = color;
                             color = layerColor;
+
                             previousPriority = currentPriority;
+
+                            previousLayer = topLayer;
+                            topLayer = layer;
+
                             if (checkBit(blendControl, layer)) {
                                 applyBrightnessEffect(colorEffect, color);
                             }
                         }
                     }
                 }
+            }
+
+            if (colorEffect == 1 && checkBit(blendControl, topLayer) && checkBit(blendControl, previousLayer + 8)) {
+                color = applyBlendEffect(color, previousColor);
             }
 
             frame[p] = cast(ubyte) ((color & 0b11111) / 31f * 255);
@@ -595,11 +617,7 @@ public class Display {
         first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
     }
 
-    private short applyBlendEffect(int colorEffect, short first, short second) {
-        if (colorEffect != 1) {
-            return first;
-        }
-
+    private short applyBlendEffect(short first, short second) {
         int firstRed = first & 0b11111;
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
