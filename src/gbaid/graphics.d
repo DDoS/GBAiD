@@ -63,11 +63,10 @@ public class Display {
         vertexArray.setData(generatePlane(2, 2));
 
         while (!context.isWindowCloseRequested()) {
-            long start = TickDuration.currSystemTick().msecs();
+            //long start = TickDuration.currSystemTick().msecs();
             update();
-            long delta = TickDuration.currSystemTick().msecs() - start;
-            writeln(delta);
-            Thread.sleep(dur!"msecs"(16));
+            //long delta = TickDuration.currSystemTick().msecs() - start;
+            //writeln(delta);
         }
 
         context.destroy();
@@ -314,7 +313,7 @@ public class Display {
 
             if (paletteAddress == 0) {
                 buffer[column] = backColor;
-                return;
+                continue;
             }
 
             short color = memory.getShort(0x5000000 + paletteAddress);
@@ -355,13 +354,13 @@ public class Display {
 
         short backColor = memory.getShort(0x5000000);
 
-        layerBackdrop(lines[0], backColor);
+        //layerBackdrop(lines[0], backColor);
 
-        layerBackdrop(lines[1], backColor);
+        //layerBackdrop(lines[1], backColor);
 
-        layerBackground2(line, lines[2], 2, bgEnables, backColor);
+        //layerBackground2(line, lines[2], 2, bgEnables, backColor);
 
-        layerBackground2(line, lines[3], 3, bgEnables, backColor);
+        //layerBackground2(line, lines[3], 3, bgEnables, backColor);
 
         layerObject(line, lines[4], tileMapping, backColor);
 
@@ -416,7 +415,7 @@ public class Display {
                     }
                 } else {
                     buffer[column] = backColor;
-                    return;
+                    continue;
                 }
             }
 
@@ -428,7 +427,7 @@ public class Display {
                     }
                 } else {
                     buffer[column] = backColor;
-                    return;
+                    continue;
                 }
             }
 
@@ -452,7 +451,7 @@ public class Display {
 
             if (paletteAddress == 0) {
                 buffer[column] = backColor;
-                return;
+                continue;
             }
 
             short color = memory.getShort(0x5000000 + paletteAddress);
@@ -567,7 +566,11 @@ public class Display {
                     }
                 }
 
-                if (objectX < 0 || objectX >= horizontalSize || objectY < 0 || objectY >= verticalSize) {
+                if (objectY < 0 || objectY >= verticalSize) {
+                    break;
+                }
+
+                if (objectX < 0 || objectX >= horizontalSize) {
                     continue;
                 }
 
@@ -668,6 +671,13 @@ public class Display {
 
         int colorEffect = getBits(blendControl, 6, 7);
 
+        int[4] priorities = [
+            memory.getShort(0x4000008) & 0b11,
+            memory.getShort(0x400000A) & 0b11,
+            memory.getShort(0x400000C) & 0b11,
+            memory.getShort(0x400000E) & 0b11
+        ];
+
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
             bool specialEffectEnabled = void;
@@ -683,21 +693,23 @@ public class Display {
                 specialEffectEnabled = true;
             }
 
-            short previousColor = backColor;
-            short color = lines[3][column];
+            int layer = 3;
 
-            int previousPriority = memory.getShort(0x400000E) & 0b11;
+            short previousColor = backColor;
+            short color = lines[layer][column];
+
+            int previousPriority = priorities[layer];
 
             int previousLayer = 5;
-            int topLayer = 3;
+            int topLayer = layer;
 
-            if (checkBit(blendControl, 3)) {
+            if (checkBit(blendControl, layer)) {
                 applyBrightnessEffect(colorEffect, color);
             }
 
-            for (int layer = 2; layer >= 0; layer--) {
+            for (layer = 2; layer >= 0; layer--) {
 
-                int currentPriority = memory.getShort(0x4000008 + layer * 2) & 0b11;
+                int currentPriority = priorities[layer];
 
                 if (currentPriority <= previousPriority) {
 
