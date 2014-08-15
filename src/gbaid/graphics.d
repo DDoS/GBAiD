@@ -76,22 +76,22 @@ public class Display {
         } else {
             final switch (getMode()) {
                 case Mode.BACKGROUND_4:
-                    update0();
+                    updateMode0();
                     break;
                 case Mode.BACKGROUND_3:
-                    update1();
+                    updateMode1();
                     break;
                 case Mode.BACKGROUND_2:
-                    update2();
+                    updateMode2();
                     break;
                 case Mode.BITMAP_16_DIRECT_SINGLE:
-                    update3();
+                    updateMode3();
                     break;
                 case Mode.BITMAP_8_PALETTE_DOUBLE:
-                    update4();
+                    updateMode4();
                     break;
                 case Mode.BITMAP_16_DIRECT_DOUBLE:
-                    update5();
+                    updateMode5();
                     break;
             }
         }
@@ -117,34 +117,34 @@ public class Display {
         }
     }
 
-    private void update0() {
+    private void updateMode0() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            line0(line);
+            lineMode0(line);
         }
     }
 
-    private void update1() {
+    private void updateMode1() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            line1(line);
+            lineMode1(line);
         }
     }
 
-    private void update2() {
+    private void updateMode2() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
 
             setVCOUNT(line);
 
-            line2(line);
+            lineMode2(line);
         }
     }
 
-    private void update3() {
+    private void updateMode3() {
         uint i = 0x6000000, p = 0;
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
             setVCOUNT(line);
@@ -159,7 +159,7 @@ public class Display {
         }
     }
 
-    private void update4() {
+    private void updateMode4() {
         int displayControl = memory.getShort(0x4000000);
         uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
         uint p = 0;
@@ -181,7 +181,7 @@ public class Display {
         }
     }
 
-    private void update5() {
+    private void updateMode5() {
         int displayControl = memory.getShort(0x4000000);
         uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
         uint p = 0;
@@ -198,7 +198,11 @@ public class Display {
         }
     }
 
-    private void line0(int line) {
+    private void layerBackdrop(int column, short[] buffer, short backColor) {
+        buffer[column] = backColor;
+    }
+
+    private void lineMode0(int line) {
         int displayControl = memory.getShort(0x4000000);
 
         int bgEnables = getBits(displayControl, 8, 11);
@@ -209,25 +213,25 @@ public class Display {
         short backColor = memory.getShort(0x5000000);
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 0, lines[0], bgEnables, backColor);
+            layerBackground0(line, column, 0, lines[0], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 1, lines[1], bgEnables, backColor);
+            layerBackground0(line, column, 1, lines[1], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 2, lines[2], bgEnables, backColor);
+            layerBackground0(line, column, 2, lines[2], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 3, lines[3], bgEnables, backColor);
+            layerBackground0(line, column, 3, lines[3], bgEnables, backColor);
         }
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layer0(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
+    private void layerBackground0(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
         if (!checkBit(bgEnables, layer)) {
             buffer[column] = backColor;
             return;
@@ -299,7 +303,7 @@ public class Display {
 
         int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
 
-        int paletteAddress;
+        int paletteAddress = void;
         if (singlePalette) {
             paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
         } else {
@@ -317,7 +321,7 @@ public class Display {
         buffer[column] = color;
     }
 
-    private void line1(int line) {
+    private void lineMode1(int line) {
         int displayControl = memory.getShort(0x4000000);
 
         int bgEnables = getBits(displayControl, 8, 11);
@@ -328,27 +332,28 @@ public class Display {
         short backColor = memory.getShort(0x5000000);
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            lines[0][column] = backColor;
+            layerBackdrop(column, lines[0], backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 1, lines[1], bgEnables, backColor);
+            layerBackground0(line, column, 1, lines[1], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer0(line, column, 2, lines[2], bgEnables, backColor);
+            layerBackground0(line, column, 2, lines[2], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer2(line, column, 3, lines[3], bgEnables, backColor);
+            layerBackground2(line, column, 3, lines[3], bgEnables, backColor);
         }
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void line2(int line) {
+    private void lineMode2(int line) {
         int displayControl = memory.getShort(0x4000000);
 
+        int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 14);
 
@@ -357,29 +362,33 @@ public class Display {
         short backColor = memory.getShort(0x5000000);
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            lines[0][column] = backColor;
+            layerBackdrop(column, lines[0], backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            lines[1][column] = backColor;
+            layerBackdrop(column, lines[1], backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer2(line, column, 2, lines[2], bgEnables, backColor);
+            layerBackground2(line, column, 2, lines[2], bgEnables, backColor);
         }
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layer2(line, column, 3, lines[3], bgEnables, backColor);
+            layerBackground2(line, column, 3, lines[3], bgEnables, backColor);
         }
+
+        layerObject(line, lines[4], tileMapping, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layer2(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
+    private void layerBackground2(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
         if (!checkBit(bgEnables, layer)) {
             buffer[column] = backColor;
             return;
         }
+
+        //long start = TickDuration.currSystemTick().nsecs();
 
         int bgControlAddress = 0x4000008 + layer * 2;
         int bgControl = memory.getShort(bgControlAddress);
@@ -408,11 +417,11 @@ public class Display {
         dy <<= 4;
         dy >>= 4;
 
-        int x = (pa * ((column << 8) + dx) >> 8) + (pc * ((line << 8) + dy) >> 8);
-        int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8);
+        //long delta = TickDuration.currSystemTick().nsecs() - start;
+        //writeln(delta / 1e6f);
 
-        x = x + 128 >> 8;
-        y = y + 128 >> 8;
+        int x = (pa * ((column << 8) + dx) >> 8) + (pb * ((line << 8) + dy) >> 8) + 128 >> 8;
+        int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8) + 128 >> 8;
 
         if (x < 0 || x > bgSize) {
             if (displayOverflow) {
@@ -464,6 +473,156 @@ public class Display {
         short color = memory.getShort(0x5000000 + paletteAddress);
 
         buffer[column] = color;
+    }
+
+    private void layerObject(int line, short[] buffer, int tileMapping, short backColor) {
+        int tileLength = 8;
+        int tileSize = tileLength * tileLength / 2;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            buffer[column] = backColor;
+        }
+
+        for (int i = 0; i < 128; i++) {
+            int attributeAddress = 0x7000000 + i * 8;
+
+            int attribute0 = memory.getShort(attributeAddress);
+
+            int rotAndScale = getBit(attribute0, 8);
+            if (!rotAndScale) {
+                if (checkBit(attribute0, 9)) {
+                    continue;
+                }
+            }
+
+            int attribute1 = memory.getShort(attributeAddress + 2);
+            int attribute2 = memory.getShort(attributeAddress + 4);
+
+            int y = attribute0 & 0xFF;
+            int doubleSize = getBit(attribute0, 9);
+            int mode = getBits(attribute0, 10, 11);
+            int mosaic = getBit(attribute0, 12);
+            int singlePalette = getBit(attribute0, 13);
+            int shape = getBits(attribute0, 14, 15);
+
+            int x = attribute1 & 0x1FF;
+            int horizontalFlip = void, verticalFlip = void;
+            int pa = void, pb = void, pc = void, pd = void;
+            if (rotAndScale) {
+                horizontalFlip = 0;
+                verticalFlip = 0;
+                int rotAndScaleParameters = getBits(attribute1, 9, 13);
+                int parametersAddress = rotAndScaleParameters * 32 + 0x7000006;
+                pa = memory.getShort(parametersAddress);
+                pb = memory.getShort(parametersAddress + 8);
+                pc = memory.getShort(parametersAddress + 16);
+                pd = memory.getShort(parametersAddress + 24);
+            } else {
+                horizontalFlip = getBit(attribute1, 12);
+                verticalFlip = getBit(attribute1, 13);
+                pa = 0;
+                pb = 0;
+                pc = 0;
+                pd = 0;
+            }
+            int size = getBits(attribute1, 14, 15);
+
+            int tileNumber = attribute2 & 0x3FF;
+            int priority = getBits(attribute2, 10, 11);
+
+            int horizontalSize = void;
+            int verticalSize = void;
+
+            if (shape == 0) {
+                horizontalSize = tileLength * (1 << size);
+                verticalSize = horizontalSize;
+            } else {
+                final switch (size) {
+                    case 0:
+                        horizontalSize = 16;
+                        verticalSize = 8;
+                        break;
+                    case 1:
+                        horizontalSize = 32;
+                        verticalSize = 8;
+                        break;
+                    case 2:
+                        horizontalSize = 32;
+                        verticalSize = 16;
+                        break;
+                    case 3:
+                        horizontalSize = 64;
+                        verticalSize = 32;
+                        break;
+                }
+                if (shape == 2) {
+                    swap!int(horizontalSize, verticalSize);
+                }
+            }
+
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+                int objectX = column - x;
+                int objectY = line - y;
+
+                if (rotAndScale) {
+                    int halfHorizontalSize = horizontalSize / 2;
+                    int halfVerticalSize = verticalSize / 2;
+                    objectX -= halfHorizontalSize;
+                    objectY -= halfVerticalSize;
+                    objectX = ((pa * (objectX << 8) >> 8) + (pb * (objectY << 8) >> 8) + 128 >> 8) + halfHorizontalSize;
+                    objectY = ((pc * (objectX << 8) >> 8) + (pd * (objectY << 8) >> 8) + 128 >> 8) + halfVerticalSize;
+                } else {
+                    if (verticalFlip) {
+                        objectX = horizontalSize - objectX - 1;
+                    }
+                    if (horizontalFlip) {
+                        objectY = verticalSize - objectY - 1;
+                    }
+                }
+
+                if (objectX < 0 || objectX >= horizontalSize || objectY < 0 || objectY >= verticalSize) {
+                    continue;
+                }
+
+                int mapX = objectX / tileLength;
+                int mapY = objectY / tileLength;
+
+                int tileX = objectX % tileLength;
+                int tileY = objectY % tileLength;
+
+                int tileAddress = tileNumber;
+
+                if (tileMapping) {
+                    // 1D
+                    tileAddress += mapX + mapY * horizontalSize / tileLength << singlePalette;
+                } else {
+                    // 2D
+                    tileAddress += (mapX << singlePalette) + mapY * 32;
+                }
+                tileAddress *= tileSize;
+
+                tileAddress += tileX + tileY * tileLength >> (1 - singlePalette);
+
+                tileAddress += 0x6010000;
+
+                int paletteAddress = void;
+                if (singlePalette) {
+                    paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+                } else {
+                    int paletteNumber = getBits(attribute2, 12, 15);
+                    paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileX % 2 * 4)) * 2;
+                }
+
+                if (paletteAddress == 0) {
+                    continue;
+                }
+
+                short color = memory.getShort(0x5000000 + paletteAddress);
+
+                buffer[column] = color;
+            }
+        }
     }
 
     private int getWindow(int windowEnables, int line, int column) {
@@ -525,8 +684,8 @@ public class Display {
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
-            bool specialEffectEnabled;
-            int layerEnables;
+            bool specialEffectEnabled = void;
+            int layerEnables = void;
 
             int window = getWindow(windowEnables, line, column);
             if (window != 0) {
@@ -581,6 +740,8 @@ public class Display {
             if (colorEffect == 1 && checkBit(blendControl, topLayer) && checkBit(blendControl, previousLayer + 8)) {
                 color = applyBlendEffect(color, previousColor);
             }
+
+            color = lines[4][column];
 
             frame[p] = cast(ubyte) ((color & 0b11111) / 31f * 255);
             frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
@@ -704,7 +865,7 @@ attribute vec3 position;
 varying vec2 textureCoords;
 
 void main() {
-    textureCoords = (position.xy + 1) / 2;
+    textureCoords = vec2(position.x + 1, 1 - position.y) / 2;
     gl_Position = vec4(position, 1);
 }
 `;
