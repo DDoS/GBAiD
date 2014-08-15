@@ -43,7 +43,7 @@ public class ROM : Memory {
     }
 
     public byte getByte(uint address) {
-        return cast(byte) (memory[address / 4] >> address % 4 * 8 & 0xFF);
+        return cast(byte) (memory[address >> 2] >> ((address & 3) << 3) & 0xFF);
     }
 
     public void setByte(uint address, byte b) {
@@ -51,8 +51,8 @@ public class ROM : Memory {
     }
 
     public short getShort(uint address) {
-        address /= 2;
-        return cast(short) (memory[address / 2] >> address % 2 * 16 & 0xFFFF);
+        address >>= 1;
+        return cast(short) (memory[address >> 1] >> ((address & 1) << 4) & 0xFFFF);
     }
 
     public void setShort(uint address, short s) {
@@ -60,7 +60,7 @@ public class ROM : Memory {
     }
 
     public int getInt(uint address) {
-        return memory[address / 4];
+        return memory[address >> 2];
     }
 
     public void setInt(uint address, int i) {
@@ -82,20 +82,20 @@ public class RAM : ROM {
     }
 
     public override void setByte(uint address, byte b) {
-        int wordAddress = address / 4;
-        int offset = address % 4 * 8;
+        int wordAddress = address >> 2;
+        int offset = (address & 3) << 3;
         memory[wordAddress] = memory[wordAddress] & ~(0xFF << offset) | (b & 0xFF) << offset;
     }
 
     public override void setShort(uint address, short s) {
-        address /= 2;
-        int wordAddress = address / 2;
-        int offset = address % 2 * 16;
+        address >>= 1;
+        int wordAddress = address >> 1;
+        int offset = (address & 1) << 4;
         memory[wordAddress] = memory[wordAddress] & ~(0xFFFF << offset) | (s & 0xFFFF) << offset;
     }
 
     public override void setInt(uint address, int i) {
-        memory[address / 4] = i;
+        memory[address >> 2] = i;
     }
 }
 

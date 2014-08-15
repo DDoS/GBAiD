@@ -63,7 +63,10 @@ public class Display {
         vertexArray.setData(generatePlane(2, 2));
 
         while (!context.isWindowCloseRequested()) {
+            long start = TickDuration.currSystemTick().msecs();
             update();
+            long delta = TickDuration.currSystemTick().msecs() - start;
+            writeln(delta);
             Thread.sleep(dur!"msecs"(16));
         }
 
@@ -198,8 +201,10 @@ public class Display {
         }
     }
 
-    private void layerBackdrop(int column, short[] buffer, short backColor) {
-        buffer[column] = backColor;
+    private void layerBackdrop(short[] buffer, short backColor) {
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            buffer[column] = backColor;
+        }
     }
 
     private void lineMode0(int line) {
@@ -212,28 +217,22 @@ public class Display {
 
         short backColor = memory.getShort(0x5000000);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 0, lines[0], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[0], 0, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 1, lines[1], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[1], 1, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 2, lines[2], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[2], 2, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 3, lines[3], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[3], 3, bgEnables, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layerBackground0(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
+    private void layerBackground0(int line, short[] buffer, int layer, int bgEnables, short backColor) {
         if (!checkBit(bgEnables, layer)) {
-            buffer[column] = backColor;
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                buffer[column] = backColor;
+            }
             return;
         }
 
@@ -257,68 +256,71 @@ public class Display {
         int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
         int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
 
-        int x = column + xOffset;
-        int y = line + yOffset;
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
-        if (x > bgSize) {
-            x %= bgSize;
-            if (screenSize == 1 || screenSize == 3) {
-                mapBase += 2 * BYTES_PER_KIB;
+            int x = column + xOffset;
+            int y = line + yOffset;
+
+            if (x > bgSize) {
+                x %= bgSize;
+                if (screenSize == 1 || screenSize == 3) {
+                    mapBase += 2 * BYTES_PER_KIB;
+                }
             }
-        }
 
-        if (y > bgSize) {
-            y %= bgSize;
-            if (screenSize == 2) {
-                mapBase += 2 * BYTES_PER_KIB;
-            } else if (screenSize == 3) {
-                mapBase += 4 * BYTES_PER_KIB;
+            if (y > bgSize) {
+                y %= bgSize;
+                if (screenSize == 2) {
+                    mapBase += 2 * BYTES_PER_KIB;
+                } else if (screenSize == 3) {
+                    mapBase += 4 * BYTES_PER_KIB;
+                }
             }
+
+            if (mosaic) {
+                applyMosaic(x, y);
+            }
+
+            int mapColumn = x / tileLength;
+            int mapLine = y / tileLength;
+
+            int tileColumn = x % tileLength;
+            int tileLine = y % tileLength;
+
+            int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
+
+            int tile = memory.getShort(mapAddress);
+
+            int tileNumber = tile & 0x3FF;
+            int horizontalFlip = getBit(tile, 10);
+            int verticalFlip = getBit(tile, 11);
+
+            if (horizontalFlip) {
+                tileLine = tileLength - tileLine - 1;
+            }
+            if (verticalFlip) {
+                tileColumn = tileLength - tileColumn - 1;
+            }
+
+            int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
+
+            int paletteAddress = void;
+            if (singlePalette) {
+                paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+            } else {
+                int paletteNumber = getBits(tile, 12, 15);
+                paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
+            }
+
+            if (paletteAddress == 0) {
+                buffer[column] = backColor;
+                return;
+            }
+
+            short color = memory.getShort(0x5000000 + paletteAddress);
+
+            buffer[column] = color;
         }
-
-        if (mosaic) {
-            applyMosaic(x, y);
-        }
-
-        int mapColumn = x / tileLength;
-        int mapLine = y / tileLength;
-
-        int tileColumn = x % tileLength;
-        int tileLine = y % tileLength;
-
-        int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
-
-        int tile = memory.getShort(mapAddress);
-
-        int tileNumber = tile & 0x3FF;
-        int horizontalFlip = getBit(tile, 10);
-        int verticalFlip = getBit(tile, 11);
-
-        if (horizontalFlip) {
-            tileLine = tileLength - tileLine - 1;
-        }
-        if (verticalFlip) {
-            tileColumn = tileLength - tileColumn - 1;
-        }
-
-        int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
-
-        int paletteAddress = void;
-        if (singlePalette) {
-            paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-        } else {
-            int paletteNumber = getBits(tile, 12, 15);
-            paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
-        }
-
-        if (paletteAddress == 0) {
-            buffer[column] = backColor;
-            return;
-        }
-
-        short color = memory.getShort(0x5000000 + paletteAddress);
-
-        buffer[column] = color;
     }
 
     private void lineMode1(int line) {
@@ -331,21 +333,13 @@ public class Display {
 
         short backColor = memory.getShort(0x5000000);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackdrop(column, lines[0], backColor);
-        }
+        layerBackdrop(lines[0], backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 1, lines[1], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[1], 1, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground0(line, column, 2, lines[2], bgEnables, backColor);
-        }
+        layerBackground0(line, lines[2], 2, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground2(line, column, 3, lines[3], bgEnables, backColor);
-        }
+        layerBackground2(line, lines[3], 3, bgEnables, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
@@ -361,34 +355,26 @@ public class Display {
 
         short backColor = memory.getShort(0x5000000);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackdrop(column, lines[0], backColor);
-        }
+        layerBackdrop(lines[0], backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackdrop(column, lines[1], backColor);
-        }
+        layerBackdrop(lines[1], backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground2(line, column, 2, lines[2], bgEnables, backColor);
-        }
+        layerBackground2(line, lines[2], 2, bgEnables, backColor);
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            layerBackground2(line, column, 3, lines[3], bgEnables, backColor);
-        }
+        layerBackground2(line, lines[3], 3, bgEnables, backColor);
 
         layerObject(line, lines[4], tileMapping, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layerBackground2(int line, int column, int layer, short[] buffer, int bgEnables, short backColor) {
+    private void layerBackground2(int line, short[] buffer, int layer, int bgEnables, short backColor) {
         if (!checkBit(bgEnables, layer)) {
-            buffer[column] = backColor;
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                buffer[column] = backColor;
+            }
             return;
         }
-
-        //long start = TickDuration.currSystemTick().nsecs();
 
         int bgControlAddress = 0x4000008 + layer * 2;
         int bgControl = memory.getShort(bgControlAddress);
@@ -417,62 +403,62 @@ public class Display {
         dy <<= 4;
         dy >>= 4;
 
-        //long delta = TickDuration.currSystemTick().nsecs() - start;
-        //writeln(delta / 1e6f);
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
-        int x = (pa * ((column << 8) + dx) >> 8) + (pb * ((line << 8) + dy) >> 8) + 128 >> 8;
-        int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8) + 128 >> 8;
+            int x = (pa * ((column << 8) + dx) >> 8) + (pb * ((line << 8) + dy) >> 8) + 128 >> 8;
+            int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8) + 128 >> 8;
 
-        if (x < 0 || x > bgSize) {
-            if (displayOverflow) {
-                x %= bgSize;
-                if (x < 0) {
-                    x += bgSize;
+            if (x < 0 || x > bgSize) {
+                if (displayOverflow) {
+                    x %= bgSize;
+                    if (x < 0) {
+                        x += bgSize;
+                    }
+                } else {
+                    buffer[column] = backColor;
+                    return;
                 }
-            } else {
+            }
+
+            if (y < 0 || y > bgSize) {
+                if (displayOverflow) {
+                    y %= bgSize;
+                    if (y < 0) {
+                        y += bgSize;
+                    }
+                } else {
+                    buffer[column] = backColor;
+                    return;
+                }
+            }
+
+            if (mosaic) {
+                applyMosaic(x, y);
+            }
+
+            int mapColumn = x / tileLength;
+            int mapLine = y / tileLength;
+
+            int tileColumn = x % tileLength;
+            int tileLine = y % tileLength;
+
+            int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
+
+            int tileNumber = memory.getByte(mapAddress) & 0xFF;
+
+            int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
+
+            int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+
+            if (paletteAddress == 0) {
                 buffer[column] = backColor;
                 return;
             }
+
+            short color = memory.getShort(0x5000000 + paletteAddress);
+
+            buffer[column] = color;
         }
-
-        if (y < 0 || y > bgSize) {
-            if (displayOverflow) {
-                y %= bgSize;
-                if (y < 0) {
-                    y += bgSize;
-                }
-            } else {
-                buffer[column] = backColor;
-                return;
-            }
-        }
-
-        if (mosaic) {
-            applyMosaic(x, y);
-        }
-
-        int mapColumn = x / tileLength;
-        int mapLine = y / tileLength;
-
-        int tileColumn = x % tileLength;
-        int tileLine = y % tileLength;
-
-        int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
-
-        int tileNumber = memory.getByte(mapAddress) & 0xFF;
-
-        int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
-
-        int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-
-        if (paletteAddress == 0) {
-            buffer[column] = backColor;
-            return;
-        }
-
-        short color = memory.getShort(0x5000000 + paletteAddress);
-
-        buffer[column] = color;
     }
 
     private void layerObject(int line, short[] buffer, int tileMapping, short backColor) {
