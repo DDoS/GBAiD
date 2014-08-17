@@ -63,10 +63,10 @@ public class Display {
         vertexArray.setData(generatePlane(2, 2));
 
         while (!context.isWindowCloseRequested()) {
-            //long start = TickDuration.currSystemTick().msecs();
+            long start = TickDuration.currSystemTick().msecs();
             update();
-            //long delta = TickDuration.currSystemTick().msecs() - start;
-            //writeln(delta);
+            long delta = TickDuration.currSystemTick().msecs() - start;
+            //writeln(delta, " ms");
         }
 
         context.destroy();
@@ -354,13 +354,13 @@ public class Display {
 
         short backColor = memory.getShort(0x5000000);
 
-        //layerBackdrop(lines[0], backColor);
+        layerBackdrop(lines[0], backColor);
 
-        //layerBackdrop(lines[1], backColor);
+        layerBackdrop(lines[1], backColor);
 
-        //layerBackground2(line, lines[2], 2, bgEnables, backColor);
+        layerBackground2(line, lines[2], 2, bgEnables, backColor);
 
-        //layerBackground2(line, lines[3], 3, bgEnables, backColor);
+        layerBackground2(line, lines[3], 3, bgEnables, backColor);
 
         layerObject(line, lines[4], tileMapping, backColor);
 
@@ -468,7 +468,7 @@ public class Display {
             buffer[column] = backColor;
         }
 
-        for (int i = 0; i < 128; i++) {
+        for (int i = 128; i >= 0; i--) {
             int attributeAddress = 0x7000000 + i * 8;
 
             int attribute0 = memory.getShort(attributeAddress);
@@ -480,15 +480,14 @@ public class Display {
                 }
             }
 
-            int attribute1 = memory.getShort(attributeAddress + 2);
-            int attribute2 = memory.getShort(attributeAddress + 4);
-
             int y = attribute0 & 0xFF;
             int doubleSize = getBit(attribute0, 9);
             int mode = getBits(attribute0, 10, 11);
             int mosaic = getBit(attribute0, 12);
             int singlePalette = getBit(attribute0, 13);
             int shape = getBits(attribute0, 14, 15);
+
+            int attribute1 = memory.getShort(attributeAddress + 2);
 
             int x = attribute1 & 0x1FF;
             int horizontalFlip = void, verticalFlip = void;
@@ -512,8 +511,11 @@ public class Display {
             }
             int size = getBits(attribute1, 14, 15);
 
+            int attribute2 = memory.getShort(attributeAddress + 4);
+
             int tileNumber = attribute2 & 0x3FF;
             int priority = getBits(attribute2, 10, 11);
+            int paletteNumber = getBits(attribute2, 12, 15);
 
             int horizontalSize = void;
             int verticalSize = void;
@@ -566,11 +568,12 @@ public class Display {
                     }
                 }
 
-                if (objectY < 0 || objectY >= verticalSize) {
+                if (objectY < 0 || objectY >= verticalSize || objectX >= horizontalSize) {
                     break;
                 }
 
-                if (objectX < 0 || objectX >= horizontalSize) {
+                if (objectX < 0) {
+                    column -= objectX + 1;
                     continue;
                 }
 
@@ -599,7 +602,6 @@ public class Display {
                 if (singlePalette) {
                     paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
                 } else {
-                    int paletteNumber = getBits(attribute2, 12, 15);
                     paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileX % 2 * 4)) * 2;
                 }
 
