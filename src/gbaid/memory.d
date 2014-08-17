@@ -43,7 +43,7 @@ public class ROM : Memory {
     }
 
     public byte getByte(uint address) {
-        return cast(byte) (memory[address >> 2] >> ((address & 3) << 3) & 0xFF);
+        return cast(byte) (memory[address >> 2] >> ((address & 3) << 3));
     }
 
     public void setByte(uint address, byte b) {
@@ -52,7 +52,7 @@ public class ROM : Memory {
 
     public short getShort(uint address) {
         address >>= 1;
-        return cast(short) (memory[address >> 1] >> ((address & 1) << 4) & 0xFFFF);
+        return cast(short) (memory[address >> 1] >> ((address & 1) << 4));
     }
 
     public void setShort(uint address, short s) {
