@@ -2,6 +2,8 @@ module gbaid.arm;
 
 import std.stdio;
 import core.thread;
+import core.sync.mutex;
+import core.sync.condition;
 
 import gbaid.memory;
 import gbaid.util;
@@ -13,6 +15,10 @@ public class ARM7TDMI {
 	private shared bool running = false;
 	private int[37] registers = new int[37];
 	private shared Mode mode;
+	private shared bool haltSignal = false;
+	private Mutex haltMutex;
+	private Condition haltCondition;
+	private shared bool irqSignal = false;
 	private Pipeline armPipeline;
 	private Pipeline thumbPipeline;
 	private Pipeline pipeline;
@@ -21,6 +27,8 @@ public class ARM7TDMI {
 	private bool branchSignal = false;
 
 	public this() {
+		haltMutex = new Mutex();
+		haltCondition = new Condition(haltMutex);
 		armPipeline = new ARMPipeline();
 		thumbPipeline = new THUMBPipeline();
 	}
@@ -36,6 +44,7 @@ public class ARM7TDMI {
 	public void start() {
 		if (thread is null) {
 			thread = new Thread(&run);
+			running = true;
 			thread.start();
 		}
 	}
@@ -43,9 +52,39 @@ public class ARM7TDMI {
 	public void stop() {
 		if (thread !is null) {
 			running = false;
+			if (isHalted()) {
+				resume();
+			}
 			thread.join();
 			thread = null;
 		}
+	}
+
+	public bool isRunning() {
+		return running;
+	}
+
+	public void halt() {
+		haltSignal = true;
+	}
+
+	public void resume() {
+		haltSignal = false;
+		synchronized (haltMutex) {
+			haltCondition.notify();
+		}
+	}
+
+	public bool isHalted() {
+		return haltSignal;
+	}
+
+	public void triggerIRQ() {
+		irqSignal = true;
+	}
+
+	public bool isProcessingIRQ() {
+		return mode == Mode.IRQ;
 	}
 
 	private void run() {
@@ -62,9 +101,8 @@ public class ARM7TDMI {
 		// branch to instruction
 		branch();
 		// start ticking
-		running = true;
 		while (running) {
-			if (checkForInterrupt()) {
+			if (irqSignal && !getFlag(CPSRFlag.I)) {
 				processIRQ();
 			} else {
 				tick();
@@ -75,11 +113,12 @@ public class ARM7TDMI {
 			} else {
 				pipeline.incrementPC();
 			}
+			if (haltSignal) {
+				synchronized (haltMutex) {
+					haltCondition.wait();
+				}
+			}
 		}
-	}
-
-	public bool isProcessingIRQ() {
-		return mode == Mode.IRQ;
 	}
 
 	private void branch() {
@@ -92,10 +131,6 @@ public class ARM7TDMI {
 		instruction = nextInstruction;
 		pipeline.incrementPC();
 		branchSignal = false;
-	}
-
-	private bool checkForInterrupt() {
-		return !getFlag(CPSRFlag.I) && (memory.getShort(0x04000202) & 0x3FFF) != 0;
 	}
 
 	private void tick() {
@@ -119,7 +154,8 @@ public class ARM7TDMI {
 	}
 
 	private void processIRQ() {
-		debug(outputInstructions) writeln("IRQ");
+		irqSignal = false;
+		debug(outputInstructions) writeln("IRQ PROCESS");
 		setRegister(Mode.IRQ, Register.SPSR, getRegister(Register.CPSR));
 		setFlag(CPSRFlag.I, 1);
 		setFlag(CPSRFlag.T, Set.ARM);

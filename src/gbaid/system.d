@@ -301,6 +301,9 @@ public class GameBoyAdvance {
                     case 0x00000202: .. case 0x00000203:
                         handleInterruptRequestFlagWrite(i);
                         return true;
+                    case 0x00000301:
+                        handleHaltRequest();
+                        return true;
                     default:
                         return false;
                 }
@@ -310,10 +313,18 @@ public class GameBoyAdvance {
                 int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
                 if (processor.isProcessingIRQ()) {
                     flags &= ~i;
-                } else if (getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && (getShort(INTERRUPT_ENABLE_REGISTER) & i) == i) {
+                } else if (getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && (getShort(INTERRUPT_ENABLE_REGISTER) & i)) {
                     flags |= i;
+                    processor.triggerIRQ();
+                    if (processor.isHalted()) {
+                        processor.resume();
+                    }
                 }
                 super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
+            }
+
+            private void handleHaltRequest() {
+                processor.halt();
             }
         }
     }
