@@ -1286,7 +1286,8 @@ public enum : InternalFormat {
     RGBA32F = new InternalFormat(0x8814, RGBA, FLOAT), // GL30.GL_RGBA32F
     RGB32F = new InternalFormat(0x8815, RGB, FLOAT), // GL30.GL_RGB32F
     RGBA16F = new InternalFormat(0x881A, RGBA, HALF_FLOAT), // GL30.GL_RGBA16F
-    RGB16F = new InternalFormat(0x881B, RGB, HALF_FLOAT) // GL30.GL_RGB16F
+    RGB16F = new InternalFormat(0x881B, RGB, HALF_FLOAT), // GL30.GL_RGB16F
+    RGB5_A1 = new InternalFormat(0x8057, RGBA, UNSIGNED_SHORT_1_5_5_5_REV) // GL11.GL_RGB5_A1
 }
 
 /**
@@ -1737,6 +1738,7 @@ public enum : DataType {
     UNSIGNED_BYTE = new DataType(0x1401, 1, true, false), // GL11.GL_UNSIGNED_BYTE
     SHORT = new DataType(0x1402, 2, true, true), // GL11.GL_SHORT
     UNSIGNED_SHORT = new DataType(0x1403, 2, true, false), // GL11.GL_UNSIGNED_SHORT
+    UNSIGNED_SHORT_1_5_5_5_REV = new DataType(0x8366, 2, true, false), // GL12.GL_UNSIGNED_SHORT_1_5_5_5_REV
     INT = new DataType(0x1404, 4, true, true), // GL11.GL_INT
     UNSIGNED_INT = new DataType(0x1405, 4, true, false), // GL11.GL_UNSIGNED_INT
     HALF_FLOAT = new DataType(0x140B, 2, false, true), // GL30.GL_HALF_FLOAT
@@ -1890,7 +1892,7 @@ public class VertexData {
      * @return A buffer of the indices
      */
     public ubyte[] getIndicesBuffer() {
-        return cast(ubyte[]) cast(void[]) indices.dup;
+        return cast(ubyte[]) indices.dup;
     }
 
     /**

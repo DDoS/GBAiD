@@ -13,17 +13,14 @@ import gbaid.util;
 public class Display {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
     private static immutable uint VERTICAL_RESOLUTION = 160;
-    private static immutable uint SCREEN_AREA = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static immutable uint LAYER_COUNT = 6;
-    private static immutable uint COMPONENTS_PER_PIXEL = 3;
-    private static immutable uint LAYER_OFFSET = HORIZONTAL_RESOLUTION * COMPONENTS_PER_PIXEL;
-    private static immutable uint FRAME_SIZE = SCREEN_AREA * COMPONENTS_PER_PIXEL;
+    private static immutable uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private Memory memory;
     private Context context;
     private Program program;
     private Texture texture;
     private VertexArray vertexArray;
-    private ubyte[FRAME_SIZE] frame = new ubyte[FRAME_SIZE];
+    private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
 
     public void setMemory(Memory memory) {
@@ -55,7 +52,7 @@ public class Display {
 
         texture = context.newTexture();
         texture.create();
-        texture.setFormat(RGB, RGB8);
+        texture.setFormat(RGBA, RGB5_A1);
         texture.setFilters(NEAREST, NEAREST);
 
         vertexArray = context.newVertexArray();
@@ -98,7 +95,7 @@ public class Display {
             }
         }
         setVCOUNT(160);
-        texture.setImageData(frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
         texture.bind(0);
         program.use();
         vertexArray.draw();
@@ -111,10 +108,8 @@ public class Display {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
             setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                frame[p] = 255;
-                frame[p + 1] = 255;
-                frame[p + 2] = 255;
-                p += 3;
+                frame[p] = cast(short) 0xFFFF;
+                p++;
             }
         }
     }
@@ -151,12 +146,9 @@ public class Display {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
             setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                int pixel = memory.getShort(i);
-                frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
-                frame[p + 1] = cast(ubyte) (getBits(pixel, 5, 9) / 31f * 255);
-                frame[p + 2] = cast(ubyte) (getBits(pixel, 10, 14) / 31f * 255);
+                frame[p] = memory.getShort(i);
                 i += 2;
-                p += 3;
+                p++;
             }
         }
     }
@@ -172,13 +164,10 @@ public class Display {
                 if (paletteAddress == 0) {
                     // obj
                 } else {
-                    int color = memory.getShort(0x5000000 + paletteAddress);
-                    frame[p] = cast(ubyte) (getBits(color, 0, 4) / 31f * 255);
-                    frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
-                    frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+                    frame[p] = memory.getShort(0x5000000 + paletteAddress);
                 }
-                i += 1;
-                p += 3;
+                i++;
+                p++;
             }
         }
     }
@@ -190,12 +179,9 @@ public class Display {
         for (int line = 0; line < 128; line++) {
             setVCOUNT(line);
             for (int column = 0; column < 160; column++) {
-                int pixel = memory.getShort(i);
-                frame[p] = cast(ubyte) (getBits(pixel, 0, 4) / 31f * 255);
-                frame[p + 1] = cast(ubyte) (getBits(pixel, 5, 9) / 31f * 255);
-                frame[p + 2] = cast(ubyte) (getBits(pixel, 10, 14) / 31f * 255);
+                frame[p] = memory.getShort(i);
                 i += 2;
-                p += 3;
+                p++;
             }
         }
     }
@@ -669,7 +655,7 @@ public class Display {
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
-        uint p = line * HORIZONTAL_RESOLUTION * COMPONENTS_PER_PIXEL;
+        uint p = line * HORIZONTAL_RESOLUTION;
 
         int colorEffect = getBits(blendControl, 6, 7);
 
@@ -743,11 +729,9 @@ public class Display {
 
             color = lines[4][column];
 
-            frame[p] = cast(ubyte) ((color & 0b11111) / 31f * 255);
-            frame[p + 1] = cast(ubyte) (getBits(color, 5, 9) / 31f * 255);
-            frame[p + 2] = cast(ubyte) (getBits(color, 10, 14) / 31f * 255);
+            frame[p] = color;
 
-            p += COMPONENTS_PER_PIXEL;
+            p++;
         }
     }
 
@@ -846,7 +830,7 @@ private VertexData generatePlane(float width, float height) {
         -width, height, 0,
         width, height, 0
     ];
-    positionsAttribute.setData(cast(ubyte[]) cast(void[]) positions);
+    positionsAttribute.setData(cast(ubyte[]) positions);
     uint[] indices = [0, 3, 2, 0, 1, 3];
     vertexData.setIndices(indices);
     return vertexData;
@@ -882,7 +866,7 @@ varying vec2 textureCoords;
 uniform sampler2D color;
 
 void main() {
-    gl_FragColor = texture2D(color, textureCoords);
+    gl_FragColor = vec4(texture2D(color, textureCoords).rgb, 1);
 }
 `;
 
