@@ -14,7 +14,7 @@ public class ARM7TDMI {
 	private Thread thread;
 	private shared bool running = false;
 	private int[37] registers = new int[37];
-	private shared Mode mode;
+	private Mode mode;
 	private shared bool haltSignal = false;
 	private Mutex haltMutex;
 	private Condition haltCondition;
@@ -81,10 +81,6 @@ public class ARM7TDMI {
 
 	public void triggerIRQ() {
 		irqSignal = true;
-	}
-
-	public bool isProcessingIRQ() {
-		return mode == Mode.IRQ;
 	}
 
 	private void run() {

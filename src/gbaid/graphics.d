@@ -6,16 +6,20 @@ import core.time;
 import std.stdio;
 import std.algorithm;
 
+import gbaid.system;
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
 import gbaid.util;
 
-public class Display {
+alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
+alias InterruptSource = GameBoyAdvance.GameBoyAdvanceMemory.InterruptSource;
+
+public class GameBoyAdvanceDisplay {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
     private static immutable uint VERTICAL_RESOLUTION = 160;
     private static immutable uint LAYER_COUNT = 6;
     private static immutable uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
-    private Memory memory;
+    private GameBoyAdvanceMemory memory;
     private Context context;
     private Program program;
     private Texture texture;
@@ -23,7 +27,7 @@ public class Display {
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
 
-    public void setMemory(Memory memory) {
+    public void setMemory(GameBoyAdvanceMemory memory) {
         this.memory = memory;
     }
 
@@ -116,27 +120,21 @@ public class Display {
 
     private void updateMode0() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-
             setVCOUNT(line);
-
             lineMode0(line);
         }
     }
 
     private void updateMode1() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-
             setVCOUNT(line);
-
             lineMode1(line);
         }
     }
 
     private void updateMode2() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-
             setVCOUNT(line);
-
             lineMode2(line);
         }
     }
@@ -804,17 +802,15 @@ public class Display {
         bool vcounter = getBits(displayStatus, 8, 15) == vcount;
         setBit(displayStatus, 2, vcounter);
         memory.setShort(0x4000004, cast(short) displayStatus);
-        int interrupts = memory.getShort(0x4000202);
         if (checkBit(displayStatus, 3) && vblank) {
-            setBit(interrupts, 0, 1);
+            memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
         }
         if (checkBit(displayStatus, 4) && hblank) {
-            setBit(interrupts, 1, 1);
+            memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
         }
         if (checkBit(displayStatus, 5) && vcounter) {
-            setBit(interrupts, 2, 1);
+            memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
-        memory.setShort(0x4000202, cast(short) interrupts);
     }
 }
 

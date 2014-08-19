@@ -1,5 +1,8 @@
 module gbaid.system;
 
+import core.thread;
+import core.sync.semaphore;
+
 import std.stdio;
 import std.string;
 
@@ -10,7 +13,7 @@ import gbaid.util;
 
 public class GameBoyAdvance {
     private ARM7TDMI processor;
-    private Display display;
+    private GameBoyAdvanceDisplay display;
     private GameBoyAdvanceMemory memory;
     private bool running = false;
 
@@ -19,7 +22,7 @@ public class GameBoyAdvance {
             throw new NullPathException("BIOS");
         }
         processor = new ARM7TDMI();
-        display = new Display();
+        display = new GameBoyAdvanceDisplay();
         memory = new GameBoyAdvanceMemory(biosFile);
         processor.setMemory(memory);
         processor.setEntryPointAddress(GameBoyAdvanceMemory.BIOS_START);
@@ -42,7 +45,7 @@ public class GameBoyAdvance {
         memory.loadGamepakSRAM(file);
     }
 
-    public Memory getMemory() {
+    public GameBoyAdvanceMemory getMemory() {
         return memory;
     }
 
@@ -65,7 +68,7 @@ public class GameBoyAdvance {
         }
     }
 
-    private class GameBoyAdvanceMemory : Memory {
+    public class GameBoyAdvanceMemory : Memory {
         private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
         private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
         private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
@@ -99,7 +102,7 @@ public class GameBoyAdvance {
         private Memory bios;
         private Memory boardWRAM = new RAM(BOARD_WRAM_SIZE);
         private Memory chipWRAM = new RAM(CHIP_WRAM_SIZE);
-        private Memory ioRegisters;
+        private IORegisters ioRegisters;
         private Memory vram = new RAM(VRAM_SIZE);
         private Memory oam = new RAM(OAM_SIZE);
         private Memory paletteRAM = new RAM(PALETTE_RAM_SIZE);
@@ -230,6 +233,10 @@ public class GameBoyAdvance {
             return unusedMemory;
         }
 
+        public void requestInterrupt(InterruptSource source) {
+            ioRegisters.requestInterrupt(source);
+        }
+
         private static class UnusedMemory : Memory {
             public override ulong getCapacity() {
                 return 0;
@@ -261,9 +268,18 @@ public class GameBoyAdvance {
             private static immutable uint INTERRUPT_ENABLE_REGISTER = 0x00000200;
             private static immutable uint INTERRUPT_REQUEST_FLAGS = 0x00000202;
             private static immutable uint INTERRUPT_MASTER_ENABLE_REGISTER = 0x00000208;
+            private Thread dmaThread;
+            private shared bool dmaRunning = false;
+            private Semaphore dmaSemaphore;
+            private shared int dmaSignals = 0;
 
             private this() {
                 super(IO_REGISTERS_SIZE);
+                dmaSemaphore = new Semaphore(0);
+                dmaThread = new Thread(&runDMA);
+                dmaThread.isDaemon(true);
+                dmaRunning = true;
+                dmaThread.start();
             }
 
             public override byte getByte(uint address) {
@@ -271,7 +287,7 @@ public class GameBoyAdvance {
             }
 
             public override void setByte(uint address, byte b) {
-                if (!handleSpecialWrite(address, b)) {
+                if (!handleSpecialWrite(address, ucast(b))) {
                     super.setByte(address, b);
                 }
             }
@@ -281,7 +297,7 @@ public class GameBoyAdvance {
             }
 
             public override void setShort(uint address, short s) {
-                if (!handleSpecialWrite(address, s)) {
+                if (!handleSpecialWrite(address, ucast(s))) {
                     super.setShort(address, s);
                 }
             }
@@ -296,54 +312,179 @@ public class GameBoyAdvance {
                 }
             }
 
+            private void requestInterrupt(int source) {
+                if (super.getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && checkBit(super.getShort(INTERRUPT_ENABLE_REGISTER), source)) {
+                    int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
+                    setBit(flags, source, 1);
+                    super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
+                    processor.triggerIRQ();
+                    if (processor.isHalted()) {
+                        processor.resume();
+                    }
+                }
+            }
+
             private bool handleSpecialWrite(uint address, int i) {
                 switch (address) {
-                    case 0x00000202: .. case 0x00000203:
-                        handleInterruptRequestFlagWrite(i);
+                    case 0x00000202:
+                        handleInterruptAcknowledgeWrite(i);
                         return true;
                     case 0x00000301:
                         handleHaltRequest();
+                        return true;
+                    case 0x000000BA:
+                    case 0x000000C6:
+                    case 0x000000D2:
+                    case 0x000000DE:
+                        handleDMA(address, i);
                         return true;
                     default:
                         return false;
                 }
             }
 
-            private void handleInterruptRequestFlagWrite(int i) {
+            private void handleInterruptAcknowledgeWrite(int i) {
                 int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
-                if (processor.isProcessingIRQ()) {
-                    flags &= ~i;
-                } else if (getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && (getShort(INTERRUPT_ENABLE_REGISTER) & i)) {
-                    flags |= i;
-                    processor.triggerIRQ();
-                    if (processor.isHalted()) {
-                        processor.resume();
-                    }
-                }
+                flags &= ~i;
                 super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
             }
 
             private void handleHaltRequest() {
                 processor.halt();
             }
-        }
-    }
 
-    public static enum InterruptSource : uint {
-        LCD_V_BLANK = 0,
-        LCD_H_BLANK = 1,
-        LCD_V_COUNTER_MATCH = 2,
-        TIMER_0_OVERFLOW = 3,
-        TIMER_1_OVERFLOW = 4,
-        TIMER_2_OVERFLOW = 5,
-        TIMER_3_OVERFLOW = 6,
-        SERIAL_COMMUNICATION = 7,
-        DMA_0 = 8,
-        DMA_1 = 9,
-        DMA_2 = 10,
-        DMA_3 = 11,
-        KEYPAD = 12,
-        GAMEPAK = 13
+            private void handleDMA(int address, int control) {
+                super.setShort(address, cast(short) control);
+                if (!checkBit(control, 15)) {
+                    return;
+                }
+                dmaSignals |= 0b1;
+                dmaSemaphore.notify();
+            }
+
+            private void runDMA() {
+                void tryDMA(int channel, int source) {
+                    int dmaAddress = channel * 12 + 0xB0;
+
+                    int control = super.getShort(dmaAddress + 10);
+                    if (!checkBit(control, 15)) {
+                        return;
+                    }
+
+                    int startTiming = getBits(control, 12, 13);writefln("DMA %s %s %s", channel, source, startTiming);
+                    if (startTiming != source) {
+                        return;
+                    }
+
+                    int sourceAddress = super.getInt(dmaAddress);
+                    int destinationAddress = super.getInt(dmaAddress + 4);
+
+                    int wordCount = void;
+                    int type = void;
+                    int destinationAddressControl = void;
+                    bool halt = void;
+
+                    if (startTiming == 3) {
+                        if (channel == 1 || channel == 2) {
+                            wordCount = 4;
+                            type = 1;
+                            destinationAddressControl = 2;
+                            halt = false;
+                        } else if (channel == 3) {
+                            // TODO: implement video capture
+                        }
+                    } else {
+                        wordCount = super.getShort(dmaAddress + 8);
+                        if (channel < 3) {
+                            if (wordCount == 0) {
+                                wordCount = 0x3FFF;
+                            }
+                            wordCount &= 0x3FFF;
+                        } else {
+                            if (wordCount == 0) {
+                                wordCount = 0xFFFF;
+                            }
+                            wordCount &= 0xFFFF;
+                        }
+                        wordCount++;
+                        type = getBit(control, 10);
+                        destinationAddressControl = getBits(control, 5, 6);
+                        halt = true;
+                    }
+
+                    int sourceAddressControl = getBits(control, 7, 8);
+                    int repeat = getBit(control, 9);
+                    int endIRQ = getBit(control, 14);
+
+                    void modifyAddress(ref int address, int control, int amount) {
+                        final switch (control) {
+                            case 0:
+                            case 3:
+                                address += amount;
+                                break;
+                            case 1:
+                                address -= amount;
+                                break;
+                            case 2:
+                                break;
+                        }
+                    }
+
+                    int increment = type ? 2 : 4;
+                    GameBoyAdvanceMemory memory = this.outer.outer.memory;
+                    if (halt) {
+                        processor.halt();
+                    }
+                    for (int i = 0; i < wordCount; i++) {
+                        if (type) {
+                            memory.setInt(destinationAddress, memory.getInt(sourceAddress));
+                        } else {
+                            memory.setShort(destinationAddress, memory.getShort(sourceAddress));
+                        }
+                        modifyAddress(sourceAddress, sourceAddressControl, increment);
+                        modifyAddress(destinationAddress, destinationAddressControl, increment);
+                    }
+                    if (endIRQ) {
+                        requestInterrupt(InterruptSource.DMA_0 + channel);
+                    } else if (halt) {
+                        processor.resume();
+                    }
+                    setBit(control, 15, repeat);
+                    setShort(dmaAddress + 10, cast(short) control);
+                }
+
+                while (dmaRunning) {
+                    dmaSemaphore.wait();
+                    for (int s = 0; s < 4; s++) {
+                        if (checkBit(dmaSignals, s)) {
+                            int signals = dmaSignals;
+                            setBit(signals, s, 0);
+                            dmaSignals = signals;
+                            for (int c = 0; c < 4; c++) {
+                                tryDMA(c, s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        public static enum InterruptSource : int {
+            LCD_V_BLANK = 0,
+            LCD_H_BLANK = 1,
+            LCD_V_COUNTER_MATCH = 2,
+            TIMER_0_OVERFLOW = 3,
+            TIMER_1_OVERFLOW = 4,
+            TIMER_2_OVERFLOW = 5,
+            TIMER_3_OVERFLOW = 6,
+            SERIAL_COMMUNICATION = 7,
+            DMA_0 = 8,
+            DMA_1 = 9,
+            DMA_2 = 10,
+            DMA_3 = 11,
+            KEYPAD = 12,
+            GAMEPAK = 13
+        }
     }
 }
 

@@ -2,6 +2,14 @@ module gbaid.util;
 
 import std.conv;
 
+public uint ucast(byte v) {
+    return cast(uint) v & 0xFF;
+}
+
+public uint ucast(short v) {
+    return cast(uint) v & 0xFFFF;
+}
+
 public ulong ucast(int v) {
     return cast(ulong) v & 0xFFFFFFFF;
 }
