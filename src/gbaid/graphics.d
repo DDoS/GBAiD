@@ -13,6 +13,7 @@ import gbaid.util;
 
 alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
 alias InterruptSource = GameBoyAdvance.GameBoyAdvanceMemory.InterruptSource;
+alias SignalEvent = GameBoyAdvance.GameBoyAdvanceMemory.SignalEvent;
 
 public class GameBoyAdvanceDisplay {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
@@ -802,11 +803,17 @@ public class GameBoyAdvanceDisplay {
         bool vcounter = getBits(displayStatus, 8, 15) == vcount;
         setBit(displayStatus, 2, vcounter);
         memory.setShort(0x4000004, cast(short) displayStatus);
-        if (checkBit(displayStatus, 3) && vblank) {
-            memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+        if (vblank) {
+            memory.signalEvent(SignalEvent.V_BLANK);
+            if (checkBit(displayStatus, 3)) {
+                memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+            }
         }
-        if (checkBit(displayStatus, 4) && hblank) {
-            memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
+        if (hblank) {
+            memory.signalEvent(SignalEvent.H_BLANK);
+            if (checkBit(displayStatus, 4)) {
+                memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
+            }
         }
         if (checkBit(displayStatus, 5) && vcounter) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);

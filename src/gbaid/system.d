@@ -237,6 +237,10 @@ public class GameBoyAdvance {
             ioRegisters.requestInterrupt(source);
         }
 
+        public void signalEvent(SignalEvent event) {
+            ioRegisters.signalEvent(event);
+        }
+
         private static class UnusedMemory : Memory {
             public override ulong getCapacity() {
                 return 0;
@@ -269,16 +273,16 @@ public class GameBoyAdvance {
             private static immutable uint INTERRUPT_REQUEST_FLAGS = 0x00000202;
             private static immutable uint INTERRUPT_MASTER_ENABLE_REGISTER = 0x00000208;
             private Thread dmaThread;
-            private shared bool dmaRunning = false;
             private Semaphore dmaSemaphore;
             private shared int dmaSignals = 0;
+            private shared bool dmaHalt = false;
+            private bool irqHalt = false;
 
             private this() {
                 super(IO_REGISTERS_SIZE);
                 dmaSemaphore = new Semaphore(0);
                 dmaThread = new Thread(&runDMA);
                 dmaThread.isDaemon(true);
-                dmaRunning = true;
                 dmaThread.start();
             }
 
@@ -318,9 +322,21 @@ public class GameBoyAdvance {
                     setBit(flags, source, 1);
                     super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
                     processor.triggerIRQ();
-                    if (processor.isHalted()) {
-                        processor.resume();
-                    }
+                    irqHalt = false;
+                    tryResume();
+                }
+            }
+
+            private void signalEvent(int event) {
+                final switch (event) {
+                    case SignalEvent.V_BLANK:
+                        dmaSignals |= 0b10;
+                        dmaSemaphore.notify();
+                        break;
+                    case SignalEvent.H_BLANK:
+                        dmaSignals |= 0b100;
+                        dmaSemaphore.notify();
+                        break;
                 }
             }
 
@@ -351,6 +367,13 @@ public class GameBoyAdvance {
 
             private void handleHaltRequest() {
                 processor.halt();
+                irqHalt = true;
+            }
+
+            private void tryResume() {
+                if (!irqHalt && !dmaHalt) {
+                    processor.resume();
+                }
             }
 
             private void handleDMA(int address, int control) {
@@ -371,7 +394,8 @@ public class GameBoyAdvance {
                         return;
                     }
 
-                    int startTiming = getBits(control, 12, 13);writefln("DMA %s %s %s", channel, source, startTiming);
+                    int startTiming = getBits(control, 12, 13);
+                    //writefln("DMA %s %s %s", channel, source, startTiming);
                     if (startTiming != source) {
                         return;
                     }
@@ -434,6 +458,7 @@ public class GameBoyAdvance {
                     GameBoyAdvanceMemory memory = this.outer.outer.memory;
                     if (halt) {
                         processor.halt();
+                        dmaHalt = true;
                     }
                     for (int i = 0; i < wordCount; i++) {
                         if (type) {
@@ -446,14 +471,16 @@ public class GameBoyAdvance {
                     }
                     if (endIRQ) {
                         requestInterrupt(InterruptSource.DMA_0 + channel);
-                    } else if (halt) {
-                        processor.resume();
+                    }
+                    if (halt) {
+                        dmaHalt = false;
+                        tryResume();
                     }
                     setBit(control, 15, repeat);
                     setShort(dmaAddress + 10, cast(short) control);
                 }
 
-                while (dmaRunning) {
+                while (true) {
                     dmaSemaphore.wait();
                     for (int s = 0; s < 4; s++) {
                         if (checkBit(dmaSignals, s)) {
@@ -469,7 +496,7 @@ public class GameBoyAdvance {
             }
         }
 
-        public static enum InterruptSource : int {
+        public static enum InterruptSource {
             LCD_V_BLANK = 0,
             LCD_H_BLANK = 1,
             LCD_V_COUNTER_MATCH = 2,
@@ -484,6 +511,11 @@ public class GameBoyAdvance {
             DMA_3 = 11,
             KEYPAD = 12,
             GAMEPAK = 13
+        }
+
+        public static enum SignalEvent {
+            V_BLANK = 0,
+            H_BLANK = 1
         }
     }
 }
