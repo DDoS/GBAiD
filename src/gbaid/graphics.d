@@ -332,7 +332,7 @@ public class GameBoyAdvanceDisplay {
         int displayControl = memory.getShort(0x4000000);
 
         int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 11);
+        int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 14);
 
         int blendControl = memory.getShort(0x4000050);
@@ -347,7 +347,7 @@ public class GameBoyAdvanceDisplay {
 
         layerBackground2(line, lines[3], 3, bgEnables, backColor);
 
-        layerObject(line, lines[4], tileMapping, backColor);
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
@@ -445,13 +445,18 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
-    private void layerObject(int line, short[] buffer, int tileMapping, short backColor) {
+    private void layerObject(int line, short[] colorBuffer, short[] modeBuffer, int bgEnables, int tileMapping, short backColor) {
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            colorBuffer[column] = backColor;
+            modeBuffer[column] = 0;
+        }
+
+        if (!checkBit(bgEnables, 4)) {
+            return;
+        }
+
         int tileLength = 8;
         int tileSize = tileLength * tileLength / 2;
-
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            buffer[column] = backColor;
-        }
 
         for (int i = 128; i >= 0; i--) {
             int attributeAddress = 0x7000000 + i * 8;
@@ -459,14 +464,15 @@ public class GameBoyAdvanceDisplay {
             int attribute0 = memory.getShort(attributeAddress);
 
             int rotAndScale = getBit(attribute0, 8);
+            int doubleSize = getBit(attribute0, 9);
             if (!rotAndScale) {
-                if (checkBit(attribute0, 9)) {
+                if (doubleSize) {
                     continue;
                 }
             }
-
             int y = attribute0 & 0xFF;
-            int doubleSize = getBit(attribute0, 9);
+            y <<= 24;
+            y >>= 24;
             int mode = getBits(attribute0, 10, 11);
             int mosaic = getBit(attribute0, 12);
             int singlePalette = getBit(attribute0, 13);
@@ -475,6 +481,8 @@ public class GameBoyAdvanceDisplay {
             int attribute1 = memory.getShort(attributeAddress + 2);
 
             int x = attribute1 & 0x1FF;
+            x <<= 23;
+            x >>= 23;
             int horizontalFlip = void, verticalFlip = void;
             int pa = void, pb = void, pc = void, pd = void;
             if (rotAndScale) {
@@ -486,6 +494,10 @@ public class GameBoyAdvanceDisplay {
                 pb = memory.getShort(parametersAddress + 8);
                 pc = memory.getShort(parametersAddress + 16);
                 pd = memory.getShort(parametersAddress + 24);
+                if (doubleSize) {
+                    pa = (pa << 8) / (2 << 8);
+                    pd = (pd << 8) / (2 << 8);
+                }
             } else {
                 horizontalFlip = getBit(attribute1, 12);
                 verticalFlip = getBit(attribute1, 13);
@@ -536,6 +548,10 @@ public class GameBoyAdvanceDisplay {
 
                 int objectX = column - x;
                 int objectY = line - y;
+
+                if (mosaic) {
+                    applyMosaic(objectX, objectY);
+                }
 
                 if (rotAndScale) {
                     int halfHorizontalSize = horizontalSize / 2;
@@ -596,12 +612,15 @@ public class GameBoyAdvanceDisplay {
 
                 short color = memory.getShort(0x5000000 + paletteAddress);
 
-                buffer[column] = color;
+                if (mode != 2) {
+                    colorBuffer[column] = color;
+                }
+                modeBuffer[column] = cast(short) (priority << 8 | mode);
             }
         }
     }
 
-    private int getWindow(int windowEnables, int line, int column) {
+    private int getWindow(int windowEnables, int objectMode, int line, int column) {
         if (!windowEnables) {
             return 0;
         }
@@ -638,6 +657,12 @@ public class GameBoyAdvanceDisplay {
             }
         }
 
+        if (windowEnables & 0b100) {
+            if (objectMode == 2) {
+                return 0x400004B;
+            }
+        }
+
         return 0x400004A;
     }
 
@@ -670,7 +695,7 @@ public class GameBoyAdvanceDisplay {
             bool specialEffectEnabled = void;
             int layerEnables = void;
 
-            int window = getWindow(windowEnables, line, column);
+            int window = getWindow(windowEnables, lines[5][column] & 0xFF, line, column);
             if (window != 0) {
                 int windowControl = memory.getByte(window);
                 layerEnables = windowControl & 0b11111;
