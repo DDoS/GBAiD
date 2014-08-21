@@ -683,43 +683,45 @@ public class GameBoyAdvanceDisplay {
 
         int colorEffect = getBits(blendControl, 6, 7);
 
-        int[4] priorities = [
+        int[6] priorities = [
             memory.getShort(0x4000008) & 0b11,
             memory.getShort(0x400000A) & 0b11,
             memory.getShort(0x400000C) & 0b11,
-            memory.getShort(0x400000E) & 0b11
+            memory.getShort(0x400000E) & 0b11,
+            0,
+            5
         ];
 
+        int[6] layerMap = [5, 3, 2, 1, 0, 4];
+
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            short objInfo = lines[5][column];
 
             bool specialEffectEnabled = void;
             int layerEnables = void;
 
-            int window = getWindow(windowEnables, lines[5][column] & 0xFF, line, column);
+            int window = getWindow(windowEnables, objInfo & 0xFF, line, column);
             if (window != 0) {
                 int windowControl = memory.getByte(window);
-                layerEnables = windowControl & 0b11111;
+                layerEnables = windowControl & 0b11111 | 0b100000;
                 specialEffectEnabled = checkBit(windowControl, 5);
             } else {
-                layerEnables = 0b11111;
+                layerEnables = 0b111111;
                 specialEffectEnabled = true;
             }
 
-            int layer = 3;
+            priorities[4] = objInfo >> 8;
 
-            short previousColor = backColor;
-            short color = lines[layer][column];
+            short previousColor;
+            short topColor;
 
-            int previousPriority = priorities[layer];
+            int previousPriority = 6;
 
-            int previousLayer = 5;
-            int topLayer = layer;
+            int previousLayer;
+            int topLayer;
 
-            if (checkBit(blendControl, layer)) {
-                applyBrightnessEffect(colorEffect, color);
-            }
-
-            for (layer = 2; layer >= 0; layer--) {
+            foreach (int layer; layerMap) {
 
                 int currentPriority = priorities[layer];
 
@@ -727,33 +729,45 @@ public class GameBoyAdvanceDisplay {
 
                     if (checkBit(layerEnables, layer)) {
 
-                        short layerColor = lines[layer][column];
-
-                        if (layerColor != backColor) {
-
-                            previousColor = color;
-                            color = layerColor;
+                        if (layer == 5) {
+                            previousColor = topColor;
+                            topColor = backColor;
 
                             previousPriority = currentPriority;
 
                             previousLayer = topLayer;
                             topLayer = layer;
 
-                            if (checkBit(blendControl, layer)) {
-                                applyBrightnessEffect(colorEffect, color);
+                            if (specialEffectEnabled && checkBit(blendControl, layer)) {
+                                applyBrightnessEffect(colorEffect, topColor);
+                            }
+                        } else {
+                            short layerColor = lines[layer][column];
+
+                            if (layerColor != backColor) {
+
+                                previousColor = topColor;
+                                topColor = layerColor;
+
+                                previousPriority = currentPriority;
+
+                                previousLayer = topLayer;
+                                topLayer = layer;
+
+                                if (specialEffectEnabled && checkBit(blendControl, layer)) {
+                                    applyBrightnessEffect(colorEffect, topColor);
+                                }
                             }
                         }
                     }
                 }
             }
 
-            if (colorEffect == 1 && checkBit(blendControl, topLayer) && checkBit(blendControl, previousLayer + 8)) {
-                color = applyBlendEffect(color, previousColor);
+            if (specialEffectEnabled && colorEffect == 1 && checkBit(blendControl, topLayer) && checkBit(blendControl, previousLayer + 8)) {
+                topColor = applyBlendEffect(topColor, previousColor);
             }
 
-            color = lines[4][column];
-
-            frame[p] = color;
+            frame[p] = topColor;
 
             p++;
         }
