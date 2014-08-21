@@ -386,8 +386,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("SUB");
 					res = op1 - op2;
 					if (setFlags) {
-						overflow = overflowed(op1, -op2, res);
-						carry = res >= 0;
+						overflow = overflowedSub(op1, op2, res);
+						carry = carriedSub(op1, op2, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -398,8 +398,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("RSB");
 					res = op2 - op1;
 					if (setFlags) {
-						overflow = overflowed(op2, -op1, res);
-						carry = res >= 0;
+						overflow = overflowedSub(op2, op1, res);
+						carry = carriedSub(op2, op1, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -410,8 +410,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("ADD");
 					res = op1 + op2;
 					if (setFlags) {
-						overflow = overflowed(op1, op2, res);
-						carry = carried(op1, op2, res);
+						overflow = overflowedAdd(op1, op2, res);
+						carry = carriedAdd(op1, op2, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -422,8 +422,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("ADC");
 					res = op1 + op2 + carry;
 					if (setFlags) {
-						overflow = overflowed(op1, op2 + carry, res);
-						carry = carried(op1, op2 + carry, res);
+						overflow = overflowedAdd(op1, op2, res);
+						carry = carriedAdd(op1, op2, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -434,8 +434,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("SBC");
 					res = op1 - op2 + carry - 1;
 					if (setFlags) {
-						overflow = overflowed(op1, -op2 + carry - 1, res);
-						carry = res >= 0;
+						overflow = overflowedSub(op1, op2, res);
+						carry = carriedSub(op1, op2, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -446,8 +446,8 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("RSC");
 					res = op2 - op1 + carry - 1;
 					if (setFlags) {
-						overflow = overflowed(op2, -op1 + carry - 1, res);
-						carry = res >= 0;
+						overflow = overflowedSub(op2, op1, res);
+						carry = carriedSub(op2, op1, res);
 						zero = res == 0;
 						negative = res < 0;
 					}
@@ -473,8 +473,8 @@ public class ARM7TDMI {
 					// CMP
 					debug(outputInstructions) writeln("CMP");
 					int v = op1 - op2;
-					overflow = overflowed(op1, -op2, v);
-					carry = v >= 0;
+					overflow = overflowedSub(op1, op2, v);
+					carry = carriedSub(op1, op2, v);
 					zero = v == 0;
 					negative = v < 0;
 					break;
@@ -482,8 +482,8 @@ public class ARM7TDMI {
 					// CMN
 					debug(outputInstructions) writeln("CMN");
 					int v = op1 + op2;
-					overflow = overflowed(op1, op2, v);
-					carry = carried(op1, op2, v);
+					overflow = overflowedAdd(op1, op2, v);
+					carry = carriedAdd(op1, op2, v);
 					zero = v == 0;
 					negative = v < 0;
 					break;
@@ -1124,14 +1124,14 @@ public class ARM7TDMI {
 				// SUB
 				debug(outputInstructions) writeln("SUB");
 				res = op1 - op2;
-				carry = res >= 0;
-				overflow = overflowed(op1, -op2, res);
+				carry = carriedSub(op1, op2, res);
+				overflow = overflowedSub(op1, op2, res);
 			} else {
 				// ADD
 				debug(outputInstructions) writeln("ADD");
 				res = op1 + op2;
-				carry = carried(op1, op2, res);
-				overflow = overflowed(op1, op2, res);
+				carry = carriedAdd(op1, op2, res);
+				overflow = overflowedAdd(op1, op2, res);
 			}
 			negative = res < 0;
 			zero = res == 0;
@@ -1155,7 +1155,7 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("CMP");
 					int op1 = getRegister(rd);
 					int v = op1 - op2;
-					setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+					setAPSRFlags(v < 0, v == 0, carriedSub(op1, op2, v), overflowedSub(op1, op2, v));
 					break;
 				case 2:
 					// ADD
@@ -1163,7 +1163,7 @@ public class ARM7TDMI {
 					int op1 = getRegister(rd);
 					int res = op1 + op2;
 					setRegister(rd, res);
-					setAPSRFlags(res < 0, res == 0, carried(op1, op2, res), overflowed(op1, op2, res));
+					setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 					break;
 				case 3:
 					// SUB
@@ -1171,7 +1171,7 @@ public class ARM7TDMI {
 					int op1 = getRegister(rd);
 					int res = op1 - op2;
 					setRegister(rd, res);
-					setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(op1, -op2, res));
+					setAPSRFlags(res < 0, res == 0, carriedSub(op1, op2, res), overflowedSub(op1, op2, res));
 					break;
 			}
 		}
@@ -1238,7 +1238,7 @@ public class ARM7TDMI {
 					int carry = getFlag(CPSRFlag.C);
 					int res = op1 + op2 + carry;
 					setRegister(rd, res);
-					setAPSRFlags(res < 0, res == 0, carried(op1, op2 + carry, res), overflowed(op1, op2 + carry, res));
+					setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 					break;
 				case 0x6:
 					// SBC
@@ -1246,7 +1246,7 @@ public class ARM7TDMI {
 					int carry = getFlag(CPSRFlag.C);
 					int res = op1 - op2 + carry - 1;
 					setRegister(rd, res);
-					setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(op1, -op2 + carry - 1, res));
+					setAPSRFlags(res < 0, res == 0, carriedSub(op1, op2, res), overflowedSub(op1, op2, res));
 					break;
 				case 0x7:
 					// ROR
@@ -1275,19 +1275,19 @@ public class ARM7TDMI {
 					debug(outputInstructions) writeln("NEG");
 					int res = 0 - op2;
 					setRegister(rd, res);
-					setAPSRFlags(res < 0, res == 0, res >= 0, overflowed(0, -op2, res));
+					setAPSRFlags(res < 0, res == 0, carriedSub(0, op2, res), overflowedSub(0, op2, res));
 					break;
 				case 0xA:
 					// CMP
 					debug(outputInstructions) writeln("CMP");
 					int v = op1 - op2;
-					setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+					setAPSRFlags(v < 0, v == 0, carriedSub(op1, op2, v), overflowedSub(op1, op2, v));
 					break;
 				case 0xB:
 					// CMN
 					debug(outputInstructions) writeln("CMN");
 					int v = op1 + op2;
-					setAPSRFlags(v < 0, v == 0, carried(op1, op2, v), overflowed(op1, op2, v));
+					setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
 					break;
 				case 0xC:
 					// ORR
@@ -1336,7 +1336,7 @@ public class ARM7TDMI {
 					int op1 = getRegister(rd);
 					int op2 = getRegister(rs);
 					int v = op1 - op2;
-					setAPSRFlags(v < 0, v == 0, v >= 0, overflowed(op1, -op2, v));
+					setAPSRFlags(v < 0, v == 0, carriedSub(op1, op2, v), overflowedSub(op1, op2, v));
 					break;
 				case 2:
 					// MOV
@@ -1878,6 +1878,34 @@ private int getRegisterIndex(Mode mode, int register) {
 					return register;
 			}
 	}
+}
+
+private bool carriedAdd(int a, int b, int c) {
+	int negativeA = a >> 31;
+	int negativeB = b >> 31;
+	int negativeC = c >> 31;
+	return  negativeA && negativeB || negativeA && !negativeC || negativeB && !negativeC;
+}
+
+private bool overflowedAdd(int a, int b, int c) {
+	int negativeA = a >> 31;
+	int negativeB = b >> 31;
+	int negativeC = c >> 31;
+	return  negativeA && negativeB && !negativeC || !negativeA && !negativeB && negativeC;
+}
+
+private bool carriedSub(int a, int b, int c) {
+	int negativeA = a >> 31;
+	int negativeB = b >> 31;
+	int negativeC = c >> 31;
+	return  negativeA && !negativeB || negativeA && !negativeC || !negativeB && !negativeC;
+}
+
+private bool overflowedSub(int a, int b, int c) {
+	int negativeA = a >> 31;
+	int negativeB = b >> 31;
+	int negativeC = c >> 31;
+	return  negativeA && !negativeB && !negativeC || !negativeA && negativeB && negativeC;
 }
 
 private enum Set {

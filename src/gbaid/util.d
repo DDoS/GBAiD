@@ -35,15 +35,6 @@ public void setBits(ref int i, int a, int b, int n) {
     i = i & ~mask | n << a & mask;
 }
 
-public bool carried(int a, int b, int r) {
-    return cast(uint) r < cast(uint) a;
-}
-
-public bool overflowed(int a, int b, int r) {
-    int rn = getBit(r, 31);
-    return getBit(a, 31) != rn && getBit(b, 31) != rn;
-}
-
 public uint countBits(uint i) {
      i = i - (i >>> 1 & 0x55555555);
      i = (i & 0x33333333) + (i >>> 2 & 0x33333333);
