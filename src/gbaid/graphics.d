@@ -696,12 +696,14 @@ public class GameBoyAdvanceDisplay {
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
-            short objInfo = lines[5][column];
+            int objInfo = lines[5][column];
+            int objMode = objInfo & 0xFF;
+            int objPriority = getBits(objInfo, 8, 15);
 
             bool specialEffectEnabled = void;
             int layerEnables = void;
 
-            int window = getWindow(windowEnables, objInfo & 0xFF, line, column);
+            int window = getWindow(windowEnables, objMode, line, column);
             if (window != 0) {
                 int windowControl = memory.getByte(window);
                 layerEnables = windowControl & 0b11111 | 0b100000;
@@ -711,7 +713,18 @@ public class GameBoyAdvanceDisplay {
                 specialEffectEnabled = true;
             }
 
-            priorities[4] = objInfo >> 8;
+            int pixelColorEffect = void;
+            int pixelBlendControl = void;
+
+            if (objMode == 1) {
+                pixelColorEffect = 1;
+                pixelBlendControl = blendControl | 0b10000;
+            } else {
+                pixelColorEffect = colorEffect;
+                pixelBlendControl = blendControl;
+            }
+
+            priorities[4] = objPriority;
 
             short previousColor;
             short topColor;
@@ -723,11 +736,11 @@ public class GameBoyAdvanceDisplay {
 
             foreach (int layer; layerMap) {
 
-                int currentPriority = priorities[layer];
+                if (checkBit(layerEnables, layer)) {
 
-                if (currentPriority <= previousPriority) {
+                    int currentPriority = priorities[layer];
 
-                    if (checkBit(layerEnables, layer)) {
+                    if (currentPriority <= previousPriority) {
 
                         if (layer == 5) {
                             previousColor = topColor;
@@ -738,8 +751,8 @@ public class GameBoyAdvanceDisplay {
                             previousLayer = topLayer;
                             topLayer = layer;
 
-                            if (specialEffectEnabled && checkBit(blendControl, layer)) {
-                                applyBrightnessEffect(colorEffect, topColor);
+                            if (specialEffectEnabled && checkBit(pixelBlendControl, layer)) {
+                                applyBrightnessEffect(pixelColorEffect, topColor);
                             }
                         } else {
                             short layerColor = lines[layer][column];
@@ -754,8 +767,8 @@ public class GameBoyAdvanceDisplay {
                                 previousLayer = topLayer;
                                 topLayer = layer;
 
-                                if (specialEffectEnabled && checkBit(blendControl, layer)) {
-                                    applyBrightnessEffect(colorEffect, topColor);
+                                if (specialEffectEnabled && checkBit(pixelBlendControl, layer)) {
+                                    applyBrightnessEffect(pixelColorEffect, topColor);
                                 }
                             }
                         }
@@ -763,7 +776,8 @@ public class GameBoyAdvanceDisplay {
                 }
             }
 
-            if (specialEffectEnabled && colorEffect == 1 && checkBit(blendControl, topLayer) && checkBit(blendControl, previousLayer + 8)) {
+            if (specialEffectEnabled && pixelColorEffect == 1 && checkBit(pixelBlendControl, topLayer)
+                && checkBit(pixelBlendControl, previousLayer + 8)) {
                 topColor = applyBlendEffect(topColor, previousColor);
             }
 
