@@ -33,7 +33,7 @@ public class ARM7TDMI {
 			string mnemonic;
 			Set set;
 		}
-		private enum int queueMaxSize = 300;
+		private enum int queueMaxSize = 400;
 		private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
 		private int queueSize = 0;
 		private int index = 0;
@@ -58,6 +58,13 @@ public class ARM7TDMI {
 						writefln("%08x: %04x     %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
 						break;
 				}
+			}
+		}
+
+		private void dumpRegisters() {
+			writefln("Dumping last known register states:");
+			for (int i = 0; i < 18; i++) {
+				writefln("%-4s: %08x", cast(Register) i, getRegister(i));
 			}
 		}
 	}
@@ -154,7 +161,10 @@ public class ARM7TDMI {
 			}
 		} catch (Exception ex) {
 			writeln("ARM CPU encountered an exception, thread stopping...");
-			debug (outputInstructions) dumpInstructions();
+			debug (outputInstructions) {
+				dumpInstructions();
+				dumpRegisters();
+			}
 			throw ex;
 		}
 	}
@@ -1961,6 +1971,18 @@ private enum Mode {
 
 private enum Register {
 	R0 = 0,
+	R1 = 1,
+	R2 = 2,
+	R3 = 3,
+	R4 = 4,
+	R5 = 5,
+	R6 = 6,
+	R7 = 7,
+	R8 = 8,
+	R9 = 9,
+	R10 = 10,
+	R11 = 11,
+	R12 = 12,
 	SP = 13,
 	LR = 14,
 	PC = 15,
@@ -1977,7 +1999,6 @@ private enum CPSRFlag {
 	I = 7,
 	F = 6,
 	T = 5,
-	M0 = 0
 }
 
 public class UnsupportedARMInstructionException : Exception {
