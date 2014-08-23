@@ -291,9 +291,8 @@ public class GameBoyAdvance {
             }
 
             public override void setByte(uint address, byte b) {
-                if (!handleSpecialWrite(address, ucast(b))) {
-                    super.setByte(address, b);
-                }
+                handleSpecialWrite(address, b);
+                super.setByte(address, b);
             }
 
             public override short getShort(uint address) {
@@ -301,9 +300,8 @@ public class GameBoyAdvance {
             }
 
             public override void setShort(uint address, short s) {
-                if (!handleSpecialWrite(address, ucast(s))) {
-                    super.setShort(address, s);
-                }
+                handleSpecialWrite(address, s);
+                super.setShort(address, s);
             }
 
             public override int getInt(uint address) {
@@ -311,74 +309,77 @@ public class GameBoyAdvance {
             }
 
             public override void setInt(uint address, int i) {
-                if (!handleSpecialWrite(address, i)) {
-                    super.setInt(address, i);
-                }
+                handleSpecialWrite(address, i);
+                super.setInt(address, i);
             }
 
-            private void requestInterrupt(int source) {
-                if (super.getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && checkBit(super.getShort(INTERRUPT_ENABLE_REGISTER), source)) {
-                    int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
-                    setBit(flags, source, 1);
-                    super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
-                    processor.triggerIRQ();
-                    irqHalt = false;
-                    tryResume();
-                }
+            private void handleSpecialWrite(uint address, ref byte b) {
+                int alignedAddress = address & ~3;
+                int shift = ((address & 3) << 3);
+                int mask = 0xFF << shift;
+                int intValue = ucast(b) << shift;
+                handleSpecialWrite(alignedAddress, shift, mask, intValue);
+                b = cast(byte) ((intValue & mask) >> shift);
             }
 
-            private void signalEvent(int event) {
-                final switch (event) {
-                    case SignalEvent.V_BLANK:
-                        dmaSignals |= 0b10;
-                        dmaSemaphore.notify();
-                        break;
-                    case SignalEvent.H_BLANK:
-                        dmaSignals |= 0b100;
-                        dmaSemaphore.notify();
-                        break;
-                }
+            private void handleSpecialWrite(uint address, ref short s) {
+                address &= ~1;
+                int alignedAddress = address & ~3;
+                int shift = ((address & 2) << 3);
+                int mask = 0xFFFF << shift;
+                int intValue = ucast(s) << shift;
+                handleSpecialWrite(alignedAddress, shift, mask, intValue);
+                s = cast(short) ((intValue & mask) >> shift);
             }
 
-            private bool handleSpecialWrite(uint address, int i) {
+            private void handleSpecialWrite(uint address, ref int i) {
+                address &= ~3;
+                int alignedAddress = address;
+                int shift = 0;
+                int mask = 0xFFFFFFFF;
+                int intValue = i;
+                handleSpecialWrite(alignedAddress, shift, mask, intValue);
+                i = intValue;
+            }
+
+            private void handleSpecialWrite(int address, int shift, int mask, ref int value) {
                 switch (address) {
-                    case 0x00000202:
-                        handleInterruptAcknowledgeWrite(i);
-                        return true;
-                    case 0x00000301:
-                        handleHaltRequest();
-                        return true;
-                    case 0x000000BA:
-                    case 0x000000C6:
-                    case 0x000000D2:
-                    case 0x000000DE:
-                        handleDMA(address, i);
-                        return true;
+                    case 0x000000B8:
+                    case 0x000000C4:
+                    case 0x000000D0:
+                    case 0x000000DC:
+                        handleDMA(address, shift, mask, value);
+                        break;
+                    case 0x00000200:
+                        handleInterruptAcknowledgeWrite(address, shift, mask, value);
+                        break;
+                    case 0x00000300:
+                        handleHaltRequest(address, shift, mask, value);
+                        break;
                     default:
-                        return false;
+                        break;
                 }
             }
 
-            private void handleInterruptAcknowledgeWrite(int i) {
-                int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
-                flags &= ~i;
-                super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
+            private void handleInterruptAcknowledgeWrite(int address, int shift, int mask, ref int value) {
+                int flags = super.getInt(0x00000200);
+                setBits(value, 16, 31, (flags & ~value) >> 16);
             }
 
-            private void handleHaltRequest() {
-                processor.halt();
-                irqHalt = true;
-            }
-
-            private void tryResume() {
-                if (!irqHalt && !dmaHalt) {
-                    processor.resume();
+            private void handleHaltRequest(int address, int shift, int mask, ref int value) {
+                if (!checkBit(mask, 15)) {
+                    return;
+                }
+                if (checkBit(value, 15)) {
+                    // TODO: implement stop
+                } else {
+                    processor.halt();
+                    irqHalt = true;
                 }
             }
 
-            private void handleDMA(int address, int control) {
-                super.setShort(address, cast(short) control);
-                if (!checkBit(control, 15)) {
+            private void handleDMA(int address, int shift, int mask, ref int value) {
+                if (!checkBit(value, 31)) {
                     return;
                 }
                 dmaSignals |= 0b1;
@@ -492,6 +493,36 @@ public class GameBoyAdvance {
                             }
                         }
                     }
+                }
+            }
+
+            private void requestInterrupt(int source) {
+                if (super.getInt(INTERRUPT_MASTER_ENABLE_REGISTER) && checkBit(super.getShort(INTERRUPT_ENABLE_REGISTER), source)) {
+                    int flags = super.getShort(INTERRUPT_REQUEST_FLAGS);
+                    setBit(flags, source, 1);
+                    super.setShort(INTERRUPT_REQUEST_FLAGS, cast(short) flags);
+                    processor.triggerIRQ();
+                    irqHalt = false;
+                    tryResume();
+                }
+            }
+
+            private void signalEvent(int event) {
+                final switch (event) {
+                    case SignalEvent.V_BLANK:
+                        dmaSignals |= 0b10;
+                        dmaSemaphore.notify();
+                        break;
+                    case SignalEvent.H_BLANK:
+                        dmaSignals |= 0b100;
+                        dmaSemaphore.notify();
+                        break;
+                }
+            }
+
+            private void tryResume() {
+                if (!irqHalt && !dmaHalt) {
+                    processor.resume();
                 }
             }
         }
