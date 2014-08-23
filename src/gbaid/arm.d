@@ -39,7 +39,10 @@ public class ARM7TDMI {
 		private int index = 0;
 
 		private void logInstruction(int address, int code, string mnemonic) {
-			lastInstructions[index] = Instruction(address, code, mnemonic, pipeline.getSet());
+			lastInstructions[index].address = address;
+			lastInstructions[index].code = code;
+			lastInstructions[index].mnemonic = mnemonic;
+			lastInstructions[index].set = pipeline.getSet();
 			index = (index + 1) % queueMaxSize;
 			if (queueSize < queueMaxSize) {
 				queueSize++;
@@ -48,8 +51,9 @@ public class ARM7TDMI {
 
 		private void dumpInstructions() {
 			writefln("Dumping last %s instructions executed:", queueSize);
+			int start = queueSize < queueMaxSize ? 0 : index;
 			for (int i = 0; i < queueSize; i++) {
-				int j = (i + index) % queueMaxSize;
+				int j = (i + start) % queueMaxSize;
 				final switch (lastInstructions[j].set) {
 					case Set.ARM:
 						writefln("%08x: %08x %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
@@ -1600,7 +1604,7 @@ public class ARM7TDMI {
 			setRegister(Register.SP, sp);
 		}
 
-		debug(outputStack) {
+		debug (outputStack) {
 			private int indent = 0;
 
 			private void printTabs() {
