@@ -458,7 +458,7 @@ public class GameBoyAdvanceDisplay {
         int tileLength = 8;
         int tileSize = tileLength * tileLength / 2;
 
-        for (int i = 128; i >= 0; i--) {
+        for (int i = 127; i >= 0; i--) {
             int attributeAddress = 0x7000000 + i * 8;
 
             int attribute0 = memory.getShort(attributeAddress);
