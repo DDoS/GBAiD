@@ -612,7 +612,7 @@ public class GameBoyAdvanceDisplay {
                     continue;
                 }
 
-                short color = memory.getShort(0x5000000 + paletteAddress);
+                short color = memory.getShort(0x5000200 + paletteAddress);
 
                 if (mode != 2) {
                     colorBuffer[column] = color;
