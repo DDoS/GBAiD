@@ -275,7 +275,6 @@ public class GameBoyAdvance {
             private static immutable uint INTERRUPT_MASTER_ENABLE_REGISTER = 0x00000208;
             private Thread dmaThread;
             private Semaphore dmaSemaphore;
-            private Semaphore dmaResumeWait;
             private shared int dmaSignals = 0;
             private shared bool dmaHalt = false;
             private shared int[4] dmaSourceAddresses = new int[4];
@@ -286,8 +285,8 @@ public class GameBoyAdvance {
             private this() {
                 super(IO_REGISTERS_SIZE);
                 dmaSemaphore = new Semaphore();
-                dmaResumeWait = new Semaphore();
                 dmaThread = new Thread(&runDMA);
+                dmaThread.name = "DMA";
                 dmaThread.isDaemon(true);
                 dmaThread.start();
             }
@@ -389,13 +388,13 @@ public class GameBoyAdvance {
                     return;
                 }
                 int channel = (address - 0xB8) / 0xC;
-                //writefln("DMA! %s", channel);
                 dmaSourceAddresses[channel] = super.getInt(address - 8);
                 dmaDesintationAddresses[channel] = super.getInt(address - 4);
                 dmaControls[channel] = dmaControls[channel] & ~mask | value;
                 atomicOp!"|="(dmaSignals, 0b1);
+                processor.halt();
+                dmaHalt = true;
                 dmaSemaphore.notify();
-                dmaResumeWait.wait();
             }
 
             private void runDMA() {
@@ -445,11 +444,6 @@ public class GameBoyAdvance {
                         noHalt = false;
                     }
 
-                    if (noHalt) {
-                        dmaHalt = false;
-                        tryResume();
-                    }
-
                     int sourceAddressControl = getBits(control, 7, 8);
                     int repeat = getBit(control, 9);
                     int endIRQ = getBit(control, 14);
@@ -468,9 +462,18 @@ public class GameBoyAdvance {
                         }
                     }
 
-                    int increment = type ? 2 : 4;
+                    int increment = type ? 4 : 2;
                     GameBoyAdvanceMemory memory = this.outer.outer.memory;
-                    //writefln("DMA %s %08x to %08x %s words", channel, sourceAddress, destinationAddress, wordCount);
+                    //writefln("DMA %s %08x to %08x, %s bytes", channel, sourceAddress, destinationAddress, wordCount * increment);
+
+                    if (noHalt) {
+                        dmaHalt = false;
+                        tryResume();
+                    } else {
+                        processor.halt();
+                        dmaHalt = true;
+                    }
+
                     for (int i = 0; i < wordCount; i++) {
                         if (type) {
                             memory.setInt(destinationAddress, memory.getInt(sourceAddress));
@@ -480,6 +483,7 @@ public class GameBoyAdvance {
                         modifyAddress(sourceAddress, sourceAddressControl, increment);
                         modifyAddress(destinationAddress, destinationAddressControl, increment);
                     }
+
                     if (endIRQ) {
                         requestInterrupt(InterruptSource.DMA_0 + channel);
                     }
@@ -497,18 +501,10 @@ public class GameBoyAdvance {
                         super.setInt(dmaControlAddress, control);
                         dmaControls[channel] = control;
                     }
-
-                    if (noHalt) {
-                        processor.halt();
-                        dmaHalt = true;
-                    }
                 }
 
                 while (true) {
                     dmaSemaphore.wait();
-                    processor.halt();
-                    dmaHalt = true;
-                    dmaResumeWait.notify();
                     while (atomicLoad(dmaSignals) != 0) {
                         for (int s = 0; s < 4; s++) {
                             if (checkBit(atomicLoad(dmaSignals), s)) {
@@ -541,12 +537,10 @@ public class GameBoyAdvance {
                     case SignalEvent.V_BLANK:
                         atomicOp!"|="(dmaSignals, 0b10);
                         dmaSemaphore.notify();
-                        dmaResumeWait.wait();
                         break;
                     case SignalEvent.H_BLANK:
                         atomicOp!"|="(dmaSignals, 0b100);
                         dmaSemaphore.notify();
-                        dmaResumeWait.wait();
                         break;
                 }
             }

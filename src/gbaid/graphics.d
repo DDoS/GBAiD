@@ -33,6 +33,8 @@ public class GameBoyAdvanceDisplay {
     }
 
     public void run() {
+        Thread.getThis().name = "Display";
+
         context = new GL20Context();
         context.setWindowSize(HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
         context.setWindowTitle("GBAiD");

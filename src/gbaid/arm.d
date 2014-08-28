@@ -1,9 +1,10 @@
 module gbaid.arm;
 
-import std.stdio;
 import core.thread;
 import core.sync.mutex;
 import core.sync.condition;
+
+import std.stdio;
 
 import gbaid.memory;
 import gbaid.util;
@@ -25,61 +26,6 @@ public class ARM7TDMI {
 	private int decoded;
 	private bool branchSignal = false;
 
-	debug (outputInstructions) {
-		private struct Instruction {
-			int address;
-			int code;
-			string mnemonic;
-			Set set;
-		}
-		private enum int queueMaxSize = 400;
-		private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
-		private int queueSize = 0;
-		private int index = 0;
-
-		private void logInstruction(int code, string mnemonic) {
-			logInstruction(getRegister(Register.PC) - pipeline.getPCIncrement() * 2, code, mnemonic);
-		}
-
-		private void logInstruction(int address, int code, string mnemonic) {
-			Set set = pipeline.getSet();
-			if (set == Set.THUMB) {
-				code &= 0xFFFF;
-			}
-			lastInstructions[index].address = address;
-			lastInstructions[index].code = code;
-			lastInstructions[index].mnemonic = mnemonic;
-			lastInstructions[index].set = set;
-			index = (index + 1) % queueMaxSize;
-			if (queueSize < queueMaxSize) {
-				queueSize++;
-			}
-		}
-
-		private void dumpInstructions() {
-			writefln("Dumping last %s instructions executed:", queueSize);
-			int start = queueSize < queueMaxSize ? 0 : index;
-			for (int i = 0; i < queueSize; i++) {
-				int j = (i + start) % queueMaxSize;
-				final switch (lastInstructions[j].set) {
-					case Set.ARM:
-						writefln("%08x: %08x %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
-						break;
-					case Set.THUMB:
-						writefln("%08x: %04x     %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
-						break;
-				}
-			}
-		}
-
-		private void dumpRegisters() {
-			writefln("Dumping last known register states:");
-			for (int i = 0; i < 18; i++) {
-				writefln("%-4s: %08x", cast(Register) i, getRegister(i));
-			}
-		}
-	}
-
 	public this() {
 		haltCondition = new Condition(new Mutex());
 		armPipeline = new ARMPipeline();
@@ -97,6 +43,7 @@ public class ARM7TDMI {
 	public void start() {
 		if (thread is null) {
 			thread = new Thread(&run);
+			thread.name = "ARM CPU";
 			running = true;
 			thread.start();
 		}
@@ -157,16 +104,16 @@ public class ARM7TDMI {
 				} else {
 					tick();
 				}
+				while (haltSignal) {
+					synchronized (haltCondition.mutex) {
+						haltCondition.wait();
+					}
+				}
 				updateModeAndSet();
 				if (branchSignal) {
 					branch();
 				} else {
 					pipeline.incrementPC();
-				}
-				if (haltSignal) {
-					synchronized (haltCondition.mutex) {
-						haltCondition.wait();
-					}
 				}
 			}
 		} catch (Exception ex) {
@@ -177,7 +124,7 @@ public class ARM7TDMI {
 			}
 			throw ex;
 		}
-	}
+	}//0x0800b9b6
 
 	private void branch() {
 		// fetch first instruction
@@ -1862,6 +1809,61 @@ public class ARM7TDMI {
 			branchSignal = true;
 		}
 		registers[getRegisterIndex(mode, register)] = value;
+	}
+
+	debug (outputInstructions) {
+		private struct Instruction {
+			int address;
+			int code;
+			string mnemonic;
+			Set set;
+		}
+		private enum int queueMaxSize = 400;
+		private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
+		private int queueSize = 0;
+		private int index = 0;
+
+		private void logInstruction(int code, string mnemonic) {
+			logInstruction(getRegister(Register.PC) - pipeline.getPCIncrement() * 2, code, mnemonic);
+		}
+
+		private void logInstruction(int address, int code, string mnemonic) {
+			Set set = pipeline.getSet();
+			if (set == Set.THUMB) {
+				code &= 0xFFFF;
+			}
+			lastInstructions[index].address = address;
+			lastInstructions[index].code = code;
+			lastInstructions[index].mnemonic = mnemonic;
+			lastInstructions[index].set = set;
+			index = (index + 1) % queueMaxSize;
+			if (queueSize < queueMaxSize) {
+				queueSize++;
+			}
+		}
+
+		private void dumpInstructions() {
+			writefln("Dumping last %s instructions executed:", queueSize);
+			int start = queueSize < queueMaxSize ? 0 : index;
+			for (int i = 0; i < queueSize; i++) {
+				int j = (i + start) % queueMaxSize;
+				final switch (lastInstructions[j].set) {
+					case Set.ARM:
+						writefln("%08x: %08x %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+						break;
+					case Set.THUMB:
+						writefln("%08x: %04x     %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+						break;
+				}
+			}
+		}
+
+		private void dumpRegisters() {
+			writefln("Dumping last known register states:");
+			for (int i = 0; i < 18; i++) {
+				writefln("%-4s: %08x", cast(Register) i, getRegister(i));
+			}
+		}
 	}
 }
 
