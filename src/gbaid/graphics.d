@@ -496,10 +496,6 @@ public class GameBoyAdvanceDisplay {
                 pb = memory.getShort(parametersAddress + 8);
                 pc = memory.getShort(parametersAddress + 16);
                 pd = memory.getShort(parametersAddress + 24);
-                if (doubleSize) {
-                    pa = (pa << 8) / (2 << 8);
-                    pd = (pd << 8) / (2 << 8);
-                }
             } else {
                 horizontalFlip = getBit(attribute1, 12);
                 verticalFlip = getBit(attribute1, 13);
@@ -516,8 +512,7 @@ public class GameBoyAdvanceDisplay {
             int priority = getBits(attribute2, 10, 11);
             int paletteNumber = getBits(attribute2, 12, 15);
 
-            int horizontalSize = void;
-            int verticalSize = void;
+            int horizontalSize = void, verticalSize = void;
 
             if (shape == 0) {
                 horizontalSize = tileLength * (1 << size);
@@ -546,45 +541,70 @@ public class GameBoyAdvanceDisplay {
                 }
             }
 
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            if (doubleSize) {
+                horizontalSize <<= 1;
+                verticalSize <<= 1;
+            }
 
-                int objectX = column - x;
-                int objectY = line - y;
+            int objectY = line - y;
 
-                if (mosaic) {
-                    applyMosaic(objectX, objectY);
-                }
+            if (objectY < 0 || objectY >= verticalSize) {
+                continue;
+            }
 
-                if (rotAndScale) {
-                    int halfHorizontalSize = horizontalSize / 2;
-                    int halfVerticalSize = verticalSize / 2;
-                    objectX -= halfHorizontalSize;
-                    objectY -= halfVerticalSize;
-                    objectX = ((pa * (objectX << 8) >> 8) + (pb * (objectY << 8) >> 8) + 128 >> 8) + halfHorizontalSize;
-                    objectY = ((pc * (objectX << 8) >> 8) + (pd * (objectY << 8) >> 8) + 128 >> 8) + halfVerticalSize;
-                } else {
-                    if (verticalFlip) {
-                        objectX = horizontalSize - objectX - 1;
-                    }
-                    if (horizontalFlip) {
-                        objectY = verticalSize - objectY - 1;
-                    }
-                }
+            for (int objectX = 0; objectX < horizontalSize; objectX++) {
 
-                if (objectY < 0 || objectY >= verticalSize || objectX >= horizontalSize) {
+                int column = objectX + x;
+
+                if (column >= HORIZONTAL_RESOLUTION) {
                     break;
                 }
 
-                if (objectX < 0) {
-                    column -= objectX + 1;
-                    continue;
+                int sampleX = void, sampleY = void;
+
+                if (rotAndScale) {
+                    int halfHorizontalSize = horizontalSize >> 1;
+                    int halfVerticalSize = verticalSize >> 1;
+                    sampleX = objectX - halfHorizontalSize;
+                    sampleY = objectY - halfVerticalSize;
+                    sampleX = (pa * (sampleX << 8) >> 8) + (pb * (sampleY << 8) >> 8) + 128 >> 8;
+                    sampleY = (pc * (sampleX << 8) >> 8) + (pd * (sampleY << 8) >> 8) + 128 >> 8;
+                    if (doubleSize) {
+                        sampleX += halfHorizontalSize >> 1;
+                        sampleY += halfVerticalSize >> 1;
+                    } else {
+                        sampleX += halfHorizontalSize;
+                        sampleY += halfVerticalSize;
+                    }
+                    if (!doubleSize) {
+                        halfHorizontalSize <<= 1;
+                        halfVerticalSize <<= 1;
+                    }
+                    if (sampleX < 0 || sampleX >= halfHorizontalSize || sampleY < 0 || sampleY >= halfVerticalSize) {
+                        continue;
+                    }
+                } else {
+                    if (verticalFlip) {
+                        sampleX = horizontalSize - objectX - 1;
+                    } else {
+                        sampleX = objectX;
+                    }
+                    if (horizontalFlip) {
+                        sampleY = verticalSize - objectY - 1;
+                    } else {
+                        sampleY = objectY;
+                    }
                 }
 
-                int mapX = objectX / tileLength;
-                int mapY = objectY / tileLength;
+                if (mosaic) {
+                    applyMosaic(sampleX, sampleY);
+                }
 
-                int tileX = objectX % tileLength;
-                int tileY = objectY % tileLength;
+                int mapX = sampleX / tileLength;
+                int mapY = sampleY / tileLength;
+
+                int tileX = sampleX % tileLength;
+                int tileY = sampleY % tileLength;
 
                 int tileAddress = tileNumber;
 
