@@ -280,7 +280,7 @@ public class GameBoyAdvance {
             private shared int[4] dmaSourceAddresses = new int[4];
             private shared int[4] dmaDesintationAddresses = new int[4];
             private shared int[4] dmaControls = new int[4];
-            private bool irqHalt = false;
+            private shared bool irqHalt = false;
 
             private this() {
                 super(IO_REGISTERS_SIZE);
@@ -464,7 +464,7 @@ public class GameBoyAdvance {
 
                     int increment = type ? 4 : 2;
                     GameBoyAdvanceMemory memory = this.outer.outer.memory;
-                    //writefln("DMA %s %08x to %08x, %s bytes", channel, sourceAddress, destinationAddress, wordCount * increment);
+                    writefln("DMA %s %08x to %08x, %s bytes", channel, sourceAddress, destinationAddress, wordCount * increment);
 
                     if (noHalt) {
                         dmaHalt = false;

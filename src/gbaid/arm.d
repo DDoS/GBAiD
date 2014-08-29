@@ -5,6 +5,7 @@ import core.sync.mutex;
 import core.sync.condition;
 
 import std.stdio;
+import std.conv;
 
 import gbaid.memory;
 import gbaid.util;
@@ -99,11 +100,10 @@ public class ARM7TDMI {
 			branch();
 			// start ticking
 			while (running) {
-				if (irqSignal && !getFlag(CPSRFlag.I)) {
+				if (irqSignal) {
 					processIRQ();
-				} else {
-					tick();
 				}
+				tick();
 				while (haltSignal) {
 					synchronized (haltCondition.mutex) {
 						haltCondition.wait();
@@ -124,7 +124,7 @@ public class ARM7TDMI {
 			}
 			throw ex;
 		}
-	}//0x0800b9b6
+	}
 
 	private void branch() {
 		// fetch first instruction
@@ -160,13 +160,17 @@ public class ARM7TDMI {
 
 	private void processIRQ() {
 		irqSignal = false;
-		debug (outputInstructions) logInstruction(0, "IRQ");
+		if (getFlag(CPSRFlag.I)) {
+			return;
+		}
 		setRegister(Mode.IRQ, Register.SPSR, getRegister(Register.CPSR));
 		setFlag(CPSRFlag.I, 1);
 		setFlag(CPSRFlag.T, Set.ARM);
 		setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement() * 2 + 4);
 		setRegister(Register.PC, 0x18);
 		setMode(Mode.IRQ);
+		updateModeAndSet();
+		branch();
 	}
 
 	private interface Pipeline {
@@ -957,7 +961,7 @@ public class ARM7TDMI {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
-			debug (outputInstructions) logInstruction(instruction, "Undefined");
+			debug (outputInstructions) logInstruction(instruction, "UNDEFINED");
 			setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 4);
@@ -966,7 +970,7 @@ public class ARM7TDMI {
 		}
 
 		private void unsupported(int instruction) {
-			throw new UnsupportedARMInstructionException();
+			throw new UnsupportedARMInstructionException(instruction);
 		}
 	}
 
@@ -1092,16 +1096,18 @@ public class ARM7TDMI {
 			int shift = getBits(instruction, 6, 10);
 			int op = getRegister(getBits(instruction, 3, 5));
 			int rd = instruction & 0b111;
-			final switch (shiftType) {
-				case 0:
-					debug (outputInstructions) logInstruction(instruction, "LSL");
-					break;
-				case 1:
-					debug (outputInstructions) logInstruction(instruction, "LSR");
-					break;
-				case 2:
-					debug (outputInstructions) logInstruction(instruction, "ASR");
-					break;
+			debug (outputInstructions) {
+				final switch (shiftType) {
+					case 0:
+						logInstruction(instruction, "LSL");
+						break;
+					case 1:
+						logInstruction(instruction, "LSR");
+						break;
+					case 2:
+						logInstruction(instruction, "ASR");
+						break;
+				}
 			}
 			int carry;
 			op = applyShift(shiftType, true, shift, op, carry);
@@ -1632,6 +1638,7 @@ public class ARM7TDMI {
 				setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
 				setRegister(Register.PC, address);
 			} else {
+				debug (outputInstructions) logInstruction(instruction, "BL_");
 				// sign extend the offset
 				offset <<= 21;
 				offset >>= 21;
@@ -1640,7 +1647,7 @@ public class ARM7TDMI {
 		}
 
 		private void undefined(int instruction) {
-			debug (outputInstructions) logInstruction(instruction, "Undefined");
+			debug (outputInstructions) logInstruction(instruction, "UNDEFINED");
 			setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
 			setFlag(CPSRFlag.I, 1);
 			setFlag(CPSRFlag.T, Set.ARM);
@@ -1650,7 +1657,7 @@ public class ARM7TDMI {
 		}
 
 		private void unsupported(int instruction) {
-			throw new UnsupportedTHUMBInstructionException();
+			throw new UnsupportedTHUMBInstructionException(instruction);
 		}
 	}
 
@@ -1818,10 +1825,10 @@ public class ARM7TDMI {
 			string mnemonic;
 			Set set;
 		}
-		private enum int queueMaxSize = 400;
+		private enum uint queueMaxSize = 400;
 		private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
-		private int queueSize = 0;
-		private int index = 0;
+		private uint queueSize = 0;
+		private uint index = 0;
 
 		private void logInstruction(int code, string mnemonic) {
 			logInstruction(getRegister(Register.PC) - pipeline.getPCIncrement() * 2, code, mnemonic);
@@ -1843,10 +1850,15 @@ public class ARM7TDMI {
 		}
 
 		private void dumpInstructions() {
-			writefln("Dumping last %s instructions executed:", queueSize);
-			int start = queueSize < queueMaxSize ? 0 : index;
-			for (int i = 0; i < queueSize; i++) {
-				int j = (i + start) % queueMaxSize;
+			dumpInstructions(queueSize);
+		}
+
+		private void dumpInstructions(uint amount) {
+			amount = amount > queueSize ? queueSize : amount;
+			uint start = (queueSize < queueMaxSize ? 0 : index) + queueSize - amount;
+			//writefln("Dumping last %s instructions executed:", amount);
+			for (uint i = 0; i < amount; i++) {
+				uint j = (i + start) % queueMaxSize;
 				final switch (lastInstructions[j].set) {
 					case Set.ARM:
 						writefln("%08x: %08x %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
@@ -2014,13 +2026,13 @@ private enum CPSRFlag {
 }
 
 public class UnsupportedARMInstructionException : Exception {
-	protected this() {
-		super("This ARM instruction is unsupported by the implementation");
+	protected this(int instruction) {
+		super("This ARM instruction is unsupported by the implementation: " ~ to!string(instruction));
 	}
 }
 
 public class UnsupportedTHUMBInstructionException : Exception {
-	protected this() {
-		super("This THUMB instruction is unsupported by the implementation");
+	protected this(int instruction) {
+		super("This THUMB instruction is unsupported by the implementation: " ~ to!string(instruction));
 	}
 }

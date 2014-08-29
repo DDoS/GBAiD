@@ -7,7 +7,7 @@ import std.path;
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
-public synchronized interface Memory {
+public interface Memory {
     ulong getCapacity();
 
     byte getByte(uint address);
@@ -24,7 +24,7 @@ public synchronized interface Memory {
 }
 
 public class ROM : Memory {
-    protected int[] memory;
+    protected shared int[] memory;
 
     public this(string file, uint maxSize) {
         try {
@@ -35,7 +35,8 @@ public class ROM : Memory {
     }
 
     public this(int[] memory) {
-        this.memory = memory;
+        this.memory = new shared int[memory.length];
+        this.memory[] = memory[];
     }
 
     public ulong getCapacity() {
@@ -47,7 +48,6 @@ public class ROM : Memory {
     }
 
     public void setByte(uint address, byte b) {
-        throw new ReadOnlyException(address);
     }
 
     public short getShort(uint address) {
@@ -56,7 +56,6 @@ public class ROM : Memory {
     }
 
     public void setShort(uint address, short s) {
-        throw new ReadOnlyException(address);
     }
 
     public int getInt(uint address) {
@@ -64,7 +63,6 @@ public class ROM : Memory {
     }
 
     public void setInt(uint address, int i) {
-        throw new ReadOnlyException(address);
     }
 }
 
