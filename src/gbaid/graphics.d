@@ -196,6 +196,7 @@ public class GameBoyAdvanceDisplay {
     private void lineMode0(int line) {
         int displayControl = memory.getShort(0x4000000);
 
+        int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 15);
 
@@ -210,6 +211,8 @@ public class GameBoyAdvanceDisplay {
         layerBackground0(line, lines[2], 2, bgEnables, backColor);
 
         layerBackground0(line, lines[3], 3, bgEnables, backColor);
+
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
@@ -312,6 +315,7 @@ public class GameBoyAdvanceDisplay {
     private void lineMode1(int line) {
         int displayControl = memory.getShort(0x4000000);
 
+        int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 11);
         int windowEnables = getBits(displayControl, 13, 15);
 
@@ -326,6 +330,8 @@ public class GameBoyAdvanceDisplay {
         layerBackground0(line, lines[2], 2, bgEnables, backColor);
 
         layerBackground2(line, lines[3], 3, bgEnables, backColor);
+
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
