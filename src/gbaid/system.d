@@ -279,10 +279,8 @@ public class GameBoyAdvance {
             private shared int[4] dmaSourceAddresses = new int[4];
             private shared int[4] dmaDesintationAddresses = new int[4];
             private shared int[4] dmaControls = new int[4];
-            private Thread timerThread;
-            private shared short[4] timerReloads = new short[4];
-            private shared int[4] timerControls = new int[4];
-            private shared bool[4] timerReloadSignals = new bool[4];
+            private ulong[4] timerStartTimes = new ulong[4];
+            private ulong[4] timerEndTimes = new ulong[4];
 
             private this() {
                 super(IO_REGISTERS_SIZE);
@@ -291,14 +289,12 @@ public class GameBoyAdvance {
                 dmaThread.name = "DMA";
                 dmaThread.isDaemon(true);
                 dmaThread.start();
-                timerThread = new Thread(&runTimer);
-                timerThread.name = "Timer";
-                timerThread.isDaemon(true);
-                timerThread.start();
             }
 
             public override byte getByte(uint address) {
-                return super.getByte(address);
+                byte b = super.getByte(address);
+                handleSpecialRead(address, b);
+                return b;
             }
 
             public override void setByte(uint address, byte b) {
@@ -307,7 +303,9 @@ public class GameBoyAdvance {
             }
 
             public override short getShort(uint address) {
-                return super.getShort(address);
+                short s = super.getShort(address);
+                handleSpecialRead(address, s);
+                return s;
             }
 
             public override void setShort(uint address, short s) {
@@ -316,12 +314,56 @@ public class GameBoyAdvance {
             }
 
             public override int getInt(uint address) {
-                return super.getInt(address);
+                int i = super.getInt(address);
+                handleSpecialRead(address, i);
+                return i;
             }
 
             public override void setInt(uint address, int i) {
                 handleSpecialWrite(address, i);
                 super.setInt(address, i);
+            }
+
+            private void handleSpecialRead(uint address, ref byte b) {
+                int alignedAddress = address & ~3;
+                int shift = ((address & 3) << 3);
+                int mask = 0xFF << shift;
+                int intValue = ucast(b) << shift;
+                handleSpecialRead(alignedAddress, shift, mask, intValue);
+                b = cast(byte) ((intValue & mask) >> shift);
+            }
+
+            private void handleSpecialRead(uint address, ref short s) {
+                address &= ~1;
+                int alignedAddress = address & ~3;
+                int shift = ((address & 2) << 3);
+                int mask = 0xFFFF << shift;
+                int intValue = ucast(s) << shift;
+                handleSpecialRead(alignedAddress, shift, mask, intValue);
+                s = cast(short) ((intValue & mask) >> shift);
+            }
+
+            private void handleSpecialRead(uint address, ref int i) {
+                address &= ~3;
+                int alignedAddress = address;
+                int shift = 0;
+                int mask = 0xFFFFFFFF;
+                int intValue = i;
+                handleSpecialRead(alignedAddress, shift, mask, intValue);
+                i = intValue;
+            }
+
+            private void handleSpecialRead(int address, int shift, int mask, ref int value) {
+                switch (address) {
+                    case 0x00000100:
+                    case 0x00000104:
+                    case 0x00000108:
+                    case 0x0000010C:
+                        handleTimerRead(address, shift, mask, value);
+                        break;
+                    default:
+                        break;
+                }
             }
 
             private void handleSpecialWrite(uint address, ref byte b) {
@@ -365,7 +407,7 @@ public class GameBoyAdvance {
                     case 0x00000104:
                     case 0x00000108:
                     case 0x0000010C:
-                        handleTimer(address, shift, mask, value);
+                        handleTimerWrite(address, shift, mask, value);
                         break;
                     case 0x00000200:
                         handleInterruptAcknowledgeWrite(address, shift, mask, value);
@@ -402,7 +444,7 @@ public class GameBoyAdvance {
                 int channel = (address - 0xB8) / 0xC;
                 dmaSourceAddresses[channel] = super.getInt(address - 8);
                 dmaDesintationAddresses[channel] = super.getInt(address - 4);
-                dmaControls[channel] = dmaControls[channel] & ~mask | value;
+                dmaControls[channel] = dmaControls[channel] & ~mask | value & mask;
                 atomicOp!"|="(dmaSignals, 0b1);
                 processor.halt();
                 dmaHalt = true;
@@ -533,121 +575,75 @@ public class GameBoyAdvance {
                 }
             }
 
-            private void handleTimer(int address, int shift, int mask, ref int value) {
-                int i = (address - 0x100) / 4;
-                if (mask & 0xFFFF) {
-                    timerReloads[i] = cast(short) (timerReloads[i] & ~mask | value);
+            private void handleTimerRead(int address, int shift, int mask, ref int value) {
+                // ignore reads that aren't on the counter
+                if (!(mask & 0xFFFF)) {
+                    return;
                 }
-                if (mask & 0xFFFF0000) {
-                    int previousEnable = getBit(timerControls[i], 7);
-                    timerControls[i] = timerControls[i] & ~(mask >> 16) | value >> 16;
-                    // check if enable went from 0 to 1
-                    if (!previousEnable && getBit(timerControls[i], 7)) {
-                        // signal reload
-                        timerReloadSignals[i] = true;
+                // returns the full tick count since the start; doesn't overflow
+                double getTickCount(int i, int control, int reload) {
+                    // tick duration for a 16.78MHz clock
+                    enum double clockTickPeriod = 2.0 ^^ -24 * 1e9;
+                    // compute the pre-scaler period
+                    int preScaler = control & 0b11;
+                    if (preScaler == 0) {
+                        preScaler = 1;
+                    } else {
+                        preScaler = 1 << (preScaler << 1) + 4;
+                    }
+                    // compute the full tick period
+                    double tickPeriod = clockTickPeriod * preScaler;
+                    // handle up-counting timers separatly
+                    if (i != 0 && checkBit(control, 2)) {
+                        int previouAddress = i * 4 + 0xFC;
+                        int previousReload = super.getShort(previouAddress);
+                        int previousControl = super.getShort(previouAddress + 2);
+                        // get the tick count from the previous timer and return the overflow count
+                        return getTickCount(i - 1, previousControl, previousReload) / 0x10000;
+                    } else {
+                        // regular timers simply use the delta from start to end (or current if running)
+                        ulong timeDelta = void;
+                        if (checkBit(control, 7)) {
+                            timeDelta = (TickDuration.currSystemTick().nsecs() - timerStartTimes[i]);
+                        } else {
+                            timeDelta = (timerEndTimes[i] - timerStartTimes[i]);
+                        }
+                        // then convert the time into ticks and add the reload value
+                        return (timeDelta / tickPeriod) + reload;
                     }
                 }
+                // fetch the timer number and information
+                int i = (address - 0x100) / 4;
+                int reload = super.getShort(address);
+                int control = super.getShort(address + 2);
+                // convert the full tick count to the 16 bit format used by the GBA
+                double tickCount = getTickCount(i, control, reload);
+                if (tickCount > 0xFFFF) {
+                    // remove overflows
+                    tickCount = (tickCount - reload) % 0x10000 + reload;
+                }
+                short counter = cast(short) tickCount;
+                // write the counter to the value
+                value = value & ~mask | counter & mask;
             }
 
-            private void runTimer() {
-                // extra ticks accumulated in updates
-                double[4] timerAccumulators = new double[4];
-                // whether or not the previous timer overflowed
-                bool nextOverflowed = false;
-                // updates the specified timer, should be called in order from 0 to 3
-                void updateTimer(int i, double tickCount) {
-                    int timerControl = timerControls[i];
-                    // check in enabled
-                    if (checkBit(timerControl, 7)) {
-                        return;
-                    }
-                    // check if reload was signaled
-                    if (timerReloadSignals[i]) {
-                        // just reload and clear signal
-                        int timerAddress = i * 4 + 0x100;
-                        super.setShort(timerAddress, timerReloads[i]);
-                        timerReloadSignals[i] = false;
-                        return;
-                    }
-                    // check if upcounter and not first
-                    int countUp = getBit(timerControl, 2);
-                    if (countUp && i != 0) {
-                        // check for overflow
-                        if (nextOverflowed) {
-                            int timerAddress = i * 4 + 0x100;
-                            // if not the last timer, increment the next
-                            if (i != 3) {
-                                int nextTimerAddress = timerAddress + 4;
-                                int nextCounter = super.getShort(nextTimerAddress);
-                                nextCounter++;
-                                // check for next overflow and signal
-                                nextOverflowed = cast(bool) (nextCounter & 0xFFFF0000);
-                                super.setShort(nextTimerAddress, cast(short) nextCounter);
-                            }
-                            // reload the timer
-                            super.setShort(timerAddress, timerReloads[i]);
-                        }
-                    } else {
-                        // calculate the time period in CPU cycles
-                        int period = timerControl & 0b11;
-                        if (period == 0) {
-                            period = 1;
-                        } else {
-                            period = 1 << (period << 1) + 4;
-                        }
-                        // check if increment is needed
-                        if (tickCount < period) {
-                            // not enough time has been elapsed
-                            return;
-                        }
-                        // get the counter and increment
-                        int timerAddress = i * 4 + 0x100;
-                        int counter = super.getShort(timerAddress);
-                        counter += tickCount / period;
-                        // track accumulated ticks
-                        double accumulated = timerAccumulators[i];
-                        accumulated += tickCount % period;
-                        // if accumulated is greater than a period, drain and increment
-                        if (accumulated >= period) {
-                            accumulated -= period;
-                            counter++;
-                        }
-                        timerAccumulators[i] = accumulated;
-                        // check for overflow
-                        if (counter & 0xFFFF0000) {
-                            // reload the time
-                            counter = timerReloads[i];
-                            // if first upcounter, increment next timer
-                            if (countUp) {
-                                int nextTimerAddress = timerAddress + 4;
-                                int nextCounter = super.getShort(nextTimerAddress);
-                                nextCounter++;
-                                // check for next overflow and signal
-                                nextOverflowed = cast(bool) (nextCounter & 0xFFFF0000);
-                                super.setShort(nextTimerAddress, cast(short) nextCounter);
-                            }
-                            // if IRQ, trigger it
-                            if (checkBit(timerControl, 6)) {
-                                requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + i);
-                            }
-                        }
-                        // finally update the counter
-                        super.setShort(timerAddress, cast(short) counter);
-                    }
+            private void handleTimerWrite(int address, int shift, int mask, ref int value) {
+                // ignore write that aren't to the control byte
+                if (!(mask & 0xFF0000)) {
+                    return;
                 }
-                // track last update times
-                long[4] lastTimes = new long[4];
-                // clock tick duration in nsecs
-                enum double tickPeriod = 2.0 ^^ -24 * 1e9;
-                // never ending loop
-                while (true) {
-                    // update the timers
-                    for (int i = 0; i < 4; i++) {
-                        long currentTime = TickDuration.currSystemTick().nsecs();
-                        updateTimer(i, (currentTime - lastTimes[i]) / tickPeriod);
-                        lastTimes[i] = currentTime;
+                // check using the previous control value if the change in the enable bit
+                int previousControl = super.getInt(address);
+                if (!checkBit(previousControl, 23)) {
+                    if (checkBit(value, 23)) {
+                        // 0 to 1, reset the start time
+                        int i = (address - 0x100) / 4;
+                        timerStartTimes[i] = TickDuration.currSystemTick().nsecs();
                     }
-                    //Thread.sleep(dur!"nsecs"(100));
+                } else if (!checkBit(value, 23)) {
+                    // 1 to 0, set the end time
+                    int i = (address - 0x100) / 4;
+                    timerEndTimes[i] = TickDuration.currSystemTick().nsecs();
                 }
             }
 
