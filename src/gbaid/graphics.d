@@ -102,6 +102,7 @@ public class GameBoyAdvanceDisplay {
             }
         }
         setVCOUNT(160);
+        // TODO: don't reallocate the storage
         texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
         texture.bind(0);
         program.use();
