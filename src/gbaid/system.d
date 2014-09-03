@@ -51,7 +51,7 @@ public class GameBoyAdvance {
         return memory;
     }
 
-    public void start() {
+    public void run() {
         checkNotRunning();
         if (!memory.hasGamepakROM()) {
             throw new NoROMException();
@@ -636,6 +636,7 @@ public class GameBoyAdvance {
                 if (!checkBit(timer, 23)) {
                     return;
                 }
+                // TODO: if this is an upcounter, we need to check if the previous timer is running too
                 // get the control and reload
                 int control = timer >>> 16;
                 int reload = timer & 0xFFFF;

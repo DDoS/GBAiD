@@ -20,5 +20,5 @@ public void main(string[] args) {
 	if (sram !is null) {
 		gba.loadSRAM(sram);
 	}
-	gba.start();
+	gba.run();
 }
