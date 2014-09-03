@@ -124,6 +124,10 @@ public class Scheduler {
         waitingCondition.notify();
     }
 
+    public int schedule(long scheduledTime, TaskFunction run) {
+        return schedule(TickDuration.from!"nsecs"(scheduledTime), run);
+    }
+
     public int schedule(TickDuration scheduledTime, TaskFunction run) {
         synchronized (this) {
             // generate an ID

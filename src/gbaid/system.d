@@ -287,6 +287,7 @@ public class GameBoyAdvance {
                 dmaSemaphore = new Semaphore();
                 dmaThread = new Thread(&runDMA);
                 dmaThread.name = "DMA";
+                // TODO: don't rely on daemon
                 dmaThread.isDaemon(true);
                 dmaThread.start();
             }
@@ -582,24 +583,13 @@ public class GameBoyAdvance {
                 }
                 // returns the full tick count since the start; doesn't overflow
                 double getTickCount(int i, int control, int reload) {
-                    // tick duration for a 16.78MHz clock
-                    enum double clockTickPeriod = 2.0 ^^ -24 * 1e9;
-                    // compute the pre-scaler period
-                    int preScaler = control & 0b11;
-                    if (preScaler == 0) {
-                        preScaler = 1;
-                    } else {
-                        preScaler = 1 << (preScaler << 1) + 4;
-                    }
-                    // compute the full tick period
-                    double tickPeriod = clockTickPeriod * preScaler;
                     // handle up-counting timers separatly
                     if (i != 0 && checkBit(control, 2)) {
                         int previouAddress = i * 4 + 0xFC;
-                        int previousReload = super.getShort(previouAddress);
                         int previousControl = super.getShort(previouAddress + 2);
+                        int previousReload = super.getShort(previouAddress);
                         // get the tick count from the previous timer and return the overflow count
-                        return getTickCount(i - 1, previousControl, previousReload) / 0x10000;
+                        return (getTickCount(i - 1, previousControl, previousReload) - previousReload) / (0x10000 - previousReload);
                     } else {
                         // regular timers simply use the delta from start to end (or current if running)
                         ulong timeDelta = void;
@@ -609,13 +599,13 @@ public class GameBoyAdvance {
                             timeDelta = (timerEndTimes[i] - timerStartTimes[i]);
                         }
                         // then convert the time into ticks and add the reload value
-                        return (timeDelta / tickPeriod) + reload;
+                        return (timeDelta / getTickPeriod(control)) + reload;
                     }
                 }
                 // fetch the timer number and information
                 int i = (address - 0x100) / 4;
-                int reload = super.getShort(address);
                 int control = super.getShort(address + 2);
+                int reload = super.getShort(address);
                 // convert the full tick count to the 16 bit format used by the GBA
                 double tickCount = getTickCount(i, control, reload);
                 if (tickCount > 0xFFFF) {
@@ -645,6 +635,25 @@ public class GameBoyAdvance {
                     int i = (address - 0x100) / 4;
                     timerEndTimes[i] = TickDuration.currSystemTick().nsecs();
                 }
+                // returns the amount of time before the timer will IRQ from overlow
+                double getTimeUntilIRQ(int control, int reload) {
+                    // the time per tick multiplied by the number of ticks until overflow
+                    return getTickPeriod(control) * (0x10000 - reload);
+                }
+            }
+
+            private double getTickPeriod(int control) {
+                // tick duration for a 16.78MHz clock
+                enum double clockTickPeriod = 2.0 ^^ -24 * 1e9;
+                // compute the pre-scaler period
+                int preScaler = control & 0b11;
+                if (preScaler == 0) {
+                    preScaler = 1;
+                } else {
+                    preScaler = 1 << (preScaler << 1) + 4;
+                }
+                // compute and return the full tick period in ns
+                return clockTickPeriod * preScaler;
             }
 
             private void requestInterrupt(int source) {
