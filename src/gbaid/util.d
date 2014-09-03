@@ -112,16 +112,16 @@ public class Scheduler {
     }
 
     public ~this() {
-        if (running) {
-            shutdown();
-        }
+        shutdown();
     }
 
     public void shutdown() {
-        first = null;
-        running = false;
-        emptyCondition.notify();
-        waitingCondition.notify();
+        if (running) {
+            first = null;
+            running = false;
+            emptyCondition.notify();
+            waitingCondition.notify();
+        }
     }
 
     public int schedule(long scheduledTime, TaskFunction run) {
