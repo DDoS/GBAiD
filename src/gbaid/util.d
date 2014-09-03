@@ -167,11 +167,11 @@ public class Scheduler {
         }
     }
 
-    public void cancel(int id) {
+    public bool cancel(int id) {
         synchronized (this) {
             // check if there's anything to cancel
             if (first == null) {
-                return;
+                return false;
             }
             // remove the task if present
             Task* previous = null;
@@ -180,7 +180,7 @@ public class Scheduler {
             while ((*current).id != id) {
                 if (current.next == null) {
                     // not in chain
-                    return;
+                    return false;
                 }
                 previous = current;
                 current = current.next;
@@ -206,6 +206,7 @@ public class Scheduler {
                     waitingCondition.notify();
                 }
             }
+            return true;
         }
     }
 
