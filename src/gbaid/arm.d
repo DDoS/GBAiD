@@ -1512,29 +1512,16 @@ public class ARM7TDMI {
 			int pcAndLR = getBit(instruction, 8);
 			int registerList = instruction & 0xFF;
 			int sp = getRegister(Register.SP);
-			debug (outputStack) {
-				int pc = getRegister(Register.PC);
-			}
 			if (opCode) {
 				debug (outputInstructions) logInstruction(instruction, "POP");
 				for (int i = 0; i <= 7; i++) {
 					if (checkBit(registerList, i)) {
 						setRegister(i, memory.getInt(sp));
-						debug(outputStack) {
-							indent--;
-							printTabs();
-							writefln("%08x: popped R%s from %08x, %08x", pc, i, sp, memory.getInt(sp));
-						}
 						sp += 4;
 					}
 				}
 				if (pcAndLR) {
 					setRegister(Register.PC, memory.getInt(sp));
-					debug(outputStack) {
-						indent--;
-						printTabs();
-						writefln("%08x: popped PC from %08x, %08x", pc, sp, memory.getInt(sp));
-					}
 					sp += 4;
 				}
 			} else {
@@ -1542,35 +1529,15 @@ public class ARM7TDMI {
 				if (pcAndLR) {
 					sp -= 4;
 					memory.setInt(sp, getRegister(Register.LR));
-					debug(outputStack) {
-						printTabs();
-						writefln("%08x: pushed LR to %08x, %08x", pc, sp, getRegister(Register.LR));
-						indent++;
-					}
 				}
 				for (int i = 7; i >= 0; i--) {
 					if (checkBit(registerList, i)) {
 						sp -= 4;
 						memory.setInt(sp, getRegister(i));
-						debug(outputStack) {
-							printTabs();
-							writefln("%08x: pushed R%s to %08x, %08x", pc, i, sp, getRegister(i));
-							indent++;
-						}
 					}
 				}
 			}
 			setRegister(Register.SP, sp);
-		}
-
-		debug (outputStack) {
-			private int indent = 0;
-
-			private void printTabs() {
-				foreach (i; 0 .. indent) {
-					write("  ");
-				}
-			}
 		}
 
 		private void multipleLoadAndStore(int instruction) {
