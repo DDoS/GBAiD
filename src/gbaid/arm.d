@@ -1817,7 +1817,9 @@ public class ARM7TDMI {
 		private void dumpInstructions(uint amount) {
 			amount = amount > queueSize ? queueSize : amount;
 			uint start = (queueSize < queueMaxSize ? 0 : index) + queueSize - amount;
-			writefln("Dumping last %s instructions executed:", amount);
+			if (amount > 1) {
+				writefln("Dumping last %s instructions executed:", amount);
+			}
 			for (uint i = 0; i < amount; i++) {
 				uint j = (i + start) % queueMaxSize;
 				final switch (lastInstructions[j].set) {
