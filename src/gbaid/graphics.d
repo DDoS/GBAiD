@@ -552,6 +552,8 @@ public class GameBoyAdvanceDisplay {
                 }
             }
 
+            int renderHorizontalSize = horizontalSize;
+            int renderVerticalSize = verticalSize;
             if (doubleSize) {
                 horizontalSize <<= 1;
                 verticalSize <<= 1;
@@ -568,7 +570,7 @@ public class GameBoyAdvanceDisplay {
                 int column = objectX + x;
 
                 if (column >= HORIZONTAL_RESOLUTION) {
-                    break;
+                    continue;
                 }
 
                 int sampleX = void, sampleY = void;
@@ -587,11 +589,7 @@ public class GameBoyAdvanceDisplay {
                         sampleX += halfHorizontalSize;
                         sampleY += halfVerticalSize;
                     }
-                    if (!doubleSize) {
-                        halfHorizontalSize <<= 1;
-                        halfVerticalSize <<= 1;
-                    }
-                    if (sampleX < 0 || sampleX >= halfHorizontalSize || sampleY < 0 || sampleY >= halfVerticalSize) {
+                    if (sampleX < 0 || sampleX >= renderHorizontalSize || sampleY < 0 || sampleY >= renderVerticalSize) {
                         continue;
                     }
                 } else {
@@ -621,7 +619,7 @@ public class GameBoyAdvanceDisplay {
 
                 if (tileMapping) {
                     // 1D
-                    tileAddress += mapX + mapY * horizontalSize / tileLength << singlePalette;
+                    tileAddress += mapX + mapY * renderHorizontalSize / tileLength << singlePalette;
                 } else {
                     // 2D
                     tileAddress += (mapX << singlePalette) + mapY * 32;
