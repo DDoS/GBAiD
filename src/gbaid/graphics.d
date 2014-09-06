@@ -198,7 +198,7 @@ public class GameBoyAdvanceDisplay {
         int displayControl = memory.getShort(0x4000000);
 
         int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 11);
+        int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
         int blendControl = memory.getShort(0x4000050);
@@ -251,19 +251,19 @@ public class GameBoyAdvanceDisplay {
             int x = column + xOffset;
             int y = line + yOffset;
 
-            if (x > bgSize) {
+            int map = mapBase;
+            if (x >= bgSize) {
                 x %= bgSize;
                 if (screenSize == 1 || screenSize == 3) {
-                    mapBase += 2 * BYTES_PER_KIB;
+                    map += 2 * BYTES_PER_KIB;
                 }
             }
-
-            if (y > bgSize) {
+            if (y >= bgSize) {
                 y %= bgSize;
                 if (screenSize == 2) {
-                    mapBase += 2 * BYTES_PER_KIB;
+                    map += 2 * BYTES_PER_KIB;
                 } else if (screenSize == 3) {
-                    mapBase += 4 * BYTES_PER_KIB;
+                    map += 4 * BYTES_PER_KIB;
                 }
             }
 
@@ -277,7 +277,7 @@ public class GameBoyAdvanceDisplay {
             int tileColumn = x % tileLength;
             int tileLine = y % tileLength;
 
-            int mapAddress = mapBase + (mapLine * tileCount + mapColumn) * 2;
+            int mapAddress = map + (mapLine * tileCount + mapColumn) * 2;
 
             int tile = memory.getShort(mapAddress);
 
@@ -322,7 +322,7 @@ public class GameBoyAdvanceDisplay {
         int displayControl = memory.getShort(0x4000000);
 
         int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 11);
+        int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
         int blendControl = memory.getShort(0x4000050);
@@ -406,7 +406,7 @@ public class GameBoyAdvanceDisplay {
             int x = (pa * ((column << 8) + dx) >> 8) + (pb * ((line << 8) + dy) >> 8) + 128 >> 8;
             int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8) + 128 >> 8;
 
-            if (x < 0 || x > bgSize) {
+            if (x < 0 || x >= bgSize) {
                 if (displayOverflow) {
                     x %= bgSize;
                     if (x < 0) {
@@ -417,8 +417,7 @@ public class GameBoyAdvanceDisplay {
                     continue;
                 }
             }
-
-            if (y < 0 || y > bgSize) {
+            if (y < 0 || y >= bgSize) {
                 if (displayOverflow) {
                     y %= bgSize;
                     if (y < 0) {
