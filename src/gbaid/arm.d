@@ -56,7 +56,6 @@ public class ARM7TDMI {
 			if (isHalted()) {
 				resume();
 			}
-			thread.join();
 			thread = null;
 		}
 	}
