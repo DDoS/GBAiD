@@ -286,25 +286,30 @@ public class GameBoyAdvanceDisplay {
             int verticalFlip = getBit(tile, 11);
 
             if (horizontalFlip) {
-                tileLine = tileLength - tileLine - 1;
+                tileColumn = tileLength - tileColumn - 1;
             }
             if (verticalFlip) {
-                tileColumn = tileLength - tileColumn - 1;
+                tileLine = tileLength - tileLine - 1;
             }
 
             int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
 
             int paletteAddress = void;
             if (singlePalette) {
-                paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+                int paletteIndex = memory.getByte(tileAddress) & 0xFF;
+                if (paletteIndex == 0) {
+                    buffer[column] = backColor;
+                    continue;
+                }
+                paletteAddress = paletteIndex * 2;
             } else {
+                int paletteIndex = memory.getByte(tileAddress) >> tileColumn % 2 * 4 & 0xF;
+                if (paletteIndex == 0) {
+                    buffer[column] = backColor;
+                    continue;
+                }
                 int paletteNumber = getBits(tile, 12, 15);
-                paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileColumn % 2 * 4)) * 2;
-            }
-
-            if (paletteAddress == 0) {
-                buffer[column] = backColor;
-                continue;
+                paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
             }
 
             short color = memory.getShort(0x5000000 + paletteAddress);
@@ -592,14 +597,14 @@ public class GameBoyAdvanceDisplay {
                     }
                 } else {
                     if (verticalFlip) {
-                        sampleX = horizontalSize - objectX - 1;
-                    } else {
-                        sampleX = objectX;
-                    }
-                    if (horizontalFlip) {
                         sampleY = verticalSize - objectY - 1;
                     } else {
                         sampleY = objectY;
+                    }
+                    if (horizontalFlip) {
+                        sampleX = horizontalSize - objectX - 1;
+                    } else {
+                        sampleX = objectX;
                     }
                 }
 
@@ -630,13 +635,17 @@ public class GameBoyAdvanceDisplay {
 
                 int paletteAddress = void;
                 if (singlePalette) {
-                    paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+                    int paletteIndex = memory.getByte(tileAddress) & 0xFF;
+                    if (paletteIndex == 0) {
+                        continue;
+                    }
+                    paletteAddress = paletteIndex * 2;
                 } else {
-                    paletteAddress = (paletteNumber * 16 + (memory.getByte(tileAddress) & 0xF << tileX % 2 * 4)) * 2;
-                }
-
-                if (paletteAddress == 0) {
-                    continue;
+                    int paletteIndex = memory.getByte(tileAddress) >> tileX % 2 * 4 & 0xF;
+                    if (paletteIndex == 0) {
+                        continue;
+                    }
+                    paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
                 }
 
                 int previousInfo = infoBuffer[column];
