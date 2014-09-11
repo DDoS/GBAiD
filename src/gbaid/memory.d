@@ -2,8 +2,6 @@ module gbaid.memory;
 
 import std.string;
 import std.file;
-import std.path;
-
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
@@ -28,7 +26,7 @@ public class ROM : Memory {
 
     public this(string file, uint maxSize) {
         try {
-            this(cast(int[]) read(expandTilde(file), maxSize));
+            this(cast(int[]) read(file, maxSize));
         } catch (FileException ex) {
             throw new Exception("Cannot initialize ROM", ex);
         }

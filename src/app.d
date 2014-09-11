@@ -13,6 +13,9 @@ public void main(string[] args) {
 		"save|sram|s", &sram
 	);
 	string rom = getSafe!string(args, 1, "");
+	bios = expandPath(bios);
+	sram = expandPath(sram);
+	rom = expandPath(rom);
 	GameBoyAdvance gba = new GameBoyAdvance(bios);
 	if (rom !is null) {
 		gba.loadROM(rom);

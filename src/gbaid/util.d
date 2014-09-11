@@ -5,6 +5,7 @@ import core.thread;
 import core.sync.condition;
 
 import std.conv;
+import std.path;
 import std.range;
 import std.algorithm;
 import std.container;
@@ -263,4 +264,8 @@ public class Scheduler {
             return sign((scheduledTime - other.scheduledTime).nsecs());
         }
     }
+}
+
+public string expandPath(string relative) {
+    return buildNormalizedPath(absolutePath(expandTilde(relative)));
 }
