@@ -573,6 +573,13 @@ public class GameBoyAdvanceDisplay {
                     continue;
                 }
 
+                int previousInfo = infoBuffer[column];
+
+                int previousPriority = previousInfo & 0b11;
+                if (priority > previousPriority) {
+                    continue;
+                }
+
                 int sampleX = void, sampleY = void;
 
                 if (rotAndScale) {
@@ -645,26 +652,14 @@ public class GameBoyAdvanceDisplay {
                     paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
                 }
 
-                int previousInfo = infoBuffer[column];
-
-                int previousPriority = previousInfo & 0b11;
-                if (priority > previousPriority) {
-                    continue;
-                }
-
                 short color = memory.getShort(0x5000200 + paletteAddress);
 
                 if (mode != 2) {
                     colorBuffer[column] = color;
                 }
 
-                int topMode = void;
-                if (previousInfo >> 2 == 2 || mode == 2) {
-                    topMode = 2;
-                } else {
-                    topMode = mode;
-                }
-                infoBuffer[column] = cast(short) (topMode << 2 | priority);
+                int modeFlags = mode << 2 | previousInfo & 0b1000;
+                infoBuffer[column] = cast(short) (modeFlags | priority);
             }
         }
     }
@@ -707,7 +702,7 @@ public class GameBoyAdvanceDisplay {
         }
 
         if (windowEnables & 0b100) {
-            if (objectMode == 2) {
+            if (objectMode & 0b10) {
                 return 0x400004B;
             }
         }
@@ -761,27 +756,16 @@ public class GameBoyAdvanceDisplay {
                 specialEffectEnabled = true;
             }
 
-            int pixelColorEffect = void;
-            int pixelBlendControl = void;
-
-            if (objMode == 1) {
-                pixelColorEffect = 1;
-                pixelBlendControl = blendControl | 0b10000;
-            } else {
-                pixelColorEffect = colorEffect;
-                pixelBlendControl = blendControl;
-            }
-
             priorities[4] = objPriority;
 
             short firstColor = backColor;
             short secondColor = backColor;
 
-            int firstPriority = 3;
-            int secondPriority = 3;
-
             int firstLayer = 5;
             int secondLayer = 5;
+
+            int firstPriority = 3;
+            int secondPriority = 3;
 
             foreach (int layer; layerMap) {
 
@@ -795,13 +779,13 @@ public class GameBoyAdvanceDisplay {
 
                         if (layerColor != backColor) {
 
-                            firstColor = layerColor;
-                            firstPriority = layerPriority;
-                            firstLayer = layer;
+                            secondColor = firstColor;
+                            secondLayer = firstLayer;
+                            secondPriority = firstPriority;
 
-                            if (specialEffectEnabled && checkBit(pixelBlendControl, firstLayer)) {
-                                applyBrightnessEffect(pixelColorEffect, firstColor);
-                            }
+                            firstColor = layerColor;
+                            firstLayer = layer;
+                            firstPriority = layerPriority;
                         }
 
                     } else if (layerPriority <= secondPriority) {
@@ -811,17 +795,37 @@ public class GameBoyAdvanceDisplay {
                         if (layerColor != backColor) {
 
                             secondColor = layerColor;
-                            secondPriority = layerPriority;
                             secondLayer = layer;
-
+                            secondPriority = layerPriority;
                         }
                     }
                 }
             }
 
-            if (specialEffectEnabled && pixelColorEffect == 1 && checkBit(pixelBlendControl, firstLayer)
-                && checkBit(pixelBlendControl, secondLayer + 8)) {
-                firstColor = applyBlendEffect(firstColor, secondColor);
+            if (specialEffectEnabled) {
+                if ((objMode & 0b1) && checkBit(blendControl, secondLayer + 8)) {
+                    firstColor = applyBlendEffect(firstColor, secondColor);
+                } else {
+                    final switch (colorEffect) {
+                        case 0:
+                            break;
+                        case 1:
+                            if (checkBit(blendControl, firstLayer) && checkBit(blendControl, secondLayer + 8)) {
+                                firstColor = applyBlendEffect(firstColor, secondColor);
+                            }
+                            break;
+                        case 2:
+                            if (checkBit(blendControl, firstLayer)) {
+                                applyBrightnessIncreaseEffect(firstColor);
+                            }
+                            break;
+                        case 3:
+                            if (checkBit(blendControl, firstLayer)) {
+                                applyBrightnessDecreaseEffect(firstColor);
+                            }
+                            break;
+                    }
+                }
             }
 
             frame[p] = firstColor;
@@ -830,29 +834,28 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
-    private void applyBrightnessEffect(int colorEffect, ref short first) {
-        if (!(colorEffect & 0b10)) {
-            return;
-        }
-
+    private void applyBrightnessIncreaseEffect(ref short first) {
         int firstRed = first & 0b11111;
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        final switch (colorEffect) {
-            case 2:
-                int evy = memory.getInt(0x4000054) & 0b11111;
-                firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
-                firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
-                firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
-                break;
-            case 3:
-                int evy = memory.getInt(0x4000054) & 0b11111;
-                firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
-                firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
-                firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
-                break;
-        }
+        int evy = memory.getInt(0x4000054) & 0b11111;
+        firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
+        firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
+        firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
+
+        first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
+    }
+
+    private void applyBrightnessDecreaseEffect(ref short first) {
+        int firstRed = first & 0b11111;
+        int firstGreen = getBits(first, 5, 9);
+        int firstBlue = getBits(first, 10, 14);
+
+        int evy = memory.getInt(0x4000054) & 0b11111;
+        firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
+        firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
+        firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
 
         first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
     }
