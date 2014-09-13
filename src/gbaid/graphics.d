@@ -215,6 +215,12 @@ public class GameBoyAdvanceDisplay {
 
         layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
 
+        //layerBackdrop(lines[0], backColor);
+        //layerBackdrop(lines[1], backColor);
+        //layerBackdrop(lines[2], backColor);
+        //layerBackdrop(lines[3], backColor);
+        //layerBackdrop(lines[4], backColor);
+
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
@@ -242,6 +248,9 @@ public class GameBoyAdvanceDisplay {
         int tileCount = 32;
         int bgSize = tileCount * tileLength;
 
+        int totalWidth = bgSize << (screenSize & 0b1);
+        int totalHeight = bgSize << ((screenSize & 0b10) >> 1);
+
         int layerAddressOffset = layer * 4;
         int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
         int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
@@ -251,21 +260,23 @@ public class GameBoyAdvanceDisplay {
             int x = column + xOffset;
             int y = line + yOffset;
 
-            int map = mapBase;
+            x %= totalWidth;
+            y %= totalHeight;
+
+            int map = 0;
             if (x >= bgSize) {
-                x %= bgSize;
-                if (screenSize == 1 || screenSize == 3) {
-                    map += 2 * BYTES_PER_KIB;
-                }
+                x -= bgSize;
+                map += 2 * BYTES_PER_KIB;
             }
             if (y >= bgSize) {
-                y %= bgSize;
-                if (screenSize == 2) {
-                    map += 2 * BYTES_PER_KIB;
-                } else if (screenSize == 3) {
+                y -= bgSize;
+                if (map > 0) {
                     map += 4 * BYTES_PER_KIB;
+                } else {
+                    map += 2 * BYTES_PER_KIB;
                 }
             }
+            map += mapBase;
 
             if (mosaic) {
                 applyMosaic(x, y);
@@ -329,13 +340,13 @@ public class GameBoyAdvanceDisplay {
 
         short backColor = memory.getShort(0x5000000);
 
-        layerBackdrop(lines[0], backColor);
+        layerBackground0(line, lines[0], 0, bgEnables, backColor);
 
         layerBackground0(line, lines[1], 1, bgEnables, backColor);
 
-        layerBackground0(line, lines[2], 2, bgEnables, backColor);
+        layerBackground2(line, lines[2], 2, bgEnables, backColor);
 
-        layerBackground2(line, lines[3], 3, bgEnables, backColor);
+        layerBackdrop(lines[3], backColor);
 
         layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
 
@@ -470,6 +481,11 @@ public class GameBoyAdvanceDisplay {
 
         int tileLength = 8;
         int tileSize = tileLength * tileLength / 2;
+
+        int tileBase = 0x6010000;
+        if (getMode() >= 3) {
+            tileBase += 0x4000;
+        }
 
         for (int i = 127; i >= 0; i--) {
             int attributeAddress = 0x7000000 + i * 8;
@@ -635,7 +651,7 @@ public class GameBoyAdvanceDisplay {
 
                 tileAddress += tileX + tileY * tileLength >> (1 - singlePalette);
 
-                tileAddress += 0x6010000;
+                tileAddress += tileBase;
 
                 int paletteAddress = void;
                 if (singlePalette) {
@@ -732,7 +748,7 @@ public class GameBoyAdvanceDisplay {
             memory.getShort(0x400000A) & 0b11,
             memory.getShort(0x400000C) & 0b11,
             memory.getShort(0x400000E) & 0b11,
-            0,
+            0
         ];
 
         int[5] layerMap = [3, 2, 1, 0, 4];
@@ -769,36 +785,33 @@ public class GameBoyAdvanceDisplay {
 
             foreach (int layer; layerMap) {
 
-                if (checkBit(layerEnables, layer)) {
+                if (!checkBit(layerEnables, layer)) {
+                    continue;
+                }
 
-                    int layerPriority = priorities[layer];
+                short layerColor = lines[layer][column];
 
-                    if (layerPriority <= firstPriority) {
+                if (layerColor == backColor) {
+                    continue;
+                }
 
-                        short layerColor = lines[layer][column];
+                int layerPriority = priorities[layer];
 
-                        if (layerColor != backColor) {
+                if (layerPriority <= firstPriority) {
 
-                            secondColor = firstColor;
-                            secondLayer = firstLayer;
-                            secondPriority = firstPriority;
+                    secondColor = firstColor;
+                    secondLayer = firstLayer;
+                    secondPriority = firstPriority;
 
-                            firstColor = layerColor;
-                            firstLayer = layer;
-                            firstPriority = layerPriority;
-                        }
+                    firstColor = layerColor;
+                    firstLayer = layer;
+                    firstPriority = layerPriority;
 
-                    } else if (layerPriority <= secondPriority) {
+                } else if (layerPriority <= secondPriority) {
 
-                        short layerColor = lines[layer][column];
-
-                        if (layerColor != backColor) {
-
-                            secondColor = layerColor;
-                            secondLayer = layer;
-                            secondPriority = layerPriority;
-                        }
-                    }
+                    secondColor = layerColor;
+                    secondLayer = layer;
+                    secondPriority = layerPriority;
                 }
             }
 
