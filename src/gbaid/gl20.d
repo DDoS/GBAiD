@@ -1000,24 +1000,34 @@ public class GL20Texture : Texture {
 
     public override void setImageData(ubyte[] imageData, uint width, uint height) {
         checkCreated();
-        this.width = width;
-        this.height = height;
+        // Use byte alignment
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         // Bind the texture
         glBindTexture(GL_TEXTURE_2D, id);
-        // Upload the texture to the GPU
+        // back up the old values
+        uint oldWidth = this.width;
+        uint oldHeight = this.height;
+        // update the texture width and height
+        this.width = width;
+        this.height = height;
+        // check if we can only upload without reallocating
         bool hasInternalFormat = internalFormat !is null;
-        //if (minFilter.needsMipMaps() && imageData !is null) {
-            // Build mipmaps if using mip mapped filters
-            //gluBuild2DMipmaps(GL_TEXTURE_2D, hasInternalFormat ? internalFormat.getGLConstant() : format.getGLConstant(), width, height, format.getGLConstant(),
-            //        hasInternalFormat ? internalFormat.getComponentType().getGLConstant() : DataType.UNSIGNED_BYTE.getGLConstant(), imageData);
-        //} else {
-            // Else just make it a normal texture
-            // Use byte alignment
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            // Upload the image
+        if (width == oldWidth && height == oldHeight) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, format.getGLConstant(),
+                    hasInternalFormat ? internalFormat.getComponentType().getGLConstant() : UNSIGNED_BYTE.getGLConstant(), imageData.ptr);
+        } else {
+            // reallocate and upload the texture to the GPU
+            //if (minFilter.needsMipMaps() && imageData !is null) {
+                // Build mipmaps if using mip mapped filters
+                //gluBuild2DMipmaps(GL_TEXTURE_2D, hasInternalFormat ? internalFormat.getGLConstant() : format.getGLConstant(), width, height, format.getGLConstant(),
+                //        hasInternalFormat ? internalFormat.getComponentType().getGLConstant() : DataType.UNSIGNED_BYTE.getGLConstant(), imageData);
+                //} else {
+                // Else just make it a normal texture
+                // Upload the image
             glTexImage2D(GL_TEXTURE_2D, 0, hasInternalFormat ? internalFormat.getGLConstant() : format.getGLConstant(), width, height, 0, format.getGLConstant(),
                     hasInternalFormat ? internalFormat.getComponentType().getGLConstant() : UNSIGNED_BYTE.getGLConstant(), imageData.ptr);
-        //}
+            //}
+        }
         // Unbind the texture
         glBindTexture(GL_TEXTURE_2D, 0);
         // Check for errors

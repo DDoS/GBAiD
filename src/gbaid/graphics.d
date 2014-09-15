@@ -68,8 +68,11 @@ public class GameBoyAdvanceDisplay {
         TickDuration visibleEnd = TickDuration.from!"usecs"(11749);
         TickDuration blankEnd = TickDuration.from!"usecs"(4994);
 
+        Timer timer2 = new Timer();
+
         while (!context.isWindowCloseRequested()) {
             // draw during visible
+            timer2.start();
             timer.start();
             if (checkBit(memory.getShort(0x4000000), 7)) {
                 updateBlank();
@@ -99,7 +102,6 @@ public class GameBoyAdvanceDisplay {
             // update during blank
             timer.restart();
             setVCOUNT(160);
-            // TODO: don't reallocate the storage
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
             texture.bind(0);
             program.use();
@@ -108,6 +110,7 @@ public class GameBoyAdvanceDisplay {
             setVCOUNT(227);
             processInput();
             timer.waitUntil(blankEnd);
+            writefln("FPS: %.1f", 1 / (timer2.getTime().msecs() / 1000f));
         }
 
         context.destroy();
@@ -931,8 +934,8 @@ public class GameBoyAdvanceDisplay {
     private void processInput() {
         const ubyte* keyboard = SDL_GetKeyboardState(null);
         int keypadState =
-            keyboard[SDL_SCANCODE_O] |
-            keyboard[SDL_SCANCODE_P] << 1 |
+            keyboard[SDL_SCANCODE_P] |
+            keyboard[SDL_SCANCODE_O] << 1 |
             keyboard[SDL_SCANCODE_TAB] << 2 |
             keyboard[SDL_SCANCODE_RETURN] << 3 |
             keyboard[SDL_SCANCODE_D] << 4 |
