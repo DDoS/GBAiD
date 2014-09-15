@@ -269,7 +269,7 @@ public class GameBoyAdvanceDisplay {
             }
             if (y >= bgSize) {
                 y -= bgSize;
-                if (map > 0) {
+                if (totalWidth > bgSize) {
                     map += 4 * BYTES_PER_KIB;
                 } else {
                     map += 2 * BYTES_PER_KIB;
