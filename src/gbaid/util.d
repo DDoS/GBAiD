@@ -93,7 +93,7 @@ public string toString(char[] cs) {
 }
 
 public class Scheduler {
-    alias TaskFunction = void delegate();
+    private alias TaskFunction = void delegate();
     private Thread thread;
     private Mutex mutex;
     private Condition emptyCondition;
@@ -268,4 +268,26 @@ public class Scheduler {
 
 public string expandPath(string relative) {
     return buildNormalizedPath(absolutePath(expandTilde(relative)));
+}
+
+public class Timer {
+    private TickDuration startTime;
+
+    public void start() {
+        startTime = TickDuration.currSystemTick();
+    }
+
+    public alias reset = start;
+    public alias restart = start;
+
+    public TickDuration getTime() {
+        return TickDuration.currSystemTick() - startTime;
+    }
+
+    public void waitUntil(TickDuration time) {
+        Duration duration = dur!"nsecs"((time - getTime()).nsecs());
+        if (!duration.isNegative()) {
+            Thread.sleep(duration);
+        }
+    }
 }

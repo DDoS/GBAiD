@@ -51,6 +51,8 @@ public class GL20Context : Context {
         if (glContext is null) {
             throw new Exception("Failed to create OpenGL context: " ~ to!string(SDL_GetError()));
         }
+        // Set the swap interval to immediate
+        SDL_GL_SetSwapInterval(0);
         // Load the GL1.1+ features
         DerelictGL3.reload();
         // Check for errors
@@ -201,12 +203,8 @@ public class GL20Context : Context {
 
     public override bool isWindowCloseRequested() {
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                return true;
-            }
-        }
-        return false;
+        SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUIT, SDL_QUIT);
+        return event.type == SDL_QUIT;
     }
 
     public gbaid.gl.GLVersion getGLVersion() {

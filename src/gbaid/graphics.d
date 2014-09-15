@@ -6,6 +6,8 @@ import core.time;
 import std.stdio;
 import std.algorithm;
 
+import derelict.sdl2.sdl;
+
 import gbaid.system;
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
@@ -21,10 +23,6 @@ public class GameBoyAdvanceDisplay {
     private static immutable uint LAYER_COUNT = 6;
     private static immutable uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private GameBoyAdvanceMemory memory;
-    private Context context;
-    private Program program;
-    private Texture texture;
-    private VertexArray vertexArray;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
 
@@ -35,7 +33,7 @@ public class GameBoyAdvanceDisplay {
     public void run() {
         Thread.getThis().name = "Display";
 
-        context = new GL20Context();
+        Context context = new GL20Context();
         context.setWindowSize(HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
         context.setWindowTitle("GBAiD");
         context.create();
@@ -49,7 +47,7 @@ public class GameBoyAdvanceDisplay {
         fragmentShader.create();
         fragmentShader.setSource(new ShaderSource(fragmentShaderSource, true));
         fragmentShader.compile();
-        program = context.newProgram();
+        Program program = context.newProgram();
         program.create();
         program.attachShader(vertexShader);
         program.attachShader(fragmentShader);
@@ -57,58 +55,62 @@ public class GameBoyAdvanceDisplay {
         program.use();
         program.bindSampler(0);
 
-        texture = context.newTexture();
+        Texture texture = context.newTexture();
         texture.create();
         texture.setFormat(RGBA, RGB5_A1);
         texture.setFilters(NEAREST, NEAREST);
 
-        vertexArray = context.newVertexArray();
+        VertexArray vertexArray = context.newVertexArray();
         vertexArray.create();
         vertexArray.setData(generatePlane(2, 2));
 
+        Timer timer = new Timer();
+        TickDuration visibleEnd = TickDuration.from!"usecs"(11749);
+        TickDuration blankEnd = TickDuration.from!"usecs"(4994);
+
         while (!context.isWindowCloseRequested()) {
-            long start = TickDuration.currSystemTick().msecs();
-            update();
-            long delta = TickDuration.currSystemTick().msecs() - start;
-            //writeln(delta, " ms");
+            // draw during visible
+            timer.start();
+            if (checkBit(memory.getShort(0x4000000), 7)) {
+                updateBlank();
+            } else {
+                final switch (getMode()) {
+                    case Mode.BACKGROUND_4:
+                        updateMode0();
+                        break;
+                    case Mode.BACKGROUND_3:
+                        updateMode1();
+                        break;
+                    case Mode.BACKGROUND_2:
+                        updateMode2();
+                        break;
+                    case Mode.BITMAP_16_DIRECT_SINGLE:
+                        updateMode3();
+                        break;
+                    case Mode.BITMAP_8_PALETTE_DOUBLE:
+                        updateMode4();
+                        break;
+                    case Mode.BITMAP_16_DIRECT_DOUBLE:
+                        updateMode5();
+                        break;
+                }
+            }
+            timer.waitUntil(visibleEnd);
+            // update during blank
+            timer.restart();
+            setVCOUNT(160);
+            // TODO: don't reallocate the storage
+            texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+            texture.bind(0);
+            program.use();
+            vertexArray.draw();
+            context.updateDisplay();
+            setVCOUNT(227);
+            processInput();
+            timer.waitUntil(blankEnd);
         }
 
         context.destroy();
-    }
-
-    private void update() {
-        if (checkBit(memory.getShort(0x4000000), 7)) {
-            updateBlank();
-        } else {
-            final switch (getMode()) {
-                case Mode.BACKGROUND_4:
-                    updateMode0();
-                    break;
-                case Mode.BACKGROUND_3:
-                    updateMode1();
-                    break;
-                case Mode.BACKGROUND_2:
-                    updateMode2();
-                    break;
-                case Mode.BITMAP_16_DIRECT_SINGLE:
-                    updateMode3();
-                    break;
-                case Mode.BITMAP_8_PALETTE_DOUBLE:
-                    updateMode4();
-                    break;
-                case Mode.BITMAP_16_DIRECT_DOUBLE:
-                    updateMode5();
-                    break;
-            }
-        }
-        setVCOUNT(160);
-        // TODO: don't reallocate the storage
-        texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        texture.bind(0);
-        program.use();
-        vertexArray.draw();
-        context.updateDisplay();
-        setVCOUNT(227);
     }
 
     private void updateBlank() {
@@ -214,12 +216,6 @@ public class GameBoyAdvanceDisplay {
         layerBackground0(line, lines[3], 3, bgEnables, backColor);
 
         layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
-
-        //layerBackdrop(lines[0], backColor);
-        //layerBackdrop(lines[1], backColor);
-        //layerBackdrop(lines[2], backColor);
-        //layerBackdrop(lines[3], backColor);
-        //layerBackdrop(lines[4], backColor);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
@@ -930,6 +926,24 @@ public class GameBoyAdvanceDisplay {
         if (checkBit(displayStatus, 5) && vcounter) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
+    }
+
+    private void processInput() {
+        const ubyte* keyboard = SDL_GetKeyboardState(null);
+        int keypadState =
+            keyboard[SDL_SCANCODE_O] |
+            keyboard[SDL_SCANCODE_P] << 1 |
+            keyboard[SDL_SCANCODE_TAB] << 2 |
+            keyboard[SDL_SCANCODE_RETURN] << 3 |
+            keyboard[SDL_SCANCODE_D] << 4 |
+            keyboard[SDL_SCANCODE_A] << 5 |
+            keyboard[SDL_SCANCODE_W] << 6 |
+            keyboard[SDL_SCANCODE_S] << 7 |
+            keyboard[SDL_SCANCODE_E] << 8 |
+            keyboard[SDL_SCANCODE_Q] << 9
+        ;
+        keypadState = ~keypadState & 0x3FF;
+        memory.setShort(0x4000130, cast(short) keypadState);
     }
 }
 

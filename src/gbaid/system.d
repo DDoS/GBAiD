@@ -380,9 +380,6 @@ public class GameBoyAdvance {
                     case 0x0000010C:
                         handleTimerRead(address, shift, mask, value);
                         break;
-                    case 0x00000130:
-                        handleKeypadRead(address, shift, mask, value);
-                        break;
                     default:
                         break;
                 }
@@ -540,7 +537,7 @@ public class GameBoyAdvance {
 
                     int increment = type ? 4 : 2;
                     GameBoyAdvanceMemory memory = this.outer.outer.memory;
-                    //writefln("DMA %s %08x to %08x, %s bytes", channel, sourceAddress, destinationAddress, wordCount * increment);
+                    //writefln("DMA %s %08x to %08x, %s bytes, timing %s", channel, sourceAddress, destinationAddress, wordCount * increment, startTiming);
 
                     if (noHalt) {
                         dmaHalt = false;
@@ -745,10 +742,6 @@ public class GameBoyAdvance {
                     // compute and return the full tick period in ns
                     return clockTickPeriod * preScaler;
                 }
-            }
-
-            private void handleKeypadRead(int address, int shift, int mask, ref int value) {
-                value = value & ~mask | 0x3FF & mask;
             }
 
             private void requestInterrupt(int source) {
