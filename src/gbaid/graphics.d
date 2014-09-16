@@ -13,9 +13,9 @@ import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
 import gbaid.util;
 
-alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
-alias InterruptSource = GameBoyAdvance.GameBoyAdvanceMemory.InterruptSource;
-alias SignalEvent = GameBoyAdvance.GameBoyAdvanceMemory.SignalEvent;
+private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
+private alias InterruptSource = GameBoyAdvance.GameBoyAdvanceMemory.InterruptSource;
+private alias SignalEvent = GameBoyAdvance.GameBoyAdvanceMemory.SignalEvent;
 
 public class GameBoyAdvanceDisplay {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
@@ -167,7 +167,7 @@ public class GameBoyAdvanceDisplay {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
             setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                int paletteAddress = (memory.getByte(i) & 0xFF) * 2;
+                int paletteAddress = (memory.getByte(i) & 0xFF) << 1;
                 if (paletteAddress == 0) {
                     // obj
                 } else {
@@ -231,63 +231,69 @@ public class GameBoyAdvanceDisplay {
             return;
         }
 
-        int bgControlAddress = 0x4000008 + layer * 2;
+        int bgControlAddress = 0x4000008 + (layer << 1);
         int bgControl = memory.getShort(bgControlAddress);
 
-        int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+        int tileBase = (getBits(bgControl, 2, 3) << 14) + 0x6000000;
         int mosaic = getBit(bgControl, 6);
         int singlePalette = getBit(bgControl, 7);
-        int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+        int mapBase = (getBits(bgControl, 8, 12) << 11) + 0x6000000;
         int screenSize = getBits(bgControl, 14, 15);
 
-        int tileLength = 8;
-        int tile4Bit = singlePalette ? 1 : 2;
-        int tileSize = tileLength * tileLength / tile4Bit;
+        int tileMask = 7;
+        int tileShift = 3;
+        int tile4Bit = singlePalette ? 0 : 1;
+        int tileSizeShift = 6 - tile4Bit;
 
-        int tileCount = 32;
-        int bgSize = tileCount * tileLength;
+        int tileCountShift = 5;
+        int bgSize = 256;
 
-        int totalWidth = bgSize << (screenSize & 0b1);
-        int totalHeight = bgSize << ((screenSize & 0b10) >> 1);
+        int totalWidth = (bgSize << (screenSize & 0b1)) - 1;
+        int totalHeight = (bgSize << ((screenSize & 0b10) >> 1)) - 1;
 
-        int layerAddressOffset = layer * 4;
+        int layerAddressOffset = layer << 2;
         int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
         int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
+
+        int y = line + yOffset;
+        y &= totalHeight;
+
+        if (y >= bgSize) {
+            y -= bgSize;
+            if (totalWidth > bgSize) {
+                mapBase += BYTES_PER_KIB << 2;
+            } else {
+                mapBase += BYTES_PER_KIB << 1;
+            }
+        }
+
+        if (mosaic) {
+            applyMosaicY(y);
+        }
+
+        int mapLine = y >> tileShift;
+        int tileLine = y & tileMask;
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
             int x = column + xOffset;
-            int y = line + yOffset;
-
-            x %= totalWidth;
-            y %= totalHeight;
+            x &= totalWidth;
 
             int map = 0;
             if (x >= bgSize) {
                 x -= bgSize;
-                map += 2 * BYTES_PER_KIB;
-            }
-            if (y >= bgSize) {
-                y -= bgSize;
-                if (totalWidth > bgSize) {
-                    map += 4 * BYTES_PER_KIB;
-                } else {
-                    map += 2 * BYTES_PER_KIB;
-                }
+                map += BYTES_PER_KIB << 1;
             }
             map += mapBase;
 
             if (mosaic) {
-                applyMosaic(x, y);
+                applyMosaicX(x);
             }
 
-            int mapColumn = x / tileLength;
-            int mapLine = y / tileLength;
+            int mapColumn = x >> tileShift;
+            int tileColumn = x & tileMask;
 
-            int tileColumn = x % tileLength;
-            int tileLine = y % tileLength;
-
-            int mapAddress = map + (mapLine * tileCount + mapColumn) * 2;
+            int mapAddress = map + ((mapLine << tileCountShift) + mapColumn << 1);
 
             int tile = memory.getShort(mapAddress);
 
@@ -295,14 +301,19 @@ public class GameBoyAdvanceDisplay {
             int horizontalFlip = getBit(tile, 10);
             int verticalFlip = getBit(tile, 11);
 
+            int sampleColumn = void, sampleLine = void;
             if (horizontalFlip) {
-                tileColumn = tileLength - tileColumn - 1;
+                sampleColumn = ~tileColumn & tileMask;
+            } else {
+                sampleColumn = tileColumn;
             }
             if (verticalFlip) {
-                tileLine = tileLength - tileLine - 1;
+                sampleLine = ~tileLine & tileMask;
+            } else {
+                sampleLine = tileLine;
             }
 
-            int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn) / tile4Bit;
+            int tileAddress = tileBase + (tileNumber << tileSizeShift) + ((sampleLine << tileShift) + sampleColumn >> tile4Bit);
 
             int paletteAddress = void;
             if (singlePalette) {
@@ -311,15 +322,15 @@ public class GameBoyAdvanceDisplay {
                     buffer[column] = backColor;
                     continue;
                 }
-                paletteAddress = paletteIndex * 2;
+                paletteAddress = paletteIndex << 1;
             } else {
-                int paletteIndex = memory.getByte(tileAddress) >> tileColumn % 2 * 4 & 0xF;
+                int paletteIndex = memory.getByte(tileAddress) >> ((sampleColumn & 0b1) << 2) & 0xF;
                 if (paletteIndex == 0) {
                     buffer[column] = backColor;
                     continue;
                 }
                 int paletteNumber = getBits(tile, 12, 15);
-                paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
+                paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
             }
 
             short color = memory.getShort(0x5000000 + paletteAddress);
@@ -738,6 +749,20 @@ public class GameBoyAdvanceDisplay {
 
         y /= vSize;
         y *= vSize;
+    }
+
+    private void applyMosaicX(ref int x) {
+        int mosaicControl = memory.getInt(0x400004C);
+        int size = (mosaicControl & 0b1111) + 1;
+        x /= size;
+        x *= size;
+    }
+
+    private void applyMosaicY(ref int y) {
+        int mosaicControl = memory.getInt(0x400004C);
+        int size = getBits(mosaicControl, 4, 7) + 1;
+        y /= size;
+        y *= size;
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
