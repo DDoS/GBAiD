@@ -2,6 +2,7 @@ module gbaid.memory;
 
 import std.string;
 import std.file;
+
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
@@ -22,42 +23,45 @@ public interface Memory {
 }
 
 public class ROM : Memory {
-    protected shared int[] memory;
+    protected shared void[] memory;
+
+    protected this(ulong capacity) {
+        this.memory = new shared ubyte[capacity];
+    }
+
+    public this(void[] memory) {
+        this(memory.length);
+        this.memory[] = memory[];
+    }
 
     public this(string file, uint maxSize) {
         try {
-            this(cast(int[]) read(file, maxSize));
+            this(read(file, maxSize));
         } catch (FileException ex) {
             throw new Exception("Cannot initialize ROM", ex);
         }
     }
 
-    public this(int[] memory) {
-        this.memory = new shared int[memory.length];
-        this.memory[] = memory[];
-    }
-
     public ulong getCapacity() {
-        return memory.length * 4;
+        return memory.length;
     }
 
     public byte getByte(uint address) {
-        return cast(byte) (memory[address >> 2] >> ((address & 3) << 3));
+        return (cast(byte[]) memory)[address];
     }
 
     public void setByte(uint address, byte b) {
     }
 
     public short getShort(uint address) {
-        address >>= 1;
-        return cast(short) (memory[address >> 1] >> ((address & 1) << 4));
+        return (cast(short[]) memory)[address >> 1];
     }
 
     public void setShort(uint address, short s) {
     }
 
     public int getInt(uint address) {
-        return memory[address >> 2];
+        return (cast(int[]) memory)[address >> 2];
     }
 
     public void setInt(uint address, int i) {
@@ -65,33 +69,28 @@ public class ROM : Memory {
 }
 
 public class RAM : ROM {
+    public this(ulong capacity) {
+        super(capacity);
+    }
+
+    public this(void[] memory) {
+        super(memory);
+    }
+
     public this(string file, uint maxByteSize) {
         super(file, maxByteSize);
     }
 
-    public this(int[] memory) {
-        super(memory);
-    }
-
-    public this(ulong capacity) {
-        this(new int[capacity / 4]);
-    }
-
     public override void setByte(uint address, byte b) {
-        int wordAddress = address >> 2;
-        int offset = (address & 3) << 3;
-        memory[wordAddress] = memory[wordAddress] & ~(0xFF << offset) | (b & 0xFF) << offset;
+        (cast(byte[]) memory)[address] = b;
     }
 
     public override void setShort(uint address, short s) {
-        address >>= 1;
-        int wordAddress = address >> 1;
-        int offset = (address & 1) << 4;
-        memory[wordAddress] = memory[wordAddress] & ~(0xFFFF << offset) | (s & 0xFFFF) << offset;
+        (cast(short[]) memory)[address >> 1] = s;
     }
 
     public override void setInt(uint address, int i) {
-        memory[address >> 2] = i;
+        (cast(int[]) memory)[address >> 2] = i;
     }
 }
 
