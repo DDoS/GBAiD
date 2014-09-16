@@ -107,8 +107,8 @@ public class GameBoyAdvanceDisplay {
             program.use();
             vertexArray.draw();
             context.updateDisplay();
-            setVCOUNT(227);
             processInput();
+            setVCOUNT(227);
             timer.waitUntil(blankEnd);
             writefln("FPS: %.1f", 1 / (timer2.getTime().msecs() / 1000f));
         }
@@ -255,8 +255,7 @@ public class GameBoyAdvanceDisplay {
         int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
         int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
 
-        int y = line + yOffset;
-        y &= totalHeight;
+        int y = (line + yOffset) & totalHeight;
 
         if (y >= bgSize) {
             y -= bgSize;
@@ -274,10 +273,11 @@ public class GameBoyAdvanceDisplay {
         int mapLine = y >> tileShift;
         int tileLine = y & tileMask;
 
+        int lineMapOffset = mapLine << tileCountShift;
+
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
 
-            int x = column + xOffset;
-            x &= totalWidth;
+            int x = (column + xOffset) & totalWidth;
 
             int map = 0;
             if (x >= bgSize) {
@@ -293,21 +293,19 @@ public class GameBoyAdvanceDisplay {
             int mapColumn = x >> tileShift;
             int tileColumn = x & tileMask;
 
-            int mapAddress = map + ((mapLine << tileCountShift) + mapColumn << 1);
+            int mapAddress = map + (lineMapOffset + mapColumn << 1);
 
             int tile = memory.getShort(mapAddress);
 
             int tileNumber = tile & 0x3FF;
-            int horizontalFlip = getBit(tile, 10);
-            int verticalFlip = getBit(tile, 11);
 
             int sampleColumn = void, sampleLine = void;
-            if (horizontalFlip) {
+            if (tile & 0x400) {
                 sampleColumn = ~tileColumn & tileMask;
             } else {
                 sampleColumn = tileColumn;
             }
-            if (verticalFlip) {
+            if (tile & 0x800) {
                 sampleLine = ~tileLine & tileMask;
             } else {
                 sampleLine = tileLine;
@@ -329,13 +327,10 @@ public class GameBoyAdvanceDisplay {
                     buffer[column] = backColor;
                     continue;
                 }
-                int paletteNumber = getBits(tile, 12, 15);
-                paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
+                paletteAddress = (tile >> 8 & 0xF0) + paletteIndex << 1;
             }
 
-            short color = memory.getShort(0x5000000 + paletteAddress);
-
-            buffer[column] = color;
+            buffer[column] = memory.getShort(0x5000000 + paletteAddress);
         }
     }
 
