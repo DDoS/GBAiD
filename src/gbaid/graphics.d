@@ -499,8 +499,6 @@ public class GameBoyAdvanceDisplay {
                 }
             }
             int y = attribute0 & 0xFF;
-            y <<= 24;
-            y >>= 24;
             int mode = getBits(attribute0, 10, 11);
             int mosaic = getBit(attribute0, 12);
             int singlePalette = getBit(attribute0, 13);
@@ -509,8 +507,6 @@ public class GameBoyAdvanceDisplay {
             int attribute1 = memory.getShort(attributeAddress + 2);
 
             int x = attribute1 & 0x1FF;
-            x <<= 23;
-            x >>= 23;
             int horizontalFlip = void, verticalFlip = void;
             int pa = void, pb = void, pc = void, pd = void;
             if (rotAndScale) {
@@ -537,6 +533,13 @@ public class GameBoyAdvanceDisplay {
             int tileNumber = attribute2 & 0x3FF;
             int priority = getBits(attribute2, 10, 11);
             int paletteNumber = getBits(attribute2, 12, 15);
+
+            if (x >= HORIZONTAL_RESOLUTION) {
+                x -= 512;
+            }
+            if (y >= VERTICAL_RESOLUTION) {
+                y -= 256;
+            }
 
             int horizontalSize = void, verticalSize = void;
 
