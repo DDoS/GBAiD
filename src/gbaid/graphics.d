@@ -74,30 +74,32 @@ public class GameBoyAdvanceDisplay {
             // draw during visible
             timer2.start();
             timer.start();
+            time = TickDuration(0);
             if (checkBit(memory.getShort(0x4000000), 7)) {
                 updateBlank();
             } else {
                 final switch (getMode()) {
-                    case Mode.BACKGROUND_4:
+                    case BackgroundMode.TILED_TEXT:
                         updateMode0();
                         break;
-                    case Mode.BACKGROUND_3:
+                    case BackgroundMode.TILED_MIXED:
                         updateMode1();
                         break;
-                    case Mode.BACKGROUND_2:
+                    case BackgroundMode.TILED_AFFINE:
                         updateMode2();
                         break;
-                    case Mode.BITMAP_16_DIRECT_SINGLE:
+                    case BackgroundMode.BITMAP_16_SINGLE:
                         updateMode3();
                         break;
-                    case Mode.BITMAP_8_PALETTE_DOUBLE:
+                    case BackgroundMode.BITMAP_8_DOUBLE:
                         updateMode4();
                         break;
-                    case Mode.BITMAP_16_DIRECT_DOUBLE:
+                    case BackgroundMode.BITMAP_16_DOUBLE:
                         updateMode5();
                         break;
                 }
             }
+            writeln(time.msecs());
             timer.waitUntil(visibleEnd);
             // update during blank
             timer.restart();
@@ -198,6 +200,9 @@ public class GameBoyAdvanceDisplay {
             buffer[column] = backColor;
         }
     }
+
+    TickDuration time;
+    Timer bench = new Timer();
 
     private void lineMode0(int line) {
         int displayControl = memory.getShort(0x4000000);
@@ -923,8 +928,8 @@ public class GameBoyAdvanceDisplay {
         return (blendBlue & 31) << 10 | (blendGreen & 31) << 5 | blendRed & 31;
     }
 
-    private Mode getMode() {
-        return cast(Mode) (memory.getShort(0x4000000) & 0b111);
+    private BackgroundMode getMode() {
+        return cast(BackgroundMode) (memory.getShort(0x4000000) & 0b111);
     }
 
     private void setVCOUNT(int vcount) {
@@ -1025,11 +1030,11 @@ void main() {
 }
 `;
 
-private enum Mode {
-    BACKGROUND_4 = 0,
-    BACKGROUND_3 = 1,
-    BACKGROUND_2 = 2,
-    BITMAP_16_DIRECT_SINGLE = 3,
-    BITMAP_8_PALETTE_DOUBLE = 4,
-    BITMAP_16_DIRECT_DOUBLE = 5
+private enum BackgroundMode {
+    TILED_TEXT = 0,
+    TILED_MIXED = 1,
+    TILED_AFFINE = 2,
+    BITMAP_16_SINGLE = 3,
+    BITMAP_8_DOUBLE = 4,
+    BITMAP_16_DOUBLE = 5
 }
