@@ -245,16 +245,11 @@ public class GameBoyAdvanceDisplay {
         int mapBase = (getBits(bgControl, 8, 12) << 11);
         int screenSize = getBits(bgControl, 14, 15);
 
-        int tileMask = 7;
-        int tileShift = 3;
         int tile4Bit = singlePalette ? 0 : 1;
         int tileSizeShift = 6 - tile4Bit;
 
-        int tileCountShift = 5;
-        int bgSize = 256;
-
-        int totalWidth = (bgSize << (screenSize & 0b1)) - 1;
-        int totalHeight = (bgSize << ((screenSize & 0b10) >> 1)) - 1;
+        int totalWidth = (256 << (screenSize & 0b1)) - 1;
+        int totalHeight = (256 << ((screenSize & 0b10) >> 1)) - 1;
 
         int layerAddressOffset = layer << 2;
         int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
@@ -262,9 +257,9 @@ public class GameBoyAdvanceDisplay {
 
         int y = (line + yOffset) & totalHeight;
 
-        if (y >= bgSize) {
-            y -= bgSize;
-            if (totalWidth > bgSize) {
+        if (y >= 256) {
+            y -= 256;
+            if (totalWidth > 256) {
                 mapBase += BYTES_PER_KIB << 2;
             } else {
                 mapBase += BYTES_PER_KIB << 1;
@@ -275,10 +270,10 @@ public class GameBoyAdvanceDisplay {
             applyMosaicY(y);
         }
 
-        int mapLine = y >> tileShift;
-        int tileLine = y & tileMask;
+        int mapLine = y >> 3;
+        int tileLine = y & 7;
 
-        int lineMapOffset = mapLine << tileCountShift;
+        int lineMapOffset = mapLine << 5;
 
         long bufferAddress = cast(long) buffer.ptr;
         long vramAddress = cast(long) memory.getPointer(0x6000000);
