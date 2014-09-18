@@ -157,6 +157,11 @@ public class GameBoyAdvance {
             return capacity;
         }
 
+        public void* getPointer(uint address) {
+            Memory memory = map(address);
+            return memory.getPointer(address);
+        }
+
         public byte getByte(uint address) {
             Memory memory = map(address);
             return memory.getByte(address);
@@ -249,29 +254,33 @@ public class GameBoyAdvance {
         }
 
         private static class UnusedMemory : Memory {
-            public override ulong getCapacity() {
+            public ulong getCapacity() {
                 return 0;
             }
 
-            public override byte getByte(uint address) {
+            public void* getPointer(uint address) {
+                return null;
+            }
+
+            public byte getByte(uint address) {
                 return 0;
             }
 
-            public override void setByte(uint address, byte b) {
+            public void setByte(uint address, byte b) {
             }
 
-            public override short getShort(uint address) {
+            public short getShort(uint address) {
                 return 0;
             }
 
-            public override void setShort(uint address, short s) {
+            public void setShort(uint address, short s) {
             }
 
-            public override int getInt(uint address) {
+            public int getInt(uint address) {
                 return 0;
             }
 
-            public override void setInt(uint address, int i) {
+            public void setInt(uint address, int i) {
             }
         }
 

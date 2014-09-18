@@ -9,6 +9,8 @@ public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 public interface Memory {
     ulong getCapacity();
 
+    void* getPointer(uint address);
+
     byte getByte(uint address);
 
     void setByte(uint address, byte b);
@@ -44,6 +46,10 @@ public class ROM : Memory {
 
     public ulong getCapacity() {
         return memory.length;
+    }
+
+    public void* getPointer(uint address) {
+        return cast(void*) memory.ptr + address;
     }
 
     public byte getByte(uint address) {
