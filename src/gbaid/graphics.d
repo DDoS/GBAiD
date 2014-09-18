@@ -285,18 +285,19 @@ public class GameBoyAdvanceDisplay {
         long paletteAddress = cast(long) memory.getPointer(0x5000000);
 
         asm {
-                mov R8, bufferAddress;
-                mov R9D, 0;
+                mov RBX, bufferAddress;
+                push RBX;
+                mov RAX, 0;
+                push RAX;
             loop:
                 // calculate x for entire bg
-                mov EAX, R9D;
                 add EAX, xOffset;
                 and EAX, totalWidth;
                 // start calculating tile address
                 mov EDX, mapBase;
                 // calculate x for section
                 cmp EAX, 256;
-                jle skip_overflow;
+                jl skip_overflow;
                 sub EAX, 256;
                 add EDX, 2048;
             skip_overflow:
@@ -369,14 +370,22 @@ public class GameBoyAdvanceDisplay {
             end_palettes:
                 // EDX = paletteAddress
                 add RDX, paletteAddress;
-                mov EAX, [EDX];
-                // EAX = color
-                mov [R8], AX;
+                mov ECX, [RDX];
+                // ECX = color
+                pop RAX;
+                pop RBX;
+                mov [RBX], CX;
+                // check loop condition
+                cmp EAX, 240;
+                jge end;
                 // increment address and counter
-                add R8, 2;
-                add R9D, 1;
-                cmp R9D, 240;
-                jl loop;
+                add RBX, 2;
+                push RBX;
+                add EAX, 1;
+                push RAX;
+                jmp loop;
+            end:
+                nop;
         }
     }
 
