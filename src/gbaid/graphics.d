@@ -245,6 +245,10 @@ public class GameBoyAdvanceDisplay {
         int mapBase = (getBits(bgControl, 8, 12) << 11);
         int screenSize = getBits(bgControl, 14, 15);
 
+        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+
         int tile4Bit = singlePalette ? 0 : 1;
         int tileSizeShift = 6 - tile4Bit;
 
@@ -267,7 +271,7 @@ public class GameBoyAdvanceDisplay {
         }
 
         if (mosaic) {
-            applyMosaicY(y);
+            y -= y % mosaicSizeY;
         }
 
         int mapLine = y >> 3;
@@ -296,6 +300,17 @@ public class GameBoyAdvanceDisplay {
                 sub EAX, 256;
                 add EDX, 2048;
             skip_overflow:
+                test mosaic, 1;
+                jz skip_mosaic;
+                push RDX;
+                xor EDX, EDX;
+                mov EBX, EAX;
+                mov ECX, mosaicSizeY;
+                div ECX;
+                sub EBX, EDX;
+                mov EAX, EBX;
+                pop RDX;
+            skip_mosaic:
                 // EAX = x, RDX = map
                 mov EBX, EAX;
                 // calculate tile map and column
@@ -448,6 +463,10 @@ public class GameBoyAdvanceDisplay {
         int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
         int displayOverflow = getBit(bgControl, 13);
         int screenSize = getBits(bgControl, 14, 15);
+
+        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
         int tileLength = 8;
         int tileSize = tileLength * tileLength;
