@@ -112,7 +112,7 @@ public class GameBoyAdvanceDisplay {
             processInput();
             setVCOUNT(227);
             timer.waitUntil(blankEnd);
-            writefln("FPS: %.1f", 1 / (timer2.getTime().msecs() / 1000f));
+            //writefln("FPS: %.1f", 1 / (timer2.getTime().msecs() / 1000f));
         }
 
         context.destroy();
@@ -239,10 +239,10 @@ public class GameBoyAdvanceDisplay {
         int bgControlAddress = 0x4000008 + (layer << 1);
         int bgControl = memory.getShort(bgControlAddress);
 
-        int tileBase = (getBits(bgControl, 2, 3) << 14);
+        int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
         int singlePalette = getBit(bgControl, 7);
-        int mapBase = (getBits(bgControl, 8, 12) << 11);
+        int mapBase = getBits(bgControl, 8, 12) << 11;
         int screenSize = getBits(bgControl, 14, 15);
 
         int mosaicControl = memory.getInt(0x400004C);
@@ -286,7 +286,7 @@ public class GameBoyAdvanceDisplay {
         asm {
                 mov RBX, bufferAddress;
                 push RBX;
-                mov RAX, 0;
+                mov EAX, 0;
                 push RAX;
             loop:
                 // calculate x for entire bg
@@ -295,17 +295,18 @@ public class GameBoyAdvanceDisplay {
                 // start calculating tile address
                 mov EDX, mapBase;
                 // calculate x for section
-                cmp EAX, 256;
-                jl skip_overflow;
-                sub EAX, 256;
+                test EAX, ~255;
+                jz skip_overflow;
+                and EAX, 255;
                 add EDX, 2048;
             skip_overflow:
                 test mosaic, 1;
                 jz skip_mosaic;
+                // apply horizontal mosaic
                 push RDX;
                 xor EDX, EDX;
                 mov EBX, EAX;
-                mov ECX, mosaicSizeY;
+                mov ECX, mosaicSizeX;
                 div ECX;
                 sub EBX, EDX;
                 mov EAX, EBX;
@@ -322,7 +323,7 @@ public class GameBoyAdvanceDisplay {
                 add EDX, EBX;
                 add RDX, vramAddress;
                 // get tile
-                mov EBX, [RDX];
+                mov BX, [RDX];
                 // EAX = tileColumn, EBX = tile
                 mov ECX, EAX;
                 // calculate sample column and line
@@ -354,7 +355,7 @@ public class GameBoyAdvanceDisplay {
                 pop RCX;
                 // EAX = tileAddress, EBX = tile, ECX = sampleColumn
                 // calculate the palette address
-                mov EDX, [RAX];
+                mov DL, [RAX];
                 test singlePalette, 1;
                 jz mult_palettes;
                 and EDX, 0xFF;
@@ -379,14 +380,16 @@ public class GameBoyAdvanceDisplay {
                 shl EDX, 1;
             end_palettes:
                 // EDX = paletteAddress
+                // get color from palette
                 add RDX, paletteAddress;
-                mov ECX, [RDX];
+                mov CX, [RDX];
                 // ECX = color
                 pop RAX;
                 pop RBX;
+                // write color to line buffer
                 mov [RBX], CX;
                 // check loop condition
-                cmp EAX, 240;
+                cmp EAX, 239;
                 jge end;
                 // increment address and counter
                 add RBX, 2;
@@ -455,12 +458,12 @@ public class GameBoyAdvanceDisplay {
             return;
         }
 
-        int bgControlAddress = 0x4000008 + layer * 2;
+        int bgControlAddress = 0x4000008 + (layer << 1);
         int bgControl = memory.getShort(bgControlAddress);
 
-        int tileBase = getBits(bgControl, 2, 3) * 16 * BYTES_PER_KIB + 0x6000000;
+        int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
-        int mapBase = getBits(bgControl, 8, 12) * 2 * BYTES_PER_KIB + 0x6000000;
+        int mapBase = getBits(bgControl, 8, 12) << 11;
         int displayOverflow = getBit(bgControl, 13);
         int screenSize = getBits(bgControl, 14, 15);
 
@@ -468,13 +471,11 @@ public class GameBoyAdvanceDisplay {
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
-        int tileLength = 8;
-        int tileSize = tileLength * tileLength;
+        int bgSize = (128 << screenSize) - 1;
+        int bgSizeInv = ~bgSize;
+        int mapLineShift = screenSize + 4;
 
-        int tileCount = 16 * (1 << screenSize);
-        int bgSize = tileCount * tileLength;
-
-        int layerAddressOffset = (layer - 2) * 16;
+        int layerAddressOffset = layer - 2 << 4;
         int pa = memory.getShort(0x4000020 + layerAddressOffset);
         int pc = memory.getShort(0x4000022 + layerAddressOffset);
         int pb = memory.getShort(0x4000024 + layerAddressOffset);
@@ -486,60 +487,148 @@ public class GameBoyAdvanceDisplay {
         dy <<= 4;
         dy >>= 4;
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+        long bufferAddress = cast(long) buffer.ptr;
+        long vramAddress = cast(long) memory.getPointer(0x6000000);
+        long paletteAddress = cast(long) memory.getPointer(0x5000000);
 
-            int x = (pa * ((column << 8) + dx) >> 8) + (pb * ((line << 8) + dy) >> 8) + 128 >> 8;
-            int y = (pc * ((column << 8) + dx) >> 8) + (pd * ((line << 8) + dy) >> 8) + 128 >> 8;
-
-            if (x < 0 || x >= bgSize) {
-                if (displayOverflow) {
-                    x %= bgSize;
-                    if (x < 0) {
-                        x += bgSize;
-                    }
-                } else {
-                    buffer[column] = backColor;
-                    continue;
-                }
-            }
-            if (y < 0 || y >= bgSize) {
-                if (displayOverflow) {
-                    y %= bgSize;
-                    if (y < 0) {
-                        y += bgSize;
-                    }
-                } else {
-                    buffer[column] = backColor;
-                    continue;
-                }
-            }
-
-            if (mosaic) {
-                applyMosaic(x, y);
-            }
-
-            int mapColumn = x / tileLength;
-            int mapLine = y / tileLength;
-
-            int tileColumn = x % tileLength;
-            int tileLine = y % tileLength;
-
-            int mapAddress = mapBase + (mapLine * tileCount + mapColumn);
-
-            int tileNumber = memory.getByte(mapAddress) & 0xFF;
-
-            int tileAddress = tileBase + tileNumber * tileSize + (tileLine * tileLength + tileColumn);
-
-            int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-
-            if (paletteAddress == 0) {
-                buffer[column] = backColor;
-                continue;
-            }
-
-            short color = memory.getShort(0x5000000 + paletteAddress);
-
-            buffer[column] = color;
+        asm {
+                mov RBX, bufferAddress;
+                push RBX;
+                mov EAX, 0;
+                push RAX;
+            loop:
+                // calculate fixed point translated column and line
+                mov EBX, line;
+                shl EAX, 8;
+                shl EBX, 8;
+                add EAX, dx;
+                add EBX, dy;
+                push RAX;
+                push RBX;
+                // calculate x
+                mov ECX, pa;
+                mul ECX;
+                push RAX;
+                mov EAX, EBX;
+                mov ECX, pb;
+                mul ECX;
+                pop RBX;
+                shr EBX, 8;
+                shr EAX, 8;
+                add EAX, EBX;
+                add EAX, 128;
+                shr EAX, 8;
+                mov ECX, EAX;
+                pop RBX;
+                pop RAX;
+                push RCX;
+                // calculate y
+                mov ECX, pc;
+                mul ECX;
+                push RAX;
+                mov EAX, EBX;
+                mov ECX, pd;
+                mul ECX;
+                pop RBX;
+                shr EBX, 8;
+                shr EAX, 8;
+                add EAX, EBX;
+                add EAX, 128;
+                shr EAX, 8;
+                mov EBX, EAX;
+                pop RAX;
+                // EAX = x, EBX = y
+                // check and handle overflow
+                mov ECX, EAX;
+                and ECX, bgSizeInv;
+                jz skip_x_overflow;
+                test displayOverflow, 1;
+                jnz skip_transparent1;
+                mov EDX, 0;
+                jmp end_palettes;
+            skip_transparent1:
+                and EAX, bgSize;
+            skip_x_overflow:
+                mov ECX, EBX;
+                and ECX, bgSizeInv;
+                jz skip_y_overflow;
+                test displayOverflow, 1;
+                jnz skip_transparent2;
+                mov EDX, 0;
+                jmp end_palettes;
+            skip_transparent2:
+                and EBX, bgSize;
+            skip_y_overflow:
+                // check and apply mosaic
+                test mosaic, 1;
+                jz skip_mosaic;
+                push RDX;
+                push RBX;
+                mov EBX, EAX;
+                xor EDX, EDX;
+                mov ECX, mosaicSizeX;
+                div ECX;
+                sub EBX, EDX;
+                pop RAX;
+                push RBX;
+                mov EBX, EAX;
+                xor EDX, EDX;
+                mov ECX, mosaicSizeY;
+                div ECX;
+                sub EBX, EDX;
+                pop RAX;
+                pop RDX;
+            skip_mosaic:
+                // calculate the map address
+                push RAX;
+                push RBX;
+                shr EAX, 3;
+                shr EBX, 3;
+                mov ECX, mapLineShift;
+                shl EBX, CL;
+                add EAX, EBX;
+                add EAX, mapBase;
+                add RAX, vramAddress;
+                // get the tile number
+                mov CL, [RAX];
+                mov CH, 0;
+                // calculate the tile address
+                pop RBX;
+                pop RAX;
+                and EAX, 7;
+                and EBX, 7;
+                shl EBX, 3;
+                add EAX, EBX;
+                shl ECX, 6;
+                add EAX, ECX;
+                add EAX, tileBase;
+                add RAX, vramAddress;
+                // get the palette index
+                mov DL, [RAX];
+                mov DH, 0;
+                // calculate the palette address
+                shl EDX, 1;
+            end_palettes:
+                // ECX = paletteAddress
+                // get color from palette
+                add RDX, paletteAddress;
+                mov CX, [RDX];
+                // ECX = color
+                pop RAX;
+                pop RBX;
+                // write color to line buffer
+                mov [RBX], CX;
+                // check loop condition
+                cmp EAX, 239;
+                jge end;
+                // increment address and counter
+                add RBX, 2;
+                push RBX;
+                add EAX, 1;
+                push RAX;
+                jmp loop;
+            end:
+                nop;
         }
     }
 
