@@ -14,8 +14,8 @@ import gbaid.gl, gbaid.gl20;
 import gbaid.util;
 
 private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
-private alias InterruptSource = GameBoyAdvance.GameBoyAdvanceMemory.InterruptSource;
-private alias SignalEvent = GameBoyAdvance.GameBoyAdvanceMemory.SignalEvent;
+private alias InterruptSource = GameBoyAdvance.InterruptSource;
+private alias SignalEvent = GameBoyAdvance.SignalEvent;
 
 public class GameBoyAdvanceDisplay {
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
@@ -902,20 +902,6 @@ public class GameBoyAdvanceDisplay {
 
         y /= vSize;
         y *= vSize;
-    }
-
-    private void applyMosaicX(ref int x) {
-        int mosaicControl = memory.getInt(0x400004C);
-        int size = (mosaicControl & 0b1111) + 1;
-        x /= size;
-        x *= size;
-    }
-
-    private void applyMosaicY(ref int y) {
-        int mosaicControl = memory.getInt(0x400004C);
-        int size = getBits(mosaicControl, 4, 7) + 1;
-        y /= size;
-        y *= size;
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {

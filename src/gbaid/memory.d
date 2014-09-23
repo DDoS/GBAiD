@@ -100,6 +100,37 @@ public class RAM : ROM {
     }
 }
 
+public class NullMemory : Memory {
+    public ulong getCapacity() {
+        return 0;
+    }
+
+    public void* getPointer(uint address) {
+        return null;
+    }
+
+    public byte getByte(uint address) {
+        return 0;
+    }
+
+    public void setByte(uint address, byte b) {
+    }
+
+    public short getShort(uint address) {
+        return 0;
+    }
+
+    public void setShort(uint address, short s) {
+    }
+
+    public int getInt(uint address) {
+        return 0;
+    }
+
+    public void setInt(uint address, int i) {
+    }
+}
+
 public class ReadOnlyException : Exception {
     public this(uint address) {
         super(format("Memory is read only: 0x%X", address));
