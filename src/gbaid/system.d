@@ -262,8 +262,8 @@ public class GameBoyAdvance {
         private shared int dmaSignals = 0;
         private shared bool dmaHalt = false;
         private shared int[4] dmaSourceAddresses = new int[4];
-        private shared int[4] dmaDesintationAddresses = new int[4];
-        private shared int[4] dmaControls = new int[4];
+        private shared int[4] dmaDestinationAddresses = new int[4];
+        private shared int[4] dmaWordCounts = new int[4];
         private shared long[4] timerStartTimes = new long[4];
         private shared long[4] timerEndTimes = new long[4];
         private Scheduler timerScheduler;
@@ -430,47 +430,42 @@ public class GameBoyAdvance {
             if (checkBit(value, 15)) {
                 // TODO: implement stop
             } else {
-                processor.halt();
                 irqHalt = true;
+                processor.halt();
             }
         }
 
         private void handleDMA(int address, int shift, int mask, ref int value) {
-            // TODO: rewrite this terrible DMA implementation
-            if (!checkBit(value, 31) || checkBit(super.getInt(address), 31)) {
+            int dmaFullControl = super.getInt(address);
+            if (!checkBit(value, 31) || checkBit(dmaFullControl, 31)) {
                 return;
             }
+
+            dmaFullControl = dmaFullControl & ~mask | value & mask;
+
             int channel = (address - 0xB8) / 0xC;
-            dmaSourceAddresses[channel] = super.getInt(address - 8);
-            if (channel == 0) {
-                dmaSourceAddresses[channel] &= 0x7FFFFFF;
-            } else {
-                dmaSourceAddresses[channel] &= 0xFFFFFFF;
-            }
-            dmaDesintationAddresses[channel] = super.getInt(address - 4);
-            if (channel == 3) {
-                dmaDesintationAddresses[channel] &= 0xFFFFFFF;
-            } else {
-                dmaDesintationAddresses[channel] &= 0x7FFFFFF;
-            }
-            dmaControls[channel] = dmaControls[channel] & ~mask | value & mask;
+            dmaSourceAddresses[channel] = formatDMASourceAddress(super.getInt(address - 8), channel);
+            dmaDestinationAddresses[channel] = formatDMADestinationAddress(super.getInt(address - 4), channel);
+            dmaWordCounts[channel] = formatDMAWordCount(dmaFullControl, channel);
+
+            super.setInt(address, dmaFullControl);
+
             atomicOp!"|="(dmaSignals, 0b1);
-            processor.halt();
             dmaHalt = true;
+            processor.halt();
             dmaSemaphore.notify();
         }
 
         private void runDMA() {
             void tryDMA(int channel, int source) {
-                int control = dmaControls[channel];
-                if (!checkBit(control, 31)) {
+                int dmaAddress = channel * 0xC + 0xB8;
+
+                int control = super.getShort(dmaAddress + 2);
+                if (!checkBit(control, 15)) {
                     dmaHalt = false;
                     tryResume();
                     return;
                 }
-
-                int wordCount = control & 0xFFFF;
-                control >>>= 16;
 
                 int startTiming = getBits(control, 12, 13);
                 if (startTiming != source) {
@@ -480,39 +475,23 @@ public class GameBoyAdvance {
                 }
 
                 int sourceAddress = dmaSourceAddresses[channel];
-                int destinationAddress = dmaDesintationAddresses[channel];
+                int destinationAddress = dmaDestinationAddresses[channel];
+                int wordCount = dmaWordCounts[channel];
 
                 int type = void;
                 int destinationAddressControl = void;
-                bool noHalt = void;
 
                 if (startTiming == 3) {
                     if (channel == 1 || channel == 2) {
                         wordCount = 4;
                         type = 1;
                         destinationAddressControl = 2;
-                        noHalt = true;
                     } else if (channel == 3) {
                         // TODO: implement video capture
                     }
                 } else {
-                    if (channel < 3) {
-                        wordCount &= 0x3FFF;
-                        if (wordCount == 0) {
-                            wordCount = 0x4000;
-                        }
-                    } else {
-                        if (wordCount == 0) {
-                            wordCount = 0x10000;
-                        }
-                    }
                     type = getBit(control, 10);
                     destinationAddressControl = getBits(control, 5, 6);
-                    if (startTiming == 0) {
-                        noHalt = false;
-                    } else {
-                        noHalt = true;
-                    }
                 }
 
                 int sourceAddressControl = getBits(control, 7, 8);
@@ -535,15 +514,11 @@ public class GameBoyAdvance {
 
                 int increment = type ? 4 : 2;
                 GameBoyAdvanceMemory memory = this.outer.memory;
-                //writefln("DMA %s %08x to %08x, %s bytes, timing %s", channel, sourceAddress, destinationAddress, wordCount * increment, startTiming);
 
-                if (noHalt) {
-                    dmaHalt = false;
-                    tryResume();
-                } else {
-                    processor.halt();
-                    dmaHalt = true;
-                }
+                dmaHalt = true;
+                processor.halt();
+
+                //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddress, destinationAddress, wordCount * increment, startTiming);
 
                 for (int i = 0; i < wordCount; i++) {
                     if (type) {
@@ -559,21 +534,19 @@ public class GameBoyAdvance {
                     requestInterrupt(InterruptSource.DMA_0 + channel);
                 }
 
-                if (!noHalt) {
-                    dmaHalt = false;
-                    tryResume();
-                }
+                dmaHalt = false;
+                tryResume();
 
-                int dmaControlAddress = channel * 0xC + 0xB8;
                 if (repeat) {
-                    dmaControls[channel] = super.getInt(dmaControlAddress);
+                    dmaWordCounts[channel] = formatDMAWordCount(super.getInt(dmaAddress), channel);
                     if (destinationAddressControl == 3) {
-                        dmaDesintationAddresses[channel] = super.getInt(dmaControlAddress - 4);
+                        dmaDestinationAddresses[channel] = formatDMADestinationAddress(super.getInt(dmaAddress - 4), channel);
                     }
                     atomicOp!"|="(dmaSignals, 0b1);
                 } else {
-                    dmaControls[channel] &= 0x7FFFFFFF;
-                    super.setInt(dmaControlAddress, dmaControls[channel]);
+                    short dmaControl = super.getShort(dmaAddress + 2);
+                    dmaControl &= 0x7FFF;
+                    super.setShort(dmaAddress + 2, dmaControl);
                 }
             }
 
@@ -585,8 +558,7 @@ public class GameBoyAdvance {
                 while (atomicLoad(dmaSignals) != 0) {
                     for (int s = 0; s < 4; s++) {
                         if (checkBit(atomicLoad(dmaSignals), s)) {
-                            int mask = ~(1 << s);
-                            atomicOp!"&="(dmaSignals, mask);
+                            atomicOp!"&="(dmaSignals, ~(1 << s));
                             for (int c = 0; c < 4; c++) {
                                 tryDMA(c, s);
                             }
@@ -594,6 +566,35 @@ public class GameBoyAdvance {
                     }
                 }
             }
+        }
+
+        private int formatDMASourceAddress(int sourceAddress, int channel) {
+            if (channel == 0) {
+                return sourceAddress & 0x7FFFFFF;
+            }
+            return sourceAddress & 0xFFFFFFF;
+        }
+
+        private int formatDMADestinationAddress(int destinationAddress, int channel) {
+            if (channel == 3) {
+                return destinationAddress & 0xFFFFFFF;
+            }
+            return destinationAddress & 0x7FFFFFF;
+        }
+
+        private int formatDMAWordCount(int wordCount, int channel) {
+            if (channel < 3) {
+                wordCount &= 0x3FFF;
+                if (wordCount == 0) {
+                    return 0x4000;
+                }
+                return wordCount;
+            }
+            wordCount &= 0xFFFF;
+            if (wordCount == 0) {
+                return 0x10000;
+            }
+            return wordCount;
         }
 
         private void handleTimerRead(int address, int shift, int mask, ref int value) {
