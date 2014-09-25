@@ -195,9 +195,9 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
-    private void layerBackdrop(short[] buffer, short backColor) {
+    private void layerEmpty(short[] buffer) {
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            buffer[column] = backColor;
+            buffer[column] = cast(short) 0x8000;
         }
     }
 
@@ -213,25 +213,25 @@ public class GameBoyAdvanceDisplay {
 
         int blendControl = memory.getShort(0x4000050);
 
-        short backColor = memory.getShort(0x5000000);
+        short backColor = memory.getShort(0x5000000) & 0x7FFF;
 
-        layerBackground0(line, lines[0], 0, bgEnables, backColor);
+        layerBackground0(line, lines[0], 0, bgEnables);
 
-        layerBackground0(line, lines[1], 1, bgEnables, backColor);
+        layerBackground0(line, lines[1], 1, bgEnables);
 
-        layerBackground0(line, lines[2], 2, bgEnables, backColor);
+        layerBackground0(line, lines[2], 2, bgEnables);
 
-        layerBackground0(line, lines[3], 3, bgEnables, backColor);
+        layerBackground0(line, lines[3], 3, bgEnables);
 
-        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layerBackground0(int line, short[] buffer, int layer, int bgEnables, short backColor) {
+    private void layerBackground0(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                buffer[column] = backColor;
+                buffer[column] = cast(short) 0x8000;
             }
             return;
         }
@@ -279,9 +279,9 @@ public class GameBoyAdvanceDisplay {
 
         int lineMapOffset = mapLine << 5;
 
-        long bufferAddress = cast(long) buffer.ptr;
-        long vramAddress = cast(long) memory.getPointer(0x6000000);
-        long paletteAddress = cast(long) memory.getPointer(0x5000000);
+        size_t bufferAddress = cast(size_t) buffer.ptr;
+        size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
+        size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
 
         asm {
                 mov RBX, bufferAddress;
@@ -360,8 +360,8 @@ public class GameBoyAdvanceDisplay {
                 jz mult_palettes;
                 and EDX, 0xFF;
                 jnz skip_transparent1;
-                mov EDX, 0;
-                jmp end_palettes;
+                mov CX, 0x8000;
+                jmp end_color;
             skip_transparent1:
                 shl EDX, 1;
                 jmp end_palettes;
@@ -371,8 +371,8 @@ public class GameBoyAdvanceDisplay {
                 shr EDX, CL;
                 and EDX, 0xF;
                 jnz skip_transparent2;
-                mov EDX, 0;
-                jmp end_palettes;
+                mov CX, 0x8000;
+                jmp end_color;
             skip_transparent2:
                 shr EBX, 8;
                 and EBX, 0xF0;
@@ -383,6 +383,8 @@ public class GameBoyAdvanceDisplay {
                 // get color from palette
                 add RDX, paletteAddress;
                 mov CX, [RDX];
+                and CX, 0x7FFF;
+            end_color:
                 // ECX = color
                 pop RAX;
                 pop RBX;
@@ -411,17 +413,17 @@ public class GameBoyAdvanceDisplay {
 
         int blendControl = memory.getShort(0x4000050);
 
-        short backColor = memory.getShort(0x5000000);
+        short backColor = memory.getShort(0x5000000)  & 0x7FFF;
 
-        layerBackground0(line, lines[0], 0, bgEnables, backColor);
+        layerBackground0(line, lines[0], 0, bgEnables);
 
-        layerBackground0(line, lines[1], 1, bgEnables, backColor);
+        layerBackground0(line, lines[1], 1, bgEnables);
 
-        layerBackground2(line, lines[2], 2, bgEnables, backColor);
+        layerBackground2(line, lines[2], 2, bgEnables);
 
-        layerBackdrop(lines[3], backColor);
+        layerEmpty(lines[3]);
 
-        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
@@ -435,25 +437,25 @@ public class GameBoyAdvanceDisplay {
 
         int blendControl = memory.getShort(0x4000050);
 
-        short backColor = memory.getShort(0x5000000);
+        short backColor = memory.getShort(0x5000000) & 0x7FFF;
 
-        layerBackdrop(lines[0], backColor);
+        layerEmpty(lines[0]);
 
-        layerBackdrop(lines[1], backColor);
+        layerEmpty(lines[1]);
 
-        layerBackground2(line, lines[2], 2, bgEnables, backColor);
+        layerBackground2(line, lines[2], 2, bgEnables);
 
-        layerBackground2(line, lines[3], 3, bgEnables, backColor);
+        layerBackground2(line, lines[3], 3, bgEnables);
 
-        layerObject(line, lines[4], lines[5], bgEnables, tileMapping, backColor);
+        layerObject(line, lines[4], lines[5], bgEnables, tileMapping);
 
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
-    private void layerBackground2(int line, short[] buffer, int layer, int bgEnables, short backColor) {
+    private void layerBackground2(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                buffer[column] = backColor;
+                buffer[column] = cast(short) 0x8000;
             }
             return;
         }
@@ -487,9 +489,9 @@ public class GameBoyAdvanceDisplay {
         dy <<= 4;
         dy >>= 4;
 
-        long bufferAddress = cast(long) buffer.ptr;
-        long vramAddress = cast(long) memory.getPointer(0x6000000);
-        long paletteAddress = cast(long) memory.getPointer(0x5000000);
+        size_t bufferAddress = cast(size_t) buffer.ptr;
+        size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
+        size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
 
         asm {
                 mov RBX, bufferAddress;
@@ -544,8 +546,8 @@ public class GameBoyAdvanceDisplay {
                 jz skip_x_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent1;
-                mov EDX, 0;
-                jmp end_palettes;
+                mov CX, 0x8000;
+                jmp end_color;
             skip_transparent1:
                 and EAX, bgSize;
             skip_x_overflow:
@@ -554,8 +556,8 @@ public class GameBoyAdvanceDisplay {
                 jz skip_y_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent2;
-                mov EDX, 0;
-                jmp end_palettes;
+                mov CX, 0x8000;
+                jmp end_color;
             skip_transparent2:
                 and EBX, bgSize;
             skip_y_overflow:
@@ -608,11 +610,16 @@ public class GameBoyAdvanceDisplay {
                 mov DH, 0;
                 // calculate the palette address
                 shl EDX, 1;
+                jnz end_palettes;
+                mov CX, 0x8000;
+                jmp end_color;
             end_palettes:
                 // ECX = paletteAddress
                 // get color from palette
                 add RDX, paletteAddress;
                 mov CX, [RDX];
+                and CX, 0x7FFF;
+            end_color:
                 // ECX = color
                 pop RAX;
                 pop RBX;
@@ -632,9 +639,9 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
-    private void layerObject(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping, short backColor) {
+    private void layerObject(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            colorBuffer[column] = backColor;
+            colorBuffer[column] = cast(short) 0x8000;
             infoBuffer[column] = 3;
         }
 
@@ -834,7 +841,7 @@ public class GameBoyAdvanceDisplay {
                     paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
                 }
 
-                short color = memory.getShort(0x5000200 + paletteAddress);
+                short color = memory.getShort(0x5000200 + paletteAddress) & 0x7FFF;
 
                 if (mode != 2) {
                     colorBuffer[column] = color;
@@ -957,7 +964,7 @@ public class GameBoyAdvanceDisplay {
 
                 short layerColor = lines[layer][column];
 
-                if (layerColor == backColor) {
+                if (layerColor & 0x8000) {
                     continue;
                 }
 
