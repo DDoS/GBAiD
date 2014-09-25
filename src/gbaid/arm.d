@@ -724,11 +724,7 @@ public class ARM7TDMI {
 						setRegister(rd, b);
 					} else {
 						debug (outputInstructions) logInstruction(instruction, "LDR");
-						int w = memory.getInt(address);
-						if (address & 0b10) {
-							w >>>= 16;
-						}
-						setRegister(rd, w);
+						setRegister(rd, rotateRead(address, memory.getInt(address)));
 					}
 				} else {
 					if (byteQuantity) {
@@ -752,11 +748,7 @@ public class ARM7TDMI {
 						setRegister(rd, b);
 					} else {
 						debug (outputInstructions) logInstruction(instruction, "LDR");
-						int w = memory.getInt(address);
-						if (address & 0b10) {
-							w >>>= 16;
-						}
-						setRegister(rd, w);
+						setRegister(rd, rotateRead(address, memory.getInt(address)));
 					}
 				} else {
 					if (byteQuantity) {
@@ -935,10 +927,7 @@ public class ARM7TDMI {
 				memory.setByte(address, cast(byte) getRegister(rm));
 				setRegister(rd, b);
 			} else {
-				int w = memory.getInt(address);
-				if (address & 0b10) {
-					w >>>= 16;
-				}
+				int w = rotateRead(address, memory.getInt(address));
 				memory.setInt(address, getRegister(rm));
 				setRegister(rd, w);
 			}
@@ -1371,8 +1360,9 @@ public class ARM7TDMI {
 			int rd = getBits(instruction, 8, 10);
 			int offset = (instruction & 0xFF) * 4;
 			int pc = getRegister(Register.PC);
+			int address = (pc & ~2) + offset;
 			debug (outputInstructions) logInstruction(instruction, "LDR");
-			setRegister(rd, memory.getInt(pc + offset));
+			setRegister(rd, rotateRead(address, memory.getInt(address)));
 		}
 
 		private void loadAndStoreWithRegisterOffset(int instruction) {
@@ -1392,7 +1382,7 @@ public class ARM7TDMI {
 					break;
 				case 2:
 					debug (outputInstructions) logInstruction(instruction, "LDR");
-					setRegister(rd, memory.getInt(address));
+					setRegister(rd, rotateRead(address, memory.getInt(address)));
 					break;
 				case 3:
 					debug (outputInstructions) logInstruction(instruction, "LDRB");
@@ -1439,7 +1429,8 @@ public class ARM7TDMI {
 					break;
 				case 1:
 					debug (outputInstructions) logInstruction(instruction, "LDR");
-					setRegister(rd, memory.getInt(base + offset * 4));
+					int address = base + offset * 4;
+					setRegister(rd, rotateRead(address, memory.getInt(address)));
 					break;
 				case 2:
 					debug (outputInstructions) logInstruction(instruction, "STRB");
@@ -1474,7 +1465,7 @@ public class ARM7TDMI {
 			int address = sp + offset;
 			if (opCode) {
 				debug (outputInstructions) logInstruction(instruction, "LDR");
-				setRegister(rd, memory.getInt(address));
+				setRegister(rd, rotateRead(address, memory.getInt(address)));
 			} else {
 				debug (outputInstructions) logInstruction(instruction, "STR");
 				memory.setInt(address, getRegister(rd));
@@ -1850,6 +1841,16 @@ public class ARM7TDMI {
 
 private int getConditionBits(int instruction) {
 	return instruction >> 28 & 0xF;
+}
+
+private int rotateRead(int address, int value) {
+	asm {
+		mov ECX, address;
+		and ECX, 3;
+		shl ECX, 3;
+		ror value, CL;
+	}
+	return value;
 }
 
 private int getRegisterIndex(Mode mode, int register) {
