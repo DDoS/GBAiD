@@ -117,6 +117,7 @@ public class ARM7TDMI {
 			}
 		} catch (Exception ex) {
 			writeln("ARM CPU encountered an exception, thread stopping...");
+			writeln("Exception: " ~ ex.msg);
 			debug (outputInstructions) {
 				dumpInstructions();
 				dumpRegisters();

@@ -2,6 +2,7 @@ module gbaid.graphics;
 
 import core.thread;
 import core.time;
+import core.sync.condition;
 
 import std.stdio;
 import std.algorithm;
@@ -22,17 +23,31 @@ public class GameBoyAdvanceDisplay {
     private static immutable uint VERTICAL_RESOLUTION = 160;
     private static immutable uint LAYER_COUNT = 6;
     private static immutable uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
+    private static immutable short TRANSPARENT = cast(short) 0x8000;
+    private static immutable uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
+    private static TickDuration H_VISIBLE_DURATION;
+    private static TickDuration H_BLANK_DURATION;
+    private static TickDuration TOTAL_DURATION;
     private GameBoyAdvanceMemory memory;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
+    private bool timingsRunning = false;
+    private Condition timingSync;
+
+    static this() {
+        H_VISIBLE_DURATION = TickDuration.from!"nsecs"(57221);
+        H_BLANK_DURATION = TickDuration.from!"nsecs"(16212);
+        TOTAL_DURATION = (H_VISIBLE_DURATION + H_BLANK_DURATION) * VERTICAL_TIMING_RESOLUTION;
+    }
 
     public void setMemory(GameBoyAdvanceMemory memory) {
         this.memory = memory;
+        timingSync = new Condition(new Mutex());
     }
 
     public void run() {
         Thread.getThis().name = "Display";
-
+        // TODO: fix more alignment issues, fix GBA run()
         Context context = new GL20Context();
         context.setWindowSize(HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
         context.setWindowTitle("GBAiD");
@@ -64,17 +79,17 @@ public class GameBoyAdvanceDisplay {
         vertexArray.create();
         vertexArray.setData(generatePlane(2, 2));
 
-        Timer timer = new Timer();
-        TickDuration visibleEnd = TickDuration.from!"usecs"(11749);
-        TickDuration blankEnd = TickDuration.from!"usecs"(4994);
+        Timer fpsTimer = new Timer();
 
-        Timer timer2 = new Timer();
+        Thread timings = new Thread(&runTimings);
+        timingsRunning = true;
+        timings.start();
 
         while (!context.isWindowCloseRequested()) {
-            // draw during visible
-            timer2.start();
-            timer.start();
-            time = TickDuration(0);
+            synchronized (timingSync.mutex) {
+                timingSync.wait();
+            }
+            fpsTimer.start();
             if (checkBit(memory.getShort(0x4000000), 7)) {
                 updateBlank();
             } else {
@@ -99,29 +114,45 @@ public class GameBoyAdvanceDisplay {
                         break;
                 }
             }
-            //writeln(time.msecs());
-            timer.waitUntil(visibleEnd);
-            // update during blank
-            timer.restart();
-            setVCOUNT(160);
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
             texture.bind(0);
             program.use();
             vertexArray.draw();
             context.updateDisplay();
             processInput();
-            setVCOUNT(227);
-            timer.waitUntil(blankEnd);
-            //writefln("FPS: %.1f", 1 / (timer2.getTime().msecs() / 1000f));
+            fpsTimer.waitUntil(TOTAL_DURATION);
+            writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
         }
 
+        timingsRunning = false;
+
         context.destroy();
+    }
+
+    private void runTimings() {
+        Timer timer = new Timer();
+        while (true) {
+            synchronized(timingSync.mutex) {
+                timingSync.notify();
+            }
+            for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
+                timer.start();
+                setHBLANK(line, false);
+                timer.waitUntil(H_VISIBLE_DURATION);
+                timer.restart();
+                setHBLANK(line, true);
+                timer.waitUntil(H_BLANK_DURATION);
+                setVCOUNT(line);
+                if (!timingsRunning) {
+                    return;
+                }
+            }
+        }
     }
 
     private void updateBlank() {
         uint p = 0;
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
                 frame[p] = cast(short) 0xFFFF;
                 p++;
@@ -131,21 +162,18 @@ public class GameBoyAdvanceDisplay {
 
     private void updateMode0() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             lineMode0(line);
         }
     }
 
     private void updateMode1() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             lineMode1(line);
         }
     }
 
     private void updateMode2() {
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             lineMode2(line);
         }
     }
@@ -153,7 +181,6 @@ public class GameBoyAdvanceDisplay {
     private void updateMode3() {
         uint i = 0x6000000, p = 0;
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
                 frame[p] = memory.getShort(i);
                 i += 2;
@@ -167,7 +194,6 @@ public class GameBoyAdvanceDisplay {
         uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
         uint p = 0;
         for (int line = 0; line < VERTICAL_RESOLUTION; line++) {
-            setVCOUNT(line);
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
                 int paletteAddress = (memory.getByte(i) & 0xFF) << 1;
                 if (paletteAddress == 0) {
@@ -186,7 +212,6 @@ public class GameBoyAdvanceDisplay {
         uint i = checkBit(displayControl, 4) ? 0x0600A000 : 0x6000000;
         uint p = 0;
         for (int line = 0; line < 128; line++) {
-            setVCOUNT(line);
             for (int column = 0; column < 160; column++) {
                 frame[p] = memory.getShort(i);
                 i += 2;
@@ -197,12 +222,9 @@ public class GameBoyAdvanceDisplay {
 
     private void layerEmpty(short[] buffer) {
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            buffer[column] = cast(short) 0x8000;
+            buffer[column] = TRANSPARENT;
         }
     }
-
-    TickDuration time;
-    Timer bench = new Timer();
 
     private void lineMode0(int line) {
         int displayControl = memory.getShort(0x4000000);
@@ -231,7 +253,7 @@ public class GameBoyAdvanceDisplay {
     private void layerBackground0(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                buffer[column] = cast(short) 0x8000;
+                buffer[column] = TRANSPARENT;
             }
             return;
         }
@@ -360,7 +382,7 @@ public class GameBoyAdvanceDisplay {
                 jz mult_palettes;
                 and EDX, 0xFF;
                 jnz skip_transparent1;
-                mov CX, 0x8000;
+                mov CX, TRANSPARENT;
                 jmp end_color;
             skip_transparent1:
                 shl EDX, 1;
@@ -371,7 +393,7 @@ public class GameBoyAdvanceDisplay {
                 shr EDX, CL;
                 and EDX, 0xF;
                 jnz skip_transparent2;
-                mov CX, 0x8000;
+                mov CX, TRANSPARENT;
                 jmp end_color;
             skip_transparent2:
                 shr EBX, 8;
@@ -455,7 +477,7 @@ public class GameBoyAdvanceDisplay {
     private void layerBackground2(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-                buffer[column] = cast(short) 0x8000;
+                buffer[column] = TRANSPARENT;
             }
             return;
         }
@@ -546,7 +568,7 @@ public class GameBoyAdvanceDisplay {
                 jz skip_x_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent1;
-                mov CX, 0x8000;
+                mov CX, TRANSPARENT;
                 jmp end_color;
             skip_transparent1:
                 and EAX, bgSize;
@@ -556,7 +578,7 @@ public class GameBoyAdvanceDisplay {
                 jz skip_y_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent2;
-                mov CX, 0x8000;
+                mov CX, TRANSPARENT;
                 jmp end_color;
             skip_transparent2:
                 and EBX, bgSize;
@@ -611,7 +633,7 @@ public class GameBoyAdvanceDisplay {
                 // calculate the palette address
                 shl EDX, 1;
                 jnz end_palettes;
-                mov CX, 0x8000;
+                mov CX, TRANSPARENT;
                 jmp end_color;
             end_palettes:
                 // ECX = paletteAddress
@@ -641,7 +663,7 @@ public class GameBoyAdvanceDisplay {
 
     private void layerObject(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            colorBuffer[column] = cast(short) 0x8000;
+            colorBuffer[column] = TRANSPARENT;
             infoBuffer[column] = 3;
         }
 
@@ -964,7 +986,7 @@ public class GameBoyAdvanceDisplay {
 
                 short layerColor = lines[layer][column];
 
-                if (layerColor & 0x8000) {
+                if (layerColor & TRANSPARENT) {
                     continue;
                 }
 
@@ -1078,29 +1100,33 @@ public class GameBoyAdvanceDisplay {
         return cast(BackgroundMode) (memory.getShort(0x4000000) & 0b111);
     }
 
-    private void setVCOUNT(int vcount) {
-        memory.setShort(0x4000006, cast(short) vcount);
+    private void setHBLANK(int line, bool state) {
         int displayStatus = memory.getShort(0x4000004);
-        bool vblank = vcount >= 160 && vcount < 227;
-        setBit(displayStatus, 0, vblank);
-        bool hblank = true;
-        setBit(displayStatus, 1, hblank);
-        bool vcounter = getBits(displayStatus, 8, 15) == vcount;
-        setBit(displayStatus, 2, vcounter);
+        setBit(displayStatus, 1, state);
         memory.setShort(0x4000004, cast(short) displayStatus);
-        if (vblank) {
-            memory.signalEvent(SignalEvent.V_BLANK);
-            if (checkBit(displayStatus, 3)) {
-                memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
-            }
-        }
-        if (hblank) {
+        if (state && line < 160) {
             memory.signalEvent(SignalEvent.H_BLANK);
             if (checkBit(displayStatus, 4)) {
                 memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
             }
         }
-        if (checkBit(displayStatus, 5) && vcounter) {
+    }
+
+    private void setVCOUNT(int line) {
+        memory.setShort(0x4000006, cast(short) line);
+        int displayStatus = memory.getShort(0x4000004);
+        bool vblank = line >= 160 && line < 227;
+        setBit(displayStatus, 0, vblank);
+        bool vcounter = getBits(displayStatus, 8, 15) == line;
+        setBit(displayStatus, 2, vcounter);
+        memory.setShort(0x4000004, cast(short) displayStatus);
+        if (line == 160) {
+            memory.signalEvent(SignalEvent.V_BLANK);
+            if (checkBit(displayStatus, 3)) {
+                memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+            }
+        }
+        if (vcounter && checkBit(displayStatus, 5)) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
     }
@@ -1121,6 +1147,15 @@ public class GameBoyAdvanceDisplay {
         ;
         keypadState = ~keypadState & 0x3FF;
         memory.setShort(0x4000130, cast(short) keypadState);
+    }
+
+    private enum BackgroundMode {
+        TILED_TEXT = 0,
+        TILED_MIXED = 1,
+        TILED_AFFINE = 2,
+        BITMAP_16_SINGLE = 3,
+        BITMAP_8_DOUBLE = 4,
+        BITMAP_16_DOUBLE = 5
     }
 }
 
@@ -1175,12 +1210,3 @@ void main() {
     gl_FragColor = vec4(texture2D(color, textureCoords).rgb, 1);
 }
 `;
-
-private enum BackgroundMode {
-    TILED_TEXT = 0,
-    TILED_MIXED = 1,
-    TILED_AFFINE = 2,
-    BITMAP_16_SINGLE = 3,
-    BITMAP_8_DOUBLE = 4,
-    BITMAP_16_DOUBLE = 5
-}

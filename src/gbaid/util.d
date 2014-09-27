@@ -285,7 +285,7 @@ public class Timer {
     }
 
     public void waitUntil(TickDuration time) {
-        Duration duration = dur!"nsecs"((time - getTime()).nsecs());
+        Duration duration = hnsecs(time.hnsecs() - getTime().hnsecs());
         if (!duration.isNegative()) {
             Thread.sleep(duration);
         }
