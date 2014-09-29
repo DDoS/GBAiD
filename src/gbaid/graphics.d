@@ -1113,10 +1113,9 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void setVCOUNT(int line) {
-        memory.setShort(0x4000006, cast(short) line);
+        memory.setByte(0x4000006, cast(byte) line);
         int displayStatus = memory.getShort(0x4000004);
-        bool vblank = line >= 160 && line < 227;
-        setBit(displayStatus, 0, vblank);
+        setBit(displayStatus, 0, line >= 160 && line < 227);
         bool vcounter = getBits(displayStatus, 8, 15) == line;
         setBit(displayStatus, 2, vcounter);
         memory.setShort(0x4000004, cast(short) displayStatus);
