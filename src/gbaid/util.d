@@ -271,6 +271,7 @@ public string expandPath(string relative) {
 }
 
 public class Timer {
+    private static enum long YIELD_TIME = 1000;
     private TickDuration startTime;
 
     public void start() {
@@ -285,9 +286,12 @@ public class Timer {
     }
 
     public void waitUntil(TickDuration time) {
-        Duration duration = hnsecs(time.hnsecs() - getTime().hnsecs());
+        Duration duration = hnsecs(time.hnsecs() - getTime().hnsecs() - YIELD_TIME);
         if (!duration.isNegative()) {
             Thread.sleep(duration);
+        }
+        while (getTime() < time) {
+            Thread.yield();
         }
     }
 }
