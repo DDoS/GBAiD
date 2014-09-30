@@ -70,3 +70,5 @@ nb-configuration.xml
 *.iml
 *.ipr
 *.iws
+
+dub.selections.json

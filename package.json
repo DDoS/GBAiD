@@ -9,5 +9,4 @@
 		"derelict-sdl2":"1.2.7",
 		"derelict-gl3":"1.0.6"
 	},
-	"buildOptions": ["optimize"]
 }
