@@ -102,20 +102,26 @@ public class GameBoyAdvance {
         private static immutable uint GAMEPAK_SRAM_START = 0x0E000000;
         private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
         private Memory bios;
-        private Memory boardWRAM = new RAM(BOARD_WRAM_SIZE);
-        private Memory chipWRAM = new RAM(CHIP_WRAM_SIZE);
+        private Memory boardWRAM;
+        private Memory chipWRAM;
         private IORegisters ioRegisters;
-        private Memory vram = new RAM(VRAM_SIZE);
-        private Memory oam = new RAM(OAM_SIZE);
-        private Memory paletteRAM = new RAM(PALETTE_RAM_SIZE);
+        private Memory vram;
+        private Memory oam;
+        private Memory paletteRAM;
         private Memory gamepakROM;
         private Memory gamepackSRAM;
-        private Memory unusedMemory = new NullMemory();
+        private Memory unusedMemory;
         private ulong capacity;
 
         private this(string biosFile) {
             bios = new ROM(biosFile, BIOS_SIZE);
+            boardWRAM = new RAM(BOARD_WRAM_SIZE);
+            chipWRAM = new RAM(CHIP_WRAM_SIZE);
             ioRegisters = new IORegisters();
+            vram = new RAM(VRAM_SIZE);
+            oam = new RAM(OAM_SIZE);
+            paletteRAM = new RAM(PALETTE_RAM_SIZE);
+            unusedMemory = new NullMemory();
             updateCapacity();
         }
 
