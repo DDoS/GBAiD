@@ -804,7 +804,7 @@ public class ARM7TDMI {
 				final switch (opCode) {
 					case 1:
 						debug (outputInstructions) logInstruction(instruction, "LDRH");
-						int hw = memory.getShort(address) & 0xFFFF;
+						int hw = rotateRead(address, memory.getShort(address));
 						setRegister(rd, hw);
 						break;
 					case 2:
@@ -814,7 +814,7 @@ public class ARM7TDMI {
 						break;
 					case 3:
 						debug (outputInstructions) logInstruction(instruction, "LDRSH");
-						int hw = memory.getShort(address);
+						int hw = rotateReadSigned(address, memory.getShort(address));
 						setRegister(rd, hw);
 						break;
 				}
@@ -1409,11 +1409,11 @@ public class ARM7TDMI {
 					break;
 				case 2:
 					debug (outputInstructions) logInstruction(instruction, "LDRH");
-					setRegister(rd, memory.getShort(address) & 0xFFFF);
+					setRegister(rd, rotateRead(address, memory.getShort(address)));
 					break;
 				case 3:
 					debug (outputInstructions) logInstruction(instruction, "LDSH");
-					setRegister(rd, memory.getShort(address));
+					setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
 					break;
 			}
 		}
@@ -1451,7 +1451,7 @@ public class ARM7TDMI {
 			int address = base + offset;
 			if (opCode) {
 				debug (outputInstructions) logInstruction(instruction, "LDRH");
-				setRegister(rd, memory.getShort(address) & 0xFFFF);
+				setRegister(rd, rotateRead(address, memory.getShort(address)));
 			} else {
 				debug (outputInstructions) logInstruction(instruction, "STRH");
 				memory.setShort(address, cast(short) getRegister(rd));
@@ -1852,6 +1852,28 @@ private int rotateRead(int address, int value) {
 		ror value, CL;
 	}
 	return value;
+}
+
+private int rotateRead(int address, short value) {
+	int intValue = value & 0xFFFF;
+	asm {
+		mov ECX, address;
+		and ECX, 1;
+		shl ECX, 3;
+		ror intValue, CL;
+	}
+	return intValue;
+}
+
+private int rotateReadSigned(int address, short value) {
+	int intValue = value;
+	asm {
+		mov ECX, address;
+		and ECX, 1;
+		shl ECX, 3;
+		sar intValue, CL;
+	}
+	return intValue;
 }
 
 private int getRegisterIndex(Mode mode, int register) {

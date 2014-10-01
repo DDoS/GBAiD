@@ -47,7 +47,7 @@ public class GameBoyAdvanceDisplay {
 
     public void run() {
         Thread.getThis().name = "Display";
-        // TODO: fix more alignment issues, fix GBA run()
+
         Context context = new GL20Context();
         context.setWindowSize(HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
         context.setWindowTitle("GBAiD");
