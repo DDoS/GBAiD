@@ -59,6 +59,7 @@ public class GameBoyAdvance {
         if (!memory.hasGamepakSRAM()) {
             memory.loadEmptyGamepakSRAM();
         }
+        memory.start();
         processor.start();
         display.run();
         processor.stop();
@@ -123,6 +124,10 @@ public class GameBoyAdvance {
             paletteRAM = new RAM(PALETTE_RAM_SIZE);
             unusedMemory = new NullMemory();
             updateCapacity();
+        }
+
+        private void start() {
+            ioRegisters.start();
         }
 
         private void shutdown() {
@@ -279,12 +284,16 @@ public class GameBoyAdvance {
         private this() {
             super(IO_REGISTERS_SIZE);
             dmaSemaphore = new Semaphore();
+            timerScheduler = new Scheduler();
+            timerIRQHandlers = [&timer0IRQ, &timer1IRQ, &timer2IRQ, &timer3IRQ];
+        }
+
+        private void start() {
             dmaThread = new Thread(&runDMA);
             dmaThread.name = "DMA";
             dmaRunning = true;
             dmaThread.start();
-            timerScheduler = new Scheduler();
-            timerIRQHandlers = [&timer0IRQ, &timer1IRQ, &timer2IRQ, &timer3IRQ];
+            timerScheduler.start();
         }
 
         private void shutdown() {

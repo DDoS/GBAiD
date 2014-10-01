@@ -106,14 +106,13 @@ public class Scheduler {
         mutex = new Mutex();
         emptyCondition = new Condition(mutex);
         waitingCondition = new Condition(mutex);
+    }
+
+    public void start() {
         thread = new Thread(&run);
         thread.name = "Scheduler";
         running = true;
         thread.start();
-    }
-
-    public ~this() {
-        shutdown();
     }
 
     public void shutdown() {

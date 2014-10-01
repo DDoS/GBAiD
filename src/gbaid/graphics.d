@@ -82,6 +82,7 @@ public class GameBoyAdvanceDisplay {
         Timer fpsTimer = new Timer();
 
         Thread timings = new Thread(&runTimings);
+        timings.name = "Display timings";
         timingsRunning = true;
         timings.start();
 
