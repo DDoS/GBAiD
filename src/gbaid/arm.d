@@ -6,6 +6,7 @@ import core.sync.condition;
 
 import std.stdio;
 import std.conv;
+import std.string;
 
 import gbaid.memory;
 import gbaid.util;
@@ -84,6 +85,8 @@ public class ARM7TDMI {
 	}
 
 	private void run() {
+		// TODO: fix PKMN crash
+		// Exception: This ARM instruction is unsupported by the implementation: -1140736912
 		try {
 			// initialize the stack pointers
 			setRegister(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
@@ -959,7 +962,7 @@ public class ARM7TDMI {
 		}
 
 		private void unsupported(int instruction) {
-			throw new UnsupportedARMInstructionException(instruction);
+			throw new UnsupportedARMInstructionException(getRegister(Register.PC) - 8, instruction);
 		}
 	}
 
@@ -1615,7 +1618,7 @@ public class ARM7TDMI {
 		}
 
 		private void unsupported(int instruction) {
-			throw new UnsupportedTHUMBInstructionException(instruction);
+			throw new UnsupportedTHUMBInstructionException(getRegister(Register.PC) - 4, instruction);
 		}
 	}
 
@@ -2019,13 +2022,13 @@ private enum CPSRFlag {
 }
 
 public class UnsupportedARMInstructionException : Exception {
-	protected this(int instruction) {
-		super("This ARM instruction is unsupported by the implementation: " ~ to!string(instruction));
+	protected this(int address, int instruction) {
+		super(format("This ARM instruction is unsupported by the implementation\n%08x: %08x", address, instruction));
 	}
 }
 
 public class UnsupportedTHUMBInstructionException : Exception {
-	protected this(int instruction) {
-		super("This THUMB instruction is unsupported by the implementation: " ~ to!string(instruction));
+	protected this(int address, int instruction) {
+		super(format("This THUMB instruction is unsupported by the implementation\n%08x: %04x", address, instruction & 0xFFFF));
 	}
 }
