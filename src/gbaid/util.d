@@ -26,6 +26,10 @@ public bool checkBit(int i, int b) {
     return cast(bool) getBit(i, b);
 }
 
+public bool checkBits(int i, int m, int b) {
+    return (i & m) == b;
+}
+
 public int getBit(int i, int b) {
     return i >> b & 1;
 }

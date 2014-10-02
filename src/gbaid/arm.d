@@ -85,8 +85,6 @@ public class ARM7TDMI {
 	}
 
 	private void run() {
-		// TODO: fix PKMN crash
-		// Exception: This ARM instruction is unsupported by the implementation: -1140736912
 		try {
 			// initialize the stack pointers
 			setRegister(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
@@ -200,98 +198,42 @@ public class ARM7TDMI {
 		}
 
 		protected override void execute(int instruction) {
-			int category = getBits(instruction, 25, 27);
-			final switch (category) {
-				case 0:
-					if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000000) {
-						// PSR Reg
-						psrTransfer(instruction);
-					} else if (getBits(instruction, 8, 24) == 0b00010010111111111111) {
-						// BX, BLX
-						branchAndExchange(instruction);
-					} else if (getBits(instruction, 20, 24) == 0b10010 && getBits(instruction, 4, 7) == 0b0111) {
-						// BKPT
-						unsupported(instruction);
-					} else if (getBits(instruction, 16, 24) == 0b101101111 && getBits(instruction, 4, 11) == 0b11110001) {
-						// CLZ
-						unsupported(instruction);
-					} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBits(instruction, 4, 11) == 0b00000101) {
-						// QALU
-						unsupported(instruction);
-					} else if (getBits(instruction, 22, 24) == 0b000 && getBits(instruction, 4, 7) == 0b1001) {
-						// Multiply
-						multiplyAndMultiplyAccumulate(instruction);
-					} else if (getBits(instruction, 23, 24) == 0b01 && getBits(instruction, 4, 7) == 0b1001) {
-						// MulLong
-						multiplyAndMultiplyAccumulate(instruction);
-					} else if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b0) {
-						// MulHalf
-						unsupported(instruction);
-					} else if (getBits(instruction, 23, 24) == 0b10 && getBits(instruction, 20, 21) == 0b00 && getBits(instruction, 4, 11) == 0b00001001) {
-						// TransSwp12
-						singeDataSwap(instruction);
-					} else if (getBit(instruction, 22) == 0b0 && getBits(instruction, 7, 11) == 0b00001 && getBit(instruction, 4) == 0b1) {
-						// TransReg10
-						halfwordAndSignedDataTransfer(instruction);
-					} else if (getBit(instruction, 22) == 0b1 && getBit(instruction, 7) == 0b1 && getBit(instruction, 4) == 0b1) {
-						// TransImm10
-						halfwordAndSignedDataTransfer(instruction);
-					} else {
-						// DataProc
-						dataProcessing(instruction);
-					}
-					break;
-				case 1:
-					if (getBits(instruction, 23, 24) == 0b10 && getBit(instruction, 20) == 0b0) {
-						// PSR Reg
-						psrTransfer(instruction);
-					} else {
-						// DataProc
-						dataProcessing(instruction);
-					}
-					break;
-				case 2:
-					// TransImm9
-					singleDataTransfer(instruction);
-					break;
-				case 3:
-					if (getBit(instruction, 4) == 0b0) {
-						// TransReg9
-						singleDataTransfer(instruction);
-					} else {
-						// Undefined
-						undefined(instruction);
-					}
-					break;
-				case 4:
-					// BlockTrans
-					blockDataTransfer(instruction);
-					break;
-				case 5:
-					// B, BL, BLX
-					branchAndBranchWithLink(instruction);
-					break;
-				case 6:
-					if (getBits(instruction, 21, 24) == 0b0010) {
-						// CoDataTrans
-						unsupported(instruction);
-					} else {
-						// CoRR
-						unsupported(instruction);
-					}
-					break;
-				case 7:
-					if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b0) {
-						// CoDataOp
-						unsupported(instruction);
-					} else if (getBit(instruction, 24) == 0b0 && getBit(instruction, 4) == 0b1) {
-						// CoRegTrans
-						unsupported(instruction);
-					} else {
-						// SWI
-						softwareInterrupt(instruction);
-					}
-					break;
+			if (checkBits(instruction, 0b00001111111111111111111111010000, 0b00000001001011111111111100010000)) {
+				branchAndExchange(instruction);
+			} else if (checkBits(instruction, 0b00001111101100000000000000000000, 0b00000011001000000000000000000000)) {
+				psrTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001111100100000000111111110000, 0b00000001000000000000000000000000)) {
+				psrTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000000000000000000000000000000)) {
+				dataProcessing(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000010010000, 0b00000000000000000000000000010000)) {
+				dataProcessing(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00000010000000000000000000000000)) {
+				dataProcessing(instruction);
+			} else if (checkBits(instruction, 0b00001111110000000000000011110000, 0b00000000000000000000000010010000)) {
+				multiplyAndMultiplyAccumulate(instruction);
+			} else if (checkBits(instruction, 0b00001111100000000000000011110000, 0b00000000100000000000000010010000)) {
+				multiplyAndMultiplyAccumulate(instruction);
+			} else if (checkBits(instruction, 0b00001111101100000000111111110000, 0b00000001000000000000000010010000)) {
+				signedDataSwap(instruction);
+			} else if (checkBits(instruction, 0b00001110010000000000111110010000, 0b00000000000000000000000010010000)) {
+				halfwordAndSignedDataTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110010000000000000010010000, 0b00000000010000000000000010010000)) {
+				halfwordAndSignedDataTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00000100000000000000000000000000)) {
+				singleDataTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000110000000000000000000000000)) {
+				singleDataTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000110000000000000000000010000)) {
+				undefined(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00001000000000000000000000000000)) {
+				blockDataTransfer(instruction);
+			} else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00001010000000000000000000000000)) {
+				branchAndBranchWithLink(instruction);
+			} else if (checkBits(instruction, 0b00001111000000000000000000000000, 0b00001111000000000000000000000000)) {
+				softwareInterrupt(instruction);
+			} else {
+				unsupported(instruction);
 			}
 		}
 
@@ -916,7 +858,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void singeDataSwap(int instruction) {
+		private void signedDataSwap(int instruction) {
 			if (!checkCondition(getConditionBits(instruction))) {
 				return;
 			}
