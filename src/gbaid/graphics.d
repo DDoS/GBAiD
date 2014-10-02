@@ -1049,7 +1049,7 @@ public class GameBoyAdvanceDisplay {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = memory.getInt(0x4000054) & 0b11111;
+        int evy = min(memory.getInt(0x4000054) & 0b11111, 16);
         firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
         firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
         firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
@@ -1062,7 +1062,7 @@ public class GameBoyAdvanceDisplay {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = memory.getInt(0x4000054) & 0b11111;
+        int evy = min(memory.getInt(0x4000054) & 0b11111, 16);
         firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
         firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
         firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
@@ -1081,12 +1081,12 @@ public class GameBoyAdvanceDisplay {
 
         int blendAlpha = memory.getShort(0x4000052);
 
-        int eva = blendAlpha & 0b11111;
+        int eva = min(blendAlpha & 0b11111, 16);
         firstRed = ((firstRed << 4) * eva >> 4) + 8 >> 4;
         firstGreen = ((firstGreen << 4) * eva >> 4) + 8 >> 4;
         firstBlue = ((firstBlue << 4) * eva >> 4) + 8 >> 4;
 
-        int evb = getBits(blendAlpha, 8, 12);
+        int evb = min(getBits(blendAlpha, 8, 12), 16);
         secondRed = ((secondRed << 4) * evb >> 4) + 8 >> 4;
         secondGreen = ((secondGreen << 4) * evb >> 4) + 8 >> 4;
         secondBlue = ((secondBlue << 4) * evb >> 4) + 8 >> 4;

@@ -28,7 +28,6 @@ public void main(string[] args) {
 	// TODO:
 	//       fix PKMN crash (exiting the code segment in WRAM)
 	//       fix obj transform not working poperly (PKMN clock hands are deformed)
-	//       investigate oddly high brightness indoors in LoZ
 	//       fix graphic glitch in PKMN and LoZ intro
 	//       finish implementing bitmap modes in graphics
 	//       rewrite more of the graphics in x64
