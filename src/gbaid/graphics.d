@@ -672,16 +672,17 @@ public class GameBoyAdvanceDisplay {
             return;
         }
 
-        int tileLength = 8;
-        int tileSize = tileLength * tileLength / 2;
-
         int tileBase = 0x6010000;
         if (getMode() >= 3) {
             tileBase += 0x4000;
         }
 
+        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+
         for (int i = 127; i >= 0; i--) {
-            int attributeAddress = 0x7000000 + i * 8;
+            int attributeAddress = 0x7000000 + (i << 3);
 
             int attribute0 = memory.getShort(attributeAddress);
 
@@ -707,7 +708,7 @@ public class GameBoyAdvanceDisplay {
                 horizontalFlip = 0;
                 verticalFlip = 0;
                 int rotAndScaleParameters = getBits(attribute1, 9, 13);
-                int parametersAddress = rotAndScaleParameters * 32 + 0x7000006;
+                int parametersAddress = (rotAndScaleParameters << 5) + 0x7000006;
                 pa = memory.getShort(parametersAddress);
                 pb = memory.getShort(parametersAddress + 8);
                 pc = memory.getShort(parametersAddress + 16);
@@ -735,32 +736,43 @@ public class GameBoyAdvanceDisplay {
                 y -= 256;
             }
 
-            int horizontalSize = void, verticalSize = void;
+            int horizontalSize = void, verticalSize = void, mapYShift = void;
 
             if (shape == 0) {
-                horizontalSize = tileLength * (1 << size);
+                horizontalSize = 8 << size;
                 verticalSize = horizontalSize;
+                mapYShift = size;
             } else {
+                int mapXShift = void;
                 final switch (size) {
                     case 0:
                         horizontalSize = 16;
                         verticalSize = 8;
+                        mapXShift = 0;
+                        mapYShift = 1;
                         break;
                     case 1:
                         horizontalSize = 32;
                         verticalSize = 8;
+                        mapXShift = 0;
+                        mapYShift = 2;
                         break;
                     case 2:
                         horizontalSize = 32;
                         verticalSize = 16;
+                        mapXShift = 1;
+                        mapYShift = 2;
                         break;
                     case 3:
                         horizontalSize = 64;
                         verticalSize = 32;
+                        mapXShift = 2;
+                        mapYShift = 3;
                         break;
                 }
                 if (shape == 2) {
                     swap!int(horizontalSize, verticalSize);
+                    swap!int(mapXShift, mapYShift);
                 }
             }
 
@@ -825,27 +837,28 @@ public class GameBoyAdvanceDisplay {
                 }
 
                 if (mosaic) {
-                    applyMosaic(sampleX, sampleY);
+                    sampleX -= sampleX % mosaicSizeX;
+                    sampleY -= sampleY % mosaicSizeY;
                 }
 
-                int mapX = sampleX / tileLength;
-                int mapY = sampleY / tileLength;
+                int mapX = sampleX >> 3;
+                int mapY = sampleY >> 3;
 
-                int tileX = sampleX % tileLength;
-                int tileY = sampleY % tileLength;
+                int tileX = sampleX & 7;
+                int tileY = sampleY & 7;
 
                 int tileAddress = tileNumber;
 
                 if (tileMapping) {
                     // 1D
-                    tileAddress += mapX + mapY * renderHorizontalSize / tileLength << singlePalette;
+                    tileAddress += mapX + (mapY << mapYShift) << singlePalette;
                 } else {
                     // 2D
-                    tileAddress += (mapX << singlePalette) + mapY * 32;
+                    tileAddress += (mapX << singlePalette) + (mapY << 5);
                 }
-                tileAddress *= tileSize;
+                tileAddress <<= 5;
 
-                tileAddress += tileX + tileY * tileLength >> (1 - singlePalette);
+                tileAddress += tileX + (tileY << 3) >> (1 - singlePalette);
 
                 tileAddress += tileBase;
 
@@ -855,13 +868,13 @@ public class GameBoyAdvanceDisplay {
                     if (paletteIndex == 0) {
                         continue;
                     }
-                    paletteAddress = paletteIndex * 2;
+                    paletteAddress = paletteIndex << 1;
                 } else {
-                    int paletteIndex = memory.getByte(tileAddress) >> tileX % 2 * 4 & 0xF;
+                    int paletteIndex = memory.getByte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
                     if (paletteIndex == 0) {
                         continue;
                     }
-                    paletteAddress = (paletteNumber * 16 + paletteIndex) * 2;
+                    paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
                 }
 
                 short color = memory.getShort(0x5000200 + paletteAddress) & 0x7FFF;
@@ -920,18 +933,6 @@ public class GameBoyAdvanceDisplay {
         }
 
         return 0x400004A;
-    }
-
-    private void applyMosaic(ref int x, ref int y) {
-        int mosaicControl = memory.getInt(0x400004C);
-        int hSize = (mosaicControl & 0b1111) + 1;
-        int vSize = getBits(mosaicControl, 4, 7) + 1;
-
-        x /= hSize;
-        x *= hSize;
-
-        y /= vSize;
-        y *= vSize;
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
