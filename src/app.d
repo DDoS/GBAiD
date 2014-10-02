@@ -25,7 +25,8 @@ public void main(string[] args) {
 	}
 	gba.run();
 
-	// TODO: rewrite THUMB instruction decode to match ARM
+	// TODO:
+	//       optimize OBJ rendering and remove old mosaic code
 	//       fix PKMN crash (exiting the code segment in WRAM)
 	//       fix obj transform not working poperly (PKMN clock hands are deformed)
 	//       investigate oddly high brightness indoors in LoZ

@@ -122,7 +122,7 @@ public class GameBoyAdvanceDisplay {
             context.updateDisplay();
             processInput();
             fpsTimer.waitUntil(TOTAL_DURATION);
-            writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
+            //writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
         }
 
         timingsRunning = false;
