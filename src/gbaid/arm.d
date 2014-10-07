@@ -1382,7 +1382,7 @@ public class ARM7TDMI {
 
 		private void addOffsetToStackPointer(int instruction) {
 			int opCode = getBit(instruction, 7);
-			int offset = (instruction & 0b111111) * 4;
+			int offset = (instruction & 0x7F) * 4;
 			if (opCode) {
 				debug (outputInstructions) logInstruction(instruction, "ADD");
 				setRegister(Register.SP, getRegister(Register.SP) - offset);

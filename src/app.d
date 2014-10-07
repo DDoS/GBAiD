@@ -26,7 +26,6 @@ public void main(string[] args) {
 	gba.run();
 
 	// TODO:
-	//       fix PKMN crash (exiting the code segment in WRAM)
 	//       fix obj transform not working poperly (PKMN clock hands are deformed)
 	//       fix graphic glitch in PKMN and LoZ intro
 	//       finish implementing bitmap modes in graphics
