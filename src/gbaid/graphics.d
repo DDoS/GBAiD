@@ -776,8 +776,8 @@ public class GameBoyAdvanceDisplay {
                 }
             }
 
-            int renderHorizontalSize = horizontalSize;
-            int renderVerticalSize = verticalSize;
+            int sampleHorizontalSize = horizontalSize;
+            int sampleVerticalSize = verticalSize;
             if (doubleSize) {
                 horizontalSize <<= 1;
                 verticalSize <<= 1;
@@ -804,35 +804,24 @@ public class GameBoyAdvanceDisplay {
                     continue;
                 }
 
-                int sampleX = void, sampleY = void;
+                int sampleX = objectX, sampleY = objectY;
 
                 if (rotAndScale) {
-                    int halfHorizontalSize = horizontalSize >> 1;
-                    int halfVerticalSize = verticalSize >> 1;
-                    sampleX = objectX - halfHorizontalSize;
-                    sampleY = objectY - halfVerticalSize;
-                    sampleX = (pa * (sampleX << 8) >> 8) + (pb * (sampleY << 8) >> 8) + 128 >> 8;
-                    sampleY = (pc * (sampleX << 8) >> 8) + (pd * (sampleY << 8) >> 8) + 128 >> 8;
-                    if (doubleSize) {
-                        sampleX += halfHorizontalSize >> 1;
-                        sampleY += halfVerticalSize >> 1;
-                    } else {
-                        sampleX += halfHorizontalSize;
-                        sampleY += halfVerticalSize;
-                    }
-                    if (sampleX < 0 || sampleX >= renderHorizontalSize || sampleY < 0 || sampleY >= renderVerticalSize) {
+                    int tmpX = sampleX - (horizontalSize >> 1);
+                    int tmpY = sampleY - (verticalSize >> 1);
+                    sampleX = pa * tmpX + pb * tmpY + 128 >> 8;
+                    sampleY = pc * tmpX + pd * tmpY + 128 >> 8;
+                    sampleX += sampleHorizontalSize >> 1;
+                    sampleY += sampleVerticalSize >> 1;
+                    if (sampleX < 0 || sampleX >= sampleHorizontalSize || sampleY < 0 || sampleY >= sampleVerticalSize) {
                         continue;
                     }
                 } else {
                     if (verticalFlip) {
-                        sampleY = verticalSize - objectY - 1;
-                    } else {
-                        sampleY = objectY;
+                        sampleY = verticalSize - sampleY - 1;
                     }
                     if (horizontalFlip) {
-                        sampleX = horizontalSize - objectX - 1;
-                    } else {
-                        sampleX = objectX;
+                        sampleX = horizontalSize - sampleX - 1;
                     }
                 }
 
