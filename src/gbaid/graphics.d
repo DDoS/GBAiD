@@ -512,7 +512,58 @@ public class GameBoyAdvanceDisplay {
         dy <<= 4;
         dy >>= 4;
 
-        size_t bufferAddress = cast(size_t) buffer.ptr;
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+
+            int x = pa * column + pb * line + dx + 128 >> 8;
+            int y = pc * column + pd * line + dy + 128 >> 8;
+
+            if (x & bgSizeInv) {
+                if (displayOverflow) {
+                    x &= bgSize;
+                } else {
+                    buffer[column] = TRANSPARENT;
+                    continue;
+                }
+            }
+            if (y & bgSizeInv) {
+                if (displayOverflow) {
+                    y &= bgSize;
+                } else {
+                    buffer[column] = TRANSPARENT;
+                    continue;
+                }
+            }
+
+            if (mosaic) {
+                x -= x % mosaicSizeX;
+                y -= y % mosaicSizeY;
+            }
+
+            int mapColumn = x >> 3;
+            int mapLine = y >> 3;
+
+            int tileColumn = x & 7;
+            int tileLine = y & 7;
+
+            int mapAddress = 0x6000000 + mapBase + (mapLine << mapLineShift) + mapColumn;
+
+            int tileNumber = memory.getByte(mapAddress) & 0xFF;
+
+            int tileAddress = 0x6000000 + tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
+
+            int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+
+            if (paletteAddress == 0) {
+                buffer[column] = TRANSPARENT;
+                continue;
+            }
+
+            short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
+
+            buffer[column] = color;
+        }
+
+        /*size_t bufferAddress = cast(size_t) buffer.ptr;
         size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
         size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
 
@@ -522,10 +573,8 @@ public class GameBoyAdvanceDisplay {
                 mov EAX, 0;
                 push RAX;
             loop:
-                // calculate fixed point translated column and line
+                // push line an column to stack
                 mov EBX, line;
-                shl EAX, 8;
-                shl EBX, 8;
                 push RAX;
                 push RBX;
                 // calculate x
@@ -536,8 +585,6 @@ public class GameBoyAdvanceDisplay {
                 mov ECX, pb;
                 mul ECX;
                 pop RBX;
-                sar EBX, 8;
-                sar EAX, 8;
                 add EAX, EBX;
                 add EAX, dx;
                 add EAX, 128;
@@ -554,8 +601,6 @@ public class GameBoyAdvanceDisplay {
                 mov ECX, pd;
                 mul ECX;
                 pop RBX;
-                sar EBX, 8;
-                sar EAX, 8;
                 add EAX, EBX;
                 add EAX, dy;
                 add EAX, 128;
@@ -659,7 +704,7 @@ public class GameBoyAdvanceDisplay {
                 jmp loop;
             end:
                 nop;
-        }
+        }*/
     }
 
     private void layerObject(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
