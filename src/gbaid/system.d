@@ -8,15 +8,19 @@ import core.atomic;
 import std.stdio;
 import std.string;
 
+import derelict.sdl2.sdl;
+
 import gbaid.arm;
 import gbaid.graphics;
 import gbaid.memory;
+import gbaid.input;
 import gbaid.util;
 
 public class GameBoyAdvance {
     private ARM7TDMI processor;
     private GameBoyAdvanceDisplay display;
     private GameBoyAdvanceMemory memory;
+    private GameBoyAdvanceKeypad keypad;
     private bool running = false;
 
     public this(string biosFile) {
@@ -26,9 +30,11 @@ public class GameBoyAdvance {
         processor = new ARM7TDMI();
         display = new GameBoyAdvanceDisplay();
         memory = new GameBoyAdvanceMemory(biosFile);
+        keypad = new GameBoyAdvanceKeypad();
         processor.setMemory(memory);
         processor.setEntryPointAddress(GameBoyAdvanceMemory.BIOS_START);
         display.setMemory(memory);
+        keypad.setMemory(memory);
     }
 
     public void loadROM(string file) {
@@ -59,11 +65,17 @@ public class GameBoyAdvance {
         if (!memory.hasGamepakSRAM()) {
             memory.loadEmptyGamepakSRAM();
         }
+        if (!DerelictSDL2.isLoaded) {
+            DerelictSDL2.load();
+        }
         memory.start();
+        keypad.start();
         processor.start();
         display.run();
         processor.stop();
-        memory.shutdown();
+        keypad.stop();
+        memory.stop();
+        SDL_Quit();
     }
 
     private void checkNotRunning() {
@@ -130,8 +142,8 @@ public class GameBoyAdvance {
             ioRegisters.start();
         }
 
-        private void shutdown() {
-            ioRegisters.shutdown();
+        private void stop() {
+            ioRegisters.stop();
         }
 
         private void loadGamepakROM(string romFile) {
@@ -296,7 +308,7 @@ public class GameBoyAdvance {
             timerScheduler.start();
         }
 
-        private void shutdown() {
+        private void stop() {
             if (dmaRunning) {
                 dmaRunning = false;
                 dmaSemaphore.notify();

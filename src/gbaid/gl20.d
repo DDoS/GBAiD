@@ -28,9 +28,13 @@ public class GL20Context : Context {
 
     public override void create() {
         checkNotCreated();
-        // Load the bindings
-        DerelictSDL2.load();
-        DerelictGL3.load();
+        // Load the bindings if needed
+        if (!DerelictSDL2.isLoaded) {
+            DerelictSDL2.load();
+        }
+        if (!DerelictGL3.isLoaded) {
+            DerelictGL3.load();
+        }
         // Initialize SDL video
         if (SDL_Init(SDL_INIT_VIDEO) < 0) {
             throw new Exception("Failed to initialize SDL: " ~ to!string(SDL_GetError()));
@@ -53,8 +57,10 @@ public class GL20Context : Context {
         }
         // Set the swap interval to immediate
         SDL_GL_SetSwapInterval(0);
-        // Load the GL1.1+ features
-        DerelictGL3.reload();
+        // Load the GL1.1+ features if needed
+        if (DerelictGL3.loadedVersion == derelict.opengl3.types.GLVersion.GL11) {
+            DerelictGL3.reload();
+        }
         // Check for errors
         checkForGLError();
         // Update the state

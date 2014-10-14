@@ -7,8 +7,6 @@ import core.sync.condition;
 import std.stdio;
 import std.algorithm;
 
-import derelict.sdl2.sdl;
-
 import gbaid.system;
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
@@ -120,7 +118,6 @@ public class GameBoyAdvanceDisplay {
             program.use();
             vertexArray.draw();
             context.updateDisplay();
-            processInput();
             fpsTimer.waitUntil(TOTAL_DURATION);
             //writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
         }
@@ -1113,24 +1110,6 @@ public class GameBoyAdvanceDisplay {
         if (vcounter && checkBit(displayStatus, 5)) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
-    }
-
-    private void processInput() {
-        const ubyte* keyboard = SDL_GetKeyboardState(null);
-        int keypadState =
-            keyboard[SDL_SCANCODE_P] |
-            keyboard[SDL_SCANCODE_O] << 1 |
-            keyboard[SDL_SCANCODE_TAB] << 2 |
-            keyboard[SDL_SCANCODE_RETURN] << 3 |
-            keyboard[SDL_SCANCODE_D] << 4 |
-            keyboard[SDL_SCANCODE_A] << 5 |
-            keyboard[SDL_SCANCODE_W] << 6 |
-            keyboard[SDL_SCANCODE_S] << 7 |
-            keyboard[SDL_SCANCODE_E] << 8 |
-            keyboard[SDL_SCANCODE_Q] << 9
-        ;
-        keypadState = ~keypadState & 0x3FF;
-        memory.setShort(0x4000130, cast(short) keypadState);
     }
 
     private enum BackgroundMode {

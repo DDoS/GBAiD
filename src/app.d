@@ -26,9 +26,10 @@ public void main(string[] args) {
 	gba.run();
 
 	// TODO:
-	//       fix graphic glitch in LoZ intro
-	//       finish input (move to new module, read in IO registers, IRQs)
+	//       move SDL init to system run
+	//       look at SDL timers
 	//       implement basic saves (needed to quicken debugging)
+	//       fix graphic glitch in LoZ intro (CPU glitch?)
 	//       investigate PKMN crash (when entering random encounter)
 	//       finish implementing bitmap modes in graphics
 	//       rewrite more of the graphics in x64
