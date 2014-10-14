@@ -53,6 +53,14 @@ public class GameBoyAdvance {
         memory.loadGamepakSRAM(file);
     }
 
+    public void saveSRAM(string file) {
+        if (file is null) {
+            throw new NullPathException("SRAM");
+        }
+        checkNotRunning();
+        memory.saveGamepakSRAM(file);
+    }
+
     public GameBoyAdvanceMemory getMemory() {
         return memory;
     }
@@ -93,6 +101,7 @@ public class GameBoyAdvance {
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
+        private static immutable uint GAMEPAK_SRAM_SIZE = 32 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
         private static immutable uint CHIP_WRAM_MIRROR_OFFSET = 0xFF8000;
         private static immutable uint BIOS_START = 0x00000000;
@@ -157,6 +166,10 @@ public class GameBoyAdvance {
             updateCapacity();
         }
 
+        private void saveGamepakSRAM(string sramFile) {
+            gamepackSRAM.saveToFile(sramFile);
+        }
+
         private bool hasGamepakROM() {
             return gamepakROM !is null;
         }
@@ -166,7 +179,7 @@ public class GameBoyAdvance {
         }
 
         private void loadEmptyGamepakSRAM() {
-            gamepackSRAM = new RAM(MAX_GAMEPAK_SRAM_SIZE);
+            gamepackSRAM = new RAM(GAMEPAK_SRAM_SIZE);
         }
 
         private void updateCapacity() {
@@ -178,6 +191,11 @@ public class GameBoyAdvance {
 
         public ulong getCapacity() {
             return capacity;
+        }
+
+        public void[] getArray(uint address) {
+            Memory memory = map(address);
+            return memory.getArray(address);
         }
 
         public void* getPointer(uint address) {
@@ -250,7 +268,7 @@ public class GameBoyAdvance {
             }
             if (address >= GAMEPAK_ROM_START && address <= GAMEPAK_ROM_END) {
                 address -= GAMEPAK_ROM_START;
-                address %= MAX_GAMEPAK_ROM_SIZE;
+                address &= (MAX_GAMEPAK_ROM_SIZE - 1);
                 if (address < gamepakROM.getCapacity()) {
                     return gamepakROM;
                 } else {

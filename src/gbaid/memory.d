@@ -9,6 +9,8 @@ public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 public interface Memory {
     ulong getCapacity();
 
+    void[] getArray(uint address);
+
     void* getPointer(uint address);
 
     byte getByte(uint address);
@@ -46,6 +48,10 @@ public class ROM : Memory {
 
     public ulong getCapacity() {
         return memory.length;
+    }
+
+    public void[] getArray(uint address) {
+        return cast(void[]) memory[address .. $];
     }
 
     public void* getPointer(uint address) {
@@ -105,6 +111,10 @@ public class NullMemory : Memory {
         return 0;
     }
 
+    public void[] getArray(uint address) {
+        return null;
+    }
+
     public void* getPointer(uint address) {
         return null;
     }
@@ -141,5 +151,13 @@ public class ReadOnlyException : Exception {
 public class BadAddressException : Exception {
     public this(uint address) {
         super(format("Invalid address: 0x%X", address));
+    }
+}
+
+public void saveToFile(Memory memory, string file) {
+    try {
+        write(file, memory.getArray(0));
+    } catch (FileException ex) {
+        throw new Exception("Cannot write memory to file", ex);
     }
 }

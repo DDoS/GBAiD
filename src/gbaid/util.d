@@ -90,6 +90,10 @@ public string toString(char[] cs) {
     return to!string(cs[0 .. end]);
 }
 
+public string expandPath(string relative) {
+    return buildNormalizedPath(absolutePath(expandTilde(relative)));
+}
+
 public class Scheduler {
     private alias TaskFunction = void delegate();
     private Thread thread;
@@ -261,10 +265,6 @@ public class Scheduler {
             return sign((scheduledTime - other.scheduledTime).nsecs());
         }
     }
-}
-
-public string expandPath(string relative) {
-    return buildNormalizedPath(absolutePath(expandTilde(relative)));
 }
 
 public class Timer {
