@@ -35,9 +35,11 @@ public class GL20Context : Context {
         if (!DerelictGL3.isLoaded) {
             DerelictGL3.load();
         }
-        // Initialize SDL video
-        if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-            throw new Exception("Failed to initialize SDL: " ~ to!string(SDL_GetError()));
+        // Initialize SDL video if needed
+        if (!SDL_WasInit(SDL_INIT_VIDEO)) {
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
+                throw new Exception("Failed to initialize SDL: " ~ to!string(SDL_GetError()));
+            }
         }
         // Configure the context
         setContextAttributes();
@@ -140,7 +142,6 @@ public class GL20Context : Context {
     public override void updateDisplay() {
         checkCreated();
         SDL_GL_SwapWindow(window);
-        SDL_PumpEvents();
     }
 
     public override void setClearColor(float red, float green, float blue, float alpha) {
@@ -208,6 +209,7 @@ public class GL20Context : Context {
     }
 
     public override bool isWindowCloseRequested() {
+        SDL_PumpEvents();
         SDL_Event event;
         SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUIT, SDL_QUIT);
         return event.type == SDL_QUIT;

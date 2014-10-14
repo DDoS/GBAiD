@@ -61,18 +61,16 @@ public class GameBoyAdvanceKeypad {
         Timer timer = new Timer();
         while (running) {
             timer.start();
-            if (SDL_WasInit(SDL_INIT_EVERYTHING)) {
-                int state = ~updateState();
-                int control = memory.getShort(0x4000132);
-                if (checkBit(control, 14)) {
-                    int requested = control & 0x3FF;
-                    if (checkBit(control, 15)) {
-                        if ((state & requested) == requested) {
-                            memory.requestInterrupt(InterruptSource.KEYPAD);
-                        }
-                    } else if (state & requested) {
+            int state = ~updateState();
+            int control = memory.getShort(0x4000132);
+            if (checkBit(control, 14)) {
+                int requested = control & 0x3FF;
+                if (checkBit(control, 15)) {
+                    if ((state & requested) == requested) {
                         memory.requestInterrupt(InterruptSource.KEYPAD);
                     }
+                } else if (state & requested) {
+                    memory.requestInterrupt(InterruptSource.KEYPAD);
                 }
             }
             timer.waitUntil(INPUT_PERIOD);

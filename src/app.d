@@ -26,7 +26,6 @@ public void main(string[] args) {
 	gba.run();
 
 	// TODO:
-	//       move SDL init to system run
 	//       look at SDL timers
 	//       implement basic saves (needed to quicken debugging)
 	//       fix graphic glitch in LoZ intro (CPU glitch?)

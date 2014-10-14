@@ -68,6 +68,7 @@ public class GameBoyAdvance {
         if (!DerelictSDL2.isLoaded) {
             DerelictSDL2.load();
         }
+        SDL_Init(0);
         memory.start();
         keypad.start();
         processor.start();
