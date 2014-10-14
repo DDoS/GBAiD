@@ -26,7 +26,6 @@ public void main(string[] args) {
 	gba.run();
 
 	// TODO:
-	//       look at SDL timers
 	//       implement basic saves (needed to quicken debugging)
 	//       fix graphic glitch in LoZ intro (CPU glitch?)
 	//       investigate PKMN crash (when entering random encounter)
