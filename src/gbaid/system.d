@@ -7,6 +7,9 @@ import core.atomic;
 
 import std.stdio;
 import std.string;
+import std.traits;
+import std.typecons;
+import std.algorithm;
 
 import derelict.sdl2.sdl;
 
@@ -45,20 +48,20 @@ public class GameBoyAdvance {
         memory.loadGamepakROM(file);
     }
 
-    public void loadSRAM(string file) {
+    public void loadSave(string file) {
         if (file is null) {
-            throw new NullPathException("SRAM");
+            throw new NullPathException("save");
         }
         checkNotRunning();
-        memory.loadGamepakSRAM(file);
+        memory.loadGamepakSave(file);
     }
 
-    public void saveSRAM(string file) {
+    public void saveSave(string file) {
         if (file is null) {
-            throw new NullPathException("SRAM");
+            throw new NullPathException("save");
         }
         checkNotRunning();
-        memory.saveGamepakSRAM(file);
+        memory.saveGamepakSave(file);
     }
 
     public GameBoyAdvanceMemory getMemory() {
@@ -70,8 +73,8 @@ public class GameBoyAdvance {
         if (!memory.hasGamepakROM()) {
             throw new NoROMException();
         }
-        if (!memory.hasGamepakSRAM()) {
-            memory.loadEmptyGamepakSRAM();
+        if (!memory.hasGamepakSave()) {
+            memory.loadEmptyGamepakSave();
         }
         if (!DerelictSDL2.isLoaded) {
             DerelictSDL2.load();
@@ -101,8 +104,6 @@ public class GameBoyAdvance {
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
-        private static immutable uint GAMEPAK_SRAM_SIZE = 32 * BYTES_PER_KIB;
-        private static immutable uint MAX_GAMEPAK_SRAM_SIZE = 64 * BYTES_PER_KIB;
         private static immutable uint CHIP_WRAM_MIRROR_OFFSET = 0xFF8000;
         private static immutable uint BIOS_START = 0x00000000;
         private static immutable uint BIOS_END = 0x00003FFF;
@@ -122,8 +123,12 @@ public class GameBoyAdvance {
         private static immutable uint OAM_END = 0x070003FF;
         private static immutable uint GAMEPAK_ROM_START = 0x08000000;
         private static immutable uint GAMEPAK_ROM_END = 0x0DFFFFFF;
-        private static immutable uint GAMEPAK_SRAM_START = 0x0E000000;
-        private static immutable uint GAMEPAK_SRAM_END = 0x0E00FFFF;
+        private static immutable uint GAMEPAK_SAVE_START = 0x0E000000;
+        private static immutable uint GAMEPAK_SAVE_END = 0x0E00FFFF;
+        private static immutable uint GAMEPAK_EEPROM_START_NARROW = 0x0DFFFF00;
+        private static immutable uint GAMEPAK_EEPROM_START_WIDE = 0x0D000000;
+        private static immutable uint GAMEPAK_EEPROM_END = 0x0DFFFFFF;
+        private Memory unusedMemory;
         private Memory bios;
         private Memory boardWRAM;
         private Memory chipWRAM;
@@ -132,11 +137,12 @@ public class GameBoyAdvance {
         private Memory oam;
         private Memory paletteRAM;
         private Memory gamepakROM;
-        private Memory gamepackSRAM;
-        private Memory unusedMemory;
+        private Memory gamepakSave;
+        private Memory gamepakEEPROM;
         private ulong capacity;
 
         private this(string biosFile) {
+            unusedMemory = new NullMemory();
             bios = new ROM(biosFile, BIOS_SIZE);
             boardWRAM = new RAM(BOARD_WRAM_SIZE);
             chipWRAM = new RAM(CHIP_WRAM_SIZE);
@@ -144,7 +150,9 @@ public class GameBoyAdvance {
             vram = new RAM(VRAM_SIZE);
             oam = new RAM(OAM_SIZE);
             paletteRAM = new RAM(PALETTE_RAM_SIZE);
-            unusedMemory = new NullMemory();
+            gamepakROM = unusedMemory;
+            gamepakSave = unusedMemory;
+            gamepakEEPROM = unusedMemory;
             updateCapacity();
         }
 
@@ -161,32 +169,71 @@ public class GameBoyAdvance {
             updateCapacity();
         }
 
-        private void loadGamepakSRAM(string sramFile) {
-            gamepackSRAM = new RAM(sramFile, MAX_GAMEPAK_SRAM_SIZE);
+        private void loadGamepakSave(string saveFile) {
+
             updateCapacity();
         }
 
-        private void saveGamepakSRAM(string sramFile) {
-            gamepackSRAM.saveToFile(sramFile);
+        private void saveGamepakSave(string saveFile) {
+
         }
 
         private bool hasGamepakROM() {
-            return gamepakROM !is null;
+            return !(cast(NullMemory) gamepakROM);
         }
 
-        private bool hasGamepakSRAM() {
-            return gamepackSRAM !is null;
+        private bool hasGamepakSave() {
+            return !(cast(NullMemory) gamepakSave);
         }
 
-        private void loadEmptyGamepakSRAM() {
-            gamepackSRAM = new RAM(GAMEPAK_SRAM_SIZE);
+        private void loadEmptyGamepakSave() {
+            // Detect save types and size using ID strings in ROM
+            bool hasEEPROM = false, hasFlash = false;
+            int saveSize = GamepakSaveMemory.SRAM[1];
+            char[] romChars = cast(char[]) gamepakROM.getArray(0);
+            auto saveTypes = EnumMembers!GamepakSaveMemory;
+            for (ulong i = 0; i < romChars.length; i += 4) {
+                foreach (saveType; saveTypes) {
+                    string saveID = saveType[0];
+                    if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
+                        final switch (saveID) {
+                            case GamepakSaveMemory.EEPROM[0]:
+                                hasEEPROM = true;
+                                break;
+                            case GamepakSaveMemory.FLASH[0]:
+                            case GamepakSaveMemory.FLASH512[0]:
+                            case GamepakSaveMemory.FLASH1M[0]:
+                                hasFlash = true;
+                                saveSize = saveType[1];
+                                break;
+                        }
+                    }
+                }
+            }
+            // Allocate the memory
+            if (hasFlash) {
+                gamepakSave = new Flash(saveSize);
+            } else {
+                gamepakSave = new RAM(saveSize);
+            }
+            if (hasEEPROM) {
+                gamepakEEPROM = new EEPROM(GamepakSaveMemory.EEPROM[1]);
+            }
+            // Update the capacity
+            updateCapacity();
         }
 
         private void updateCapacity() {
-            capacity = bios.getCapacity() + boardWRAM.getCapacity() + chipWRAM.getCapacity() + oam.getCapacity()
+            capacity = bios.getCapacity()
+                + boardWRAM.getCapacity()
+                + chipWRAM.getCapacity()
+                + ioRegisters.getCapacity()
+                + vram.getCapacity()
+                + oam.getCapacity()
                 + paletteRAM.getCapacity()
-                + (gamepakROM !is null ? gamepakROM.getCapacity() : 0)
-                + (gamepackSRAM !is null ? gamepackSRAM.getCapacity() : 0);
+                + gamepakROM.getCapacity()
+                + gamepakSave.getCapacity()
+                + gamepakEEPROM.getCapacity();
         }
 
         public ulong getCapacity() {
@@ -275,10 +322,10 @@ public class GameBoyAdvance {
                     return unusedMemory;
                 }
             }
-            if (address >= GAMEPAK_SRAM_START && address <= GAMEPAK_SRAM_END) {
-                address -= GAMEPAK_SRAM_START;
-                if (address < gamepackSRAM.getCapacity()) {
-                    return gamepackSRAM;
+            if (address >= GAMEPAK_SAVE_START && address <= GAMEPAK_SAVE_END) {
+                address -= GAMEPAK_SAVE_START;
+                if (address < gamepakSave.getCapacity()) {
+                    return gamepakSave;
                 } else {
                     return unusedMemory;
                 }
@@ -292,6 +339,14 @@ public class GameBoyAdvance {
 
         public void signalEvent(SignalEvent event) {
             ioRegisters.signalEvent(event);
+        }
+
+        private static enum GamepakSaveMemory {
+            EEPROM = tuple("EEPROM_V", 8 * BYTES_PER_KIB),
+            SRAM = tuple("SRAM_V", 32 * BYTES_PER_KIB),
+            FLASH = tuple("FLASH_V", 64 * BYTES_PER_KIB),
+            FLASH512 = tuple("FLASH512_V", 64 * BYTES_PER_KIB),
+            FLASH1M = tuple("FLASH1M_V", 128 * BYTES_PER_KIB)
         }
     }
 

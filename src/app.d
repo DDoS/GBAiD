@@ -22,6 +22,10 @@ public void main(string[] args) {
 		return;
 	}
 	bios = expandPath(bios);
+	if (!exists(bios)) {
+		writeln("BIOS file doesn't exist");
+		return;
+	}
 
 	string rom = getSafe!string(args, 1, null);
 	if (rom is null) {
@@ -29,6 +33,10 @@ public void main(string[] args) {
 		return;
 	}
 	rom = expandPath(rom);
+	if (!exists(rom)) {
+		writeln("ROM file doesn't exist");
+		return;
+	}
 
 	if (save is null) {
 		save = setExtension(rom, ".sav");
@@ -42,7 +50,7 @@ public void main(string[] args) {
 	gba.loadROM(rom);
 	if (!noLoad) {
 		if (exists(save)) {
-			gba.loadSRAM(save);
+			gba.loadSave(save);
 			writeln("Loaded save \"" ~ save ~ "\"");
 		} else {
 			writeln("Using new save");
@@ -52,13 +60,14 @@ public void main(string[] args) {
 	gba.run();
 
 	if (!noSave) {
-		gba.saveSRAM(save);
+		gba.saveSave(save);
 		writeln("Saved save \"" ~ save ~ "\"");
 	}
 
 	// TODO:
-	//       implement EEPROM and FLASH saves
-	//       fix PKMN saves not working
+	//       implement EEPROM saves
+	//       revert back to 64KB SRAM
+	//       increment DMA internal addresses
 	//       fix graphic glitch in LoZ intro (CPU glitch?)
 	//       investigate PKMN crash (when entering random encounter)
 	//       finish implementing bitmap modes in graphics
