@@ -6,6 +6,8 @@ import core.time;
 import std.string;
 import std.file;
 
+import gbaid.util;
+
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
@@ -109,7 +111,7 @@ public class RAM : ROM {
     }
 }
 
-public class Flash : RAM { import std.stdio;
+public class Flash : RAM {
     private static immutable uint PANASONIC_64K_ID = 0x1B32;
     private static immutable uint SANYO_128K_ID = 0x1362;
     private static immutable uint DEVICE_ID_ADDRESS = 0x1;
@@ -290,6 +292,12 @@ public class Flash : RAM { import std.stdio;
 }
 
 public class EEPROM : RAM {
+    private Mode mode = Mode.NORMAL;
+    private int validCMD = false;
+    private int targetAddress = 0;
+    private int currentAddressBit = 0, currentReadBit = 0;
+    private int[3] writeBuffer = new int[3];
+
     public this(ulong capacity) {
         super(capacity);
     }
@@ -300,6 +308,118 @@ public class EEPROM : RAM {
 
     public this(string file, uint maxByteSize) {
         super(file, maxByteSize);
+    }
+
+    public override byte getByte(uint address) {
+        throw new UnsupportedMemoryWidthException(address, 1);
+    }
+
+    public override void setByte(uint address, byte b) {
+        throw new UnsupportedMemoryWidthException(address, 1);
+    }
+
+    public override short getShort(uint address) {
+        if (mode == Mode.WRITE) {
+            // get write address and offset in write buffer
+            int actualAddress = void;
+            int bitOffset = void;
+            if (currentAddressBit > 73) {
+                actualAddress = targetAddress >>> 14;
+                bitOffset = 14;
+            } else {
+                actualAddress = targetAddress >>> 23;
+                bitOffset = 6;
+            }
+            // get data to write from buffer
+            long toWrite = 0;
+            foreach (int i; 0 .. 64) {
+                toWrite |= ucast(getBit(writeBuffer[i + bitOffset >> 5], i + bitOffset & 31)) << 63 - i;
+            }
+            // write data
+            super.setInt(actualAddress, cast(int) toWrite);
+            super.setInt(actualAddress + 4, cast(int) (toWrite >>> 32));
+            // end write mode
+            mode = Mode.NORMAL;
+            validCMD = false;
+            targetAddress = 0;
+            currentAddressBit = 0;
+            currentReadBit = 0;
+            // return ready
+            return 1;
+        } else if (mode == Mode.READ) {
+            // get data
+            short data = void;
+            if (currentReadBit < 4) {
+                // first 4 bits are 0
+                data = 0;
+            } else {
+                // get read address depending on amount of bits received
+                int actualAddress = void;
+                if (currentAddressBit > 9) {
+                    actualAddress = targetAddress >>> 14;
+                } else {
+                    actualAddress = targetAddress >>> 23;
+                }
+                actualAddress += 7 - (currentReadBit - 4 >> 3);
+                // get the data bit
+                data = cast(short) getBit(super.getByte(actualAddress), 7 - (currentReadBit - 4 & 7));
+            }
+            // end read mode on last bit
+            if (currentReadBit == 67) {
+                mode = Mode.NORMAL;
+                validCMD = false;
+                targetAddress = 0;
+                currentAddressBit = 0;
+                currentReadBit = 0;
+            } else {
+                // increment current read bit and save address
+                currentReadBit++;
+            }
+            return data;
+        }
+        return 0;
+    }
+
+    public override void setShort(uint address, short s) {
+        // get relevant bit
+        int bit = s & 0b1;
+        // if in write mode, buffer the bit
+        if (mode == Mode.WRITE) {
+            setBit(writeBuffer[currentAddressBit - 2 >> 5],  currentAddressBit - 2 & 31, bit);
+        }
+        // then process as command or address bit
+        if (currentAddressBit == 0) {
+            // first command bit
+            if (bit == 0b1) {
+                // mark as valid if it corresponds to a command
+                validCMD = true;
+            }
+        } else if (currentAddressBit == 1) {
+            // second command bit
+            if (validCMD) {
+                // set mode if we have a proper command
+                mode = cast(Mode) bit;
+            }
+        } else if (validCMD && currentAddressBit < 16) {
+            // set address bit if command was valid
+            setBit(targetAddress, 33 - currentAddressBit, bit);
+        }
+        // increment bit count and save address
+        currentAddressBit++;
+    }
+
+    public override int getInt(uint address) {
+        throw new UnsupportedMemoryWidthException(address, 4);
+    }
+
+    public override void setInt(uint address, int i) {
+        throw new UnsupportedMemoryWidthException(address, 4);
+    }
+
+    private static enum Mode {
+        NORMAL = 2,
+        READ = 1,
+        WRITE = 0
     }
 }
 

@@ -65,8 +65,8 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       implement EEPROM saves
 	//       revert back to 64KB SRAM
+	//       don't use unions in GL
 	//       increment DMA internal addresses
 	//       fix graphic glitch in LoZ intro (CPU glitch?)
 	//       investigate PKMN crash (when entering random encounter)

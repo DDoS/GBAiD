@@ -139,6 +139,8 @@ public class GameBoyAdvance {
         private Memory gamepakROM;
         private Memory gamepakSave;
         private Memory gamepakEEPROM;
+        private bool hasEEPROM;
+        private uint eepromStart;
         private ulong capacity;
 
         private this(string biosFile) {
@@ -166,6 +168,9 @@ public class GameBoyAdvance {
 
         private void loadGamepakROM(string romFile) {
             gamepakROM = new ROM(romFile, MAX_GAMEPAK_ROM_SIZE);
+            eepromStart = gamepakROM.getCapacity() > 16 * BYTES_PER_MIB
+                    ? GAMEPAK_EEPROM_START_NARROW
+                    : GAMEPAK_EEPROM_START_WIDE;
             updateCapacity();
         }
 
@@ -188,7 +193,7 @@ public class GameBoyAdvance {
 
         private void loadEmptyGamepakSave() {
             // Detect save types and size using ID strings in ROM
-            bool hasEEPROM = false, hasFlash = false;
+            bool hasFlash = false;
             int saveSize = GamepakSaveMemory.SRAM[1];
             char[] romChars = cast(char[]) gamepakROM.getArray(0);
             auto saveTypes = EnumMembers!GamepakSaveMemory;
@@ -314,6 +319,10 @@ public class GameBoyAdvance {
                 return oam;
             }
             if (address >= GAMEPAK_ROM_START && address <= GAMEPAK_ROM_END) {
+                if (hasEEPROM && address >= eepromStart && address <= GAMEPAK_EEPROM_END) {
+                    address -= eepromStart;
+                    return gamepakEEPROM;
+                }
                 address -= GAMEPAK_ROM_START;
                 address &= (MAX_GAMEPAK_ROM_SIZE - 1);
                 if (address < gamepakROM.getCapacity()) {
