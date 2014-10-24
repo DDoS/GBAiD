@@ -573,7 +573,7 @@ public class GL20Program : Program {
         checkForGLError();
     }
 
-    private union Vector2f {
+    private struct Vector2f {
         float x, y;
     }
 
@@ -592,7 +592,7 @@ public class GL20Program : Program {
         checkForGLError();
     }
 
-    private union Vector3f {
+    private struct Vector3f {
         float x, y, z;
     }
 
@@ -612,7 +612,7 @@ public class GL20Program : Program {
         checkForGLError();
     }
 
-    private union Vector4f {
+    private struct Vector4f {
         float x, y, z, w;
     }
 

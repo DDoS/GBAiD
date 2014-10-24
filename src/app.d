@@ -65,8 +65,9 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       don't use unions in GL
 	//       increment DMA internal addresses
+	//       investigate super mario advance glitches
+	//       persist save memory
 	//       fix graphic glitch in LoZ intro (CPU glitch?)
 	//       investigate PKMN crash (when entering random encounter)
 	//       finish implementing bitmap modes in graphics
