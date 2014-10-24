@@ -352,7 +352,7 @@ public class GameBoyAdvance {
 
         private static enum GamepakSaveMemory {
             EEPROM = tuple("EEPROM_V", 8 * BYTES_PER_KIB),
-            SRAM = tuple("SRAM_V", 32 * BYTES_PER_KIB),
+            SRAM = tuple("SRAM_V", 64 * BYTES_PER_KIB),
             FLASH = tuple("FLASH_V", 64 * BYTES_PER_KIB),
             FLASH512 = tuple("FLASH512_V", 64 * BYTES_PER_KIB),
             FLASH1M = tuple("FLASH1M_V", 128 * BYTES_PER_KIB)

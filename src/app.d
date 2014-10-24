@@ -65,7 +65,6 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       revert back to 64KB SRAM
 	//       don't use unions in GL
 	//       increment DMA internal addresses
 	//       fix graphic glitch in LoZ intro (CPU glitch?)
