@@ -64,6 +64,11 @@ public class GameBoyAdvance {
         memory.saveGamepakSave(file);
     }
 
+    public void loadNewSave() {
+        checkNotRunning();
+        memory.loadEmptyGamepakSave();
+    }
+
     public GameBoyAdvanceMemory getMemory() {
         return memory;
     }
@@ -74,7 +79,7 @@ public class GameBoyAdvance {
             throw new NoROMException();
         }
         if (!memory.hasGamepakSave()) {
-            memory.loadEmptyGamepakSave();
+            throw new NoSaveException();
         }
         if (!DerelictSDL2.isLoaded) {
             DerelictSDL2.load();
@@ -189,6 +194,10 @@ public class GameBoyAdvance {
 
         private bool hasGamepakSave() {
             return !(cast(NullMemory) gamepakSave);
+        }
+
+        private bool hasGamepakEEPROM() {
+            return !(cast(NullMemory) gamepakEEPROM);
         }
 
         private void loadEmptyGamepakSave() {
@@ -917,6 +926,12 @@ public class NullPathException : Exception {
 public class NoROMException : Exception {
     protected this() {
         super("No loaded gamepak ROM");
+    }
+}
+
+public class NoSaveException : Exception {
+    protected this() {
+        super("No loaded gamepak save");
     }
 }
 

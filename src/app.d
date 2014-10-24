@@ -53,6 +53,7 @@ public void main(string[] args) {
 			gba.loadSave(save);
 			writeln("Loaded save \"" ~ save ~ "\"");
 		} else {
+			gba.loadNewSave();
 			writeln("Using new save");
 		}
 	}
