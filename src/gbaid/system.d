@@ -250,46 +250,46 @@ public class GameBoyAdvance {
                 + gamepakEEPROM.getCapacity();
         }
 
-        public ulong getCapacity() {
+        public override ulong getCapacity() {
             return capacity;
         }
 
-        public void[] getArray(uint address) {
+        public override void[] getArray(uint address) {
             Memory memory = map(address);
             return memory.getArray(address);
         }
 
-        public void* getPointer(uint address) {
+        public override void* getPointer(uint address) {
             Memory memory = map(address);
             return memory.getPointer(address);
         }
 
-        public byte getByte(uint address) {
+        public override byte getByte(uint address) {
             Memory memory = map(address);
             return memory.getByte(address);
         }
 
-        public void setByte(uint address, byte b) {
+        public override void setByte(uint address, byte b) {
             Memory memory = map(address);
             memory.setByte(address, b);
         }
 
-        public short getShort(uint address) {
+        public override short getShort(uint address) {
             Memory memory = map(address);
             return memory.getShort(address);
         }
 
-        public void setShort(uint address, short s) {
+        public override void setShort(uint address, short s) {
             Memory memory = map(address);
             memory.setShort(address, s);
         }
 
-        public int getInt(uint address) {
+        public override int getInt(uint address) {
             Memory memory = map(address);
             return memory.getInt(address);
         }
 
-        public void setInt(uint address, int i) {
+        public override void setInt(uint address, int i) {
             Memory memory = map(address);
             memory.setInt(address, i);
         }

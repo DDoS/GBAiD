@@ -11,24 +11,24 @@ import gbaid.util;
 public immutable uint BYTES_PER_KIB = 1024;
 public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
-public interface Memory {
-    ulong getCapacity();
+public abstract class Memory {
+    public abstract ulong getCapacity();
 
-    void[] getArray(uint address);
+    public abstract void[] getArray(uint address);
 
-    void* getPointer(uint address);
+    public abstract void* getPointer(uint address);
 
-    byte getByte(uint address);
+    public abstract byte getByte(uint address);
 
-    void setByte(uint address, byte b);
+    public abstract void setByte(uint address, byte b);
 
-    short getShort(uint address);
+    public abstract short getShort(uint address);
 
-    void setShort(uint address, short s);
+    public abstract void setShort(uint address, short s);
 
-    int getInt(uint address);
+    public abstract int getInt(uint address);
 
-    void setInt(uint address, int i);
+    public abstract void setInt(uint address, int i);
 }
 
 public class ROM : Memory {
@@ -51,37 +51,37 @@ public class ROM : Memory {
         }
     }
 
-    public ulong getCapacity() {
+    public override ulong getCapacity() {
         return memory.length;
     }
 
-    public void[] getArray(uint address) {
+    public override void[] getArray(uint address) {
         return cast(void[]) memory[address .. $];
     }
 
-    public void* getPointer(uint address) {
+    public override void* getPointer(uint address) {
         return cast(void*) memory.ptr + address;
     }
 
-    public byte getByte(uint address) {
+    public override byte getByte(uint address) {
         return (cast(byte[]) memory)[address];
     }
 
-    public void setByte(uint address, byte b) {
+    public override void setByte(uint address, byte b) {
     }
 
-    public short getShort(uint address) {
+    public override short getShort(uint address) {
         return (cast(short[]) memory)[address >> 1];
     }
 
-    public void setShort(uint address, short s) {
+    public override void setShort(uint address, short s) {
     }
 
-    public int getInt(uint address) {
+    public override int getInt(uint address) {
         return (cast(int[]) memory)[address >> 2];
     }
 
-    public void setInt(uint address, int i) {
+    public override void setInt(uint address, int i) {
     }
 }
 
@@ -424,37 +424,37 @@ public class EEPROM : RAM {
 }
 
 public class NullMemory : Memory {
-    public ulong getCapacity() {
+    public override ulong getCapacity() {
         return 0;
     }
 
-    public void[] getArray(uint address) {
+    public override void[] getArray(uint address) {
         return null;
     }
 
-    public void* getPointer(uint address) {
+    public override void* getPointer(uint address) {
         return null;
     }
 
-    public byte getByte(uint address) {
+    public override byte getByte(uint address) {
         return 0;
     }
 
-    public void setByte(uint address, byte b) {
+    public override void setByte(uint address, byte b) {
     }
 
-    public short getShort(uint address) {
+    public override short getShort(uint address) {
         return 0;
     }
 
-    public void setShort(uint address, short s) {
+    public override void setShort(uint address, short s) {
     }
 
-    public int getInt(uint address) {
+    public override int getInt(uint address) {
         return 0;
     }
 
-    public void setInt(uint address, int i) {
+    public override void setInt(uint address, int i) {
     }
 }
 
