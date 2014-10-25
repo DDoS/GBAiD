@@ -3,6 +3,7 @@ module gbaid.memory;
 import core.thread;
 import core.time;
 
+import std.stdio;
 import std.string;
 import std.file;
 
@@ -35,7 +36,7 @@ public class ROM : Memory {
     protected shared void[] memory;
 
     protected this(ulong capacity) {
-        this.memory = new shared ubyte[capacity];
+        this.memory = new shared byte[capacity];
     }
 
     public this(void[] memory) {
@@ -476,10 +477,91 @@ public class BadAddressException : Exception {
     }
 }
 
-public void saveToFile(Memory memory, string file) {
-    try {
-        write(file, memory.getArray(0));
-    } catch (FileException ex) {
-        throw new Exception("Cannot write memory to file", ex);
+/*
+ Format:
+    Header:
+        1 int: number of memory objects (n)
+        n int pairs:
+            1 int: memory type ID
+                0: ROM
+                1: RAM
+                2: Flash
+                3: EEPROM
+            1 int: memory capacity in bytes (c)
+    Body:
+        n byte groups:
+            c bytes: memory
+ */
+
+public Memory[] loadFromFile(string filePath) {
+    Memory fromTypeID(int id, void[] contents) {
+        final switch (id) {
+            case 0:
+                return new ROM(contents);
+            case 1:
+                return new RAM(contents);
+            case 2:
+                return new Flash(contents);
+            case 3:
+                return new EEPROM(contents);
+        }
     }
+    // open file in binary read
+    File file = File(filePath, "rb");
+    // read size of header
+    int[1] lengthBytes = new int[1];
+    file.rawRead(lengthBytes);
+    int length = lengthBytes[0];
+    // read type and capacity information
+    int[] header = new int[length * 2];
+    file.rawRead(header);
+    // read memory objects
+    Memory[] memories = new Memory[length];
+    for (int i = 0; i < length; i++) {
+        int pair = i * 2;
+        int type = header[pair];
+        int capacity = header[pair + 1];
+        void[] contents = new byte[capacity];
+        file.rawRead(contents);
+        memories[i] = fromTypeID(type, contents);
+    }
+    return memories;
+    // closing is done automatically
+}
+
+public void saveToFile(string filePath, Memory[] memories ...) {
+    int toTypeID(Memory memory) {
+        // order matters because of inheritance, check subclasses first
+        if (cast(EEPROM) memory) {
+            return 3;
+        }
+        if (cast(Flash) memory) {
+            return 2;
+        }
+        if (cast(RAM) memory) {
+            return 1;
+        }
+        if (cast(ROM) memory) {
+            return 0;
+        }
+        throw new Exception("Unsupported memory type: " ~ typeid(memory).name);
+    }
+    // build the header
+    int length = cast(int) memories.length;
+    int[] header = new int[1 + length * 2];
+    header[0] = length;
+    foreach (int i, Memory memory; memories) {
+        int pair = 1 + i * 2;
+        header[pair] = toTypeID(memory);
+        header[pair + 1] = cast(int) memory.getCapacity();
+    }
+    // open the file in binary write mode
+    File file = File(filePath, "wb");
+    // write the header
+    file.rawWrite(header);
+    // write the rest of the memory objects
+    foreach (Memory memory; memories) {
+        file.rawWrite(memory.getArray(0));
+    }
+    // closing is done automatically
 }

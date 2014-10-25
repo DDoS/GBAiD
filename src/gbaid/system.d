@@ -180,12 +180,26 @@ public class GameBoyAdvance {
         }
 
         private void loadGamepakSave(string saveFile) {
-
+            Memory[] save = loadFromFile(saveFile);
+            foreach (Memory memory; save) {
+                if (cast(EEPROM) memory) {
+                    gamepakEEPROM = memory;
+                    hasEEPROM = true;
+                } else if (cast(Flash) memory || cast(RAM) memory) {
+                    gamepakSave = memory;
+                } else {
+                    throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
+                }
+            }
             updateCapacity();
         }
 
         private void saveGamepakSave(string saveFile) {
-
+            if (cast(NullMemory) gamepakEEPROM) {
+                saveToFile(saveFile, gamepakSave);
+            } else {
+                saveToFile(saveFile, gamepakSave, gamepakEEPROM);
+            }
         }
 
         private bool hasGamepakROM() {
