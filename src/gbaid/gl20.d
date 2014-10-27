@@ -23,6 +23,7 @@ public class GL20Context : Context {
     private string title;
     private uint width;
     private uint height;
+    private bool resizable;
     private SDL_Window* window;
     private SDL_GLContext glContext;
 
@@ -48,7 +49,8 @@ public class GL20Context : Context {
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa);
         }
         // Attempt to create the window
-        window = SDL_CreateWindow(toStringz(title), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (resizable ? SDL_WINDOW_RESIZABLE : 0);
+        window = SDL_CreateWindow(toStringz(title), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
         if (!window) {
             throw new Exception("Failed to create a SDL window: " ~ to!string(SDL_GetError()));
         }
@@ -131,12 +133,29 @@ public class GL20Context : Context {
         }
     }
 
+    public override void setResizable(bool resizable) {
+        checkNotCreated();
+        this.resizable = resizable;
+    }
+
     public override uint getWindowWidth() {
-        return width;
+        if (resizable && isCreated()) {
+            int w, h;
+            SDL_GetWindowSize(window, &w, &h);
+            return w;
+        } else {
+            return width;
+        }
     }
 
     public override uint getWindowHeight() {
-        return height;
+        if (resizable && isCreated()) {
+            int w, h;
+            SDL_GetWindowSize(window, &w, &h);
+            return h;
+        } else {
+            return height;
+        }
     }
 
     public override void updateDisplay() {
@@ -189,6 +208,17 @@ public class GL20Context : Context {
     public override void setViewPort(uint x, uint y, uint width, uint height) {
         checkCreated();
         glViewport(x, y, width, height);
+        // Check for errors
+        checkForGLError();
+    }
+
+    public override void setMaxViewPort() {
+        checkCreated();
+        // get max drawable size
+        int w, h;
+        SDL_GL_GetDrawableSize(window, &w, &h);
+        // update view port
+        glViewport(0, 0, w, h);
         // Check for errors
         checkForGLError();
     }

@@ -47,8 +47,9 @@ public class GameBoyAdvanceDisplay {
         Thread.getThis().name = "Display";
 
         Context context = new GL20Context();
-        context.setWindowSize(HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
         context.setWindowTitle("GBAiD");
+        context.setWindowSize(HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        context.setResizable(true);
         context.create();
         context.enableCapability(CULL_FACE);
 
@@ -71,7 +72,8 @@ public class GameBoyAdvanceDisplay {
         Texture texture = context.newTexture();
         texture.create();
         texture.setFormat(RGBA, RGB5_A1);
-        texture.setFilters(NEAREST, NEAREST);
+        texture.setFilters(LINEAR, LINEAR);
+        texture.setWraps(CLAMP_TO_BORDER, CLAMP_TO_BORDER);
 
         VertexArray vertexArray = context.newVertexArray();
         vertexArray.create();
@@ -113,6 +115,7 @@ public class GameBoyAdvanceDisplay {
                         break;
                 }
             }
+            context.setMaxViewPort();
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
             texture.bind(0);
             program.use();

@@ -262,6 +262,13 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setWindowSize(uint width, uint height);
 
     /**
+     * Sets the user resizability of this window. Should be set before creation.
+     *
+     * @param resizable Whether or not the window is resizable
+     */
+    public abstract void setResizable(bool resizable);
+
+    /**
      * Returns the window width.
      *
      * @return The window width
@@ -343,6 +350,11 @@ public abstract class Context : Creatable, GLVersioned {
      * @param height The height
      */
     public abstract void setViewPort(uint x, uint y, uint width, uint height);
+
+    /**
+     * Sets the render view port, which is the dimensions and position of the frame inside the window, to its maximum value.
+     */
+    public abstract void setMaxViewPort();
 
     /**
      * Reads the current frame pixels and returns it as a byte buffer of the desired format. The size of the returned image data is the same as the current window dimensions.
