@@ -269,6 +269,14 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setResizable(bool resizable);
 
     /**
+     * Sets the window size.
+     *
+     * @param width Where to store the width, may be null
+     * @param height Where to store the height, may be null
+     */
+    public abstract void getWindowSize(int* width, int *height);
+
+    /**
      * Returns the window width.
      *
      * @return The window width

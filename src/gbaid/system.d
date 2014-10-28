@@ -69,6 +69,10 @@ public class GameBoyAdvance {
         memory.loadEmptyGamepakSave();
     }
 
+    public void setDisplayScale(float scale) {
+        display.setScale(scale);
+    }
+
     public GameBoyAdvanceMemory getMemory() {
         return memory;
     }

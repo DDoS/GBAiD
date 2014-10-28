@@ -10,11 +10,13 @@ import gbaid.util;
 public void main(string[] args) {
 	string bios = null, save = null;
 	bool noLoad = false, noSave = false;
+	float scale = 2;
 	getopt(args,
 		"bios|b", &bios,
 		"save|s", &save,
 		"noload|n", &noLoad,
-		"nosave|N", &noSave
+		"nosave|N", &noSave,
+		"scale|r", &scale
 	);
 
 	if (bios is null) {
@@ -57,6 +59,8 @@ public void main(string[] args) {
 			writeln("Using new save");
 		}
 	}
+
+	gba.setDisplayScale(scale);
 
 	gba.run();
 

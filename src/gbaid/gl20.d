@@ -138,24 +138,29 @@ public class GL20Context : Context {
         this.resizable = resizable;
     }
 
-    public override uint getWindowWidth() {
-        if (resizable && isCreated()) {
-            int w, h;
-            SDL_GetWindowSize(window, &w, &h);
-            return w;
+    public override void getWindowSize(int* width, int* height) {
+        if (isCreated()) {
+            SDL_GetWindowSize(window, width, height);
         } else {
-            return width;
+            if (width != null) {
+                *width = this.width;
+            }
+            if (height != null) {
+                *height = this.height;
+            }
         }
     }
 
+    public override uint getWindowWidth() {
+        int w;
+        getWindowSize(&w, null);
+        return w;
+    }
+
     public override uint getWindowHeight() {
-        if (resizable && isCreated()) {
-            int w, h;
-            SDL_GetWindowSize(window, &w, &h);
-            return h;
-        } else {
-            return height;
-        }
+        int h;
+        getWindowSize(null, &h);
+        return h;
     }
 
     public override void updateDisplay() {

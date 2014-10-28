@@ -27,6 +27,8 @@ public class GameBoyAdvanceDisplay {
     private static TickDuration H_BLANK_DURATION;
     private static TickDuration TOTAL_DURATION;
     private GameBoyAdvanceMemory memory;
+    private Context context;
+    private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
     private bool timingsRunning = false;
@@ -41,15 +43,25 @@ public class GameBoyAdvanceDisplay {
     public void setMemory(GameBoyAdvanceMemory memory) {
         this.memory = memory;
         timingSync = new Condition(new Mutex());
+
+        context = new GL20Context();
+        context.setWindowTitle("GBAiD");
+        context.setResizable(true);
+    }
+
+    public void setScale(float scale) {
+        width = cast(int) (HORIZONTAL_RESOLUTION * scale + 0.5f);
+        height = cast(int) (VERTICAL_RESOLUTION * scale + 0.5f);
+
+        if (context.isCreated()) {
+            context.setWindowSize(width, height);
+        }
     }
 
     public void run() {
         Thread.getThis().name = "Display";
 
-        Context context = new GL20Context();
-        context.setWindowTitle("GBAiD");
-        context.setWindowSize(HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
-        context.setResizable(true);
+        context.setWindowSize(width, height);
         context.create();
         context.enableCapability(CULL_FACE);
 
@@ -116,9 +128,11 @@ public class GameBoyAdvanceDisplay {
                 }
             }
             context.setMaxViewPort();
+            context.getWindowSize(&width, &height);
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
             texture.bind(0);
             program.use();
+            program.setUniform("size", width, height);
             vertexArray.draw();
             context.updateDisplay();
             fpsTimer.waitUntil(TOTAL_DURATION);
@@ -1168,11 +1182,25 @@ private immutable string fragmentShaderSource =
 
 #version 120
 
+const vec2 RES = vec2(240, 160);
+
 varying vec2 textureCoords;
 
 uniform sampler2D color;
+uniform vec2 size;
 
 void main() {
-    gl_FragColor = vec4(texture2D(color, textureCoords).rgb, 1);
+    vec2 m = size / RES;
+    vec2 sampleCoords = textureCoords;
+
+    if (m.x > m.y) {
+        float margin = (size.x / size.y - RES.x / RES.y) / 2;
+        sampleCoords.x = mix(-margin, 1 + margin, sampleCoords.x);
+    } else {
+        float margin = (size.y / size.x - RES.y / RES.x) / 2;
+        sampleCoords.y = mix(-margin, 1 + margin, sampleCoords.y);
+    }
+
+    gl_FragColor = vec4(texture2D(color, sampleCoords).rgb, 1);
 }
 `;
