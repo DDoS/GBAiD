@@ -29,6 +29,7 @@ public class GameBoyAdvanceDisplay {
     private GameBoyAdvanceMemory memory;
     private Context context;
     private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
+    private UpscalingMode upscalingMode = UpscalingMode.NONE;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
     private bool timingsRunning = false;
@@ -58,6 +59,10 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
+    public void setUpscalingMode(UpscalingMode mode) {
+        upscalingMode = mode;
+    }
+
     public void run() {
         Thread.getThis().name = "Display";
 
@@ -84,8 +89,16 @@ public class GameBoyAdvanceDisplay {
         Texture texture = context.newTexture();
         texture.create();
         texture.setFormat(RGBA, RGB5_A1);
-        texture.setFilters(LINEAR, LINEAR);
         texture.setWraps(CLAMP_TO_BORDER, CLAMP_TO_BORDER);
+        texture.setBorderColor(0, 0, 0, 1);
+        final switch (upscalingMode) {
+            case UpscalingMode.NONE:
+                texture.setFilters(NEAREST, NEAREST);
+                break;
+            case UpscalingMode.LINEAR:
+                texture.setFilters(LINEAR, LINEAR);
+                break;
+        }
 
         VertexArray vertexArray = context.newVertexArray();
         vertexArray.create();
@@ -1129,7 +1142,7 @@ public class GameBoyAdvanceDisplay {
         }
     }
 
-    private enum BackgroundMode {
+    private static enum BackgroundMode {
         TILED_TEXT = 0,
         TILED_MIXED = 1,
         TILED_AFFINE = 2,
@@ -1137,6 +1150,11 @@ public class GameBoyAdvanceDisplay {
         BITMAP_8_DOUBLE = 4,
         BITMAP_16_DOUBLE = 5
     }
+}
+
+public enum UpscalingMode {
+    NONE,
+    LINEAR
 }
 
 private VertexData generatePlane(float width, float height) {

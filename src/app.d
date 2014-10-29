@@ -5,18 +5,24 @@ import std.file;
 import std.path;
 
 import gbaid.system;
+import gbaid.graphics;
 import gbaid.util;
 
 public void main(string[] args) {
 	string bios = null, save = null;
 	bool noLoad = false, noSave = false;
 	float scale = 2;
+	UpscalingMode upscaling = UpscalingMode.NONE;
 	getopt(args,
+		config.caseSensitive,
 		"bios|b", &bios,
 		"save|s", &save,
+		config.bundling,
 		"noload|n", &noLoad,
 		"nosave|N", &noSave,
-		"scale|r", &scale
+		config.noBundling,
+		"scale|r", &scale,
+		"upscaling|u", &upscaling
 	);
 
 	if (bios is null) {
@@ -50,17 +56,16 @@ public void main(string[] args) {
 	GameBoyAdvance gba = new GameBoyAdvance(bios);
 
 	gba.loadROM(rom);
-	if (!noLoad) {
-		if (exists(save)) {
-			gba.loadSave(save);
-			writeln("Loaded save \"" ~ save ~ "\"");
-		} else {
-			gba.loadNewSave();
-			writeln("Using new save");
-		}
+	if (!noLoad && exists(save)) {
+		gba.loadSave(save);
+		writeln("Loaded save \"" ~ save ~ "\"");
+	} else {
+		gba.loadNewSave();
+		writeln("Using new save");
 	}
 
 	gba.setDisplayScale(scale);
+	gba.setDisplayUpscalingMode(upscaling);
 
 	gba.run();
 
@@ -76,5 +81,4 @@ public void main(string[] args) {
 	//       finish implementing bitmap modes in graphics
 	//       rewrite more of the graphics in x64
 	//       fix graphic glitch in LoZ intro: timing and performance issue
-
 }
