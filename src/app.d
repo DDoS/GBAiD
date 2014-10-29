@@ -75,10 +75,12 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       increment DMA internal addresses
-	//       investigate super mario advance glitches
 	//       investigate PKMN crash (when entering random encounter)
-	//       finish implementing bitmap modes in graphics
+	//       investigate super mario advance glitches
+	//       fix PKMN battle graphics glitch
 	//       rewrite more of the graphics in x64
 	//       fix graphic glitch in LoZ intro: timing and performance issue
+	//       fix timer implementation
+	//       redo the DMAs to be more accurate
+	//       finish implementing bitmap modes in graphics
 }

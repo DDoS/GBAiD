@@ -355,7 +355,7 @@ public class GameBoyAdvance {
                     return gamepakEEPROM;
                 }
                 address -= GAMEPAK_ROM_START;
-                address &= (MAX_GAMEPAK_ROM_SIZE - 1);
+                address &= MAX_GAMEPAK_ROM_SIZE - 1;
                 if (address < gamepakROM.getCapacity()) {
                     return gamepakROM;
                 } else {
@@ -615,10 +615,7 @@ public class GameBoyAdvance {
                     return;
                 }
 
-                int sourceAddress = dmaSourceAddresses[channel];
-                int destinationAddress = dmaDestinationAddresses[channel];
                 int wordCount = dmaWordCounts[channel];
-
                 int type = void;
                 int destinationAddressControl = void;
 
@@ -639,14 +636,14 @@ public class GameBoyAdvance {
                 int repeat = getBit(control, 9);
                 int endIRQ = getBit(control, 14);
 
-                void modifyAddress(ref int address, int control, int amount) {
+                void modifyAddress(ref shared int address, int control, int amount) {
                     final switch (control) {
                         case 0:
                         case 3:
-                            address += amount;
+                            atomicOp!"+="(address, amount);
                             break;
                         case 1:
-                            address -= amount;
+                            atomicOp!"-="(address, amount);
                             break;
                         case 2:
                             break;
@@ -663,12 +660,12 @@ public class GameBoyAdvance {
 
                 for (int i = 0; i < wordCount; i++) {
                     if (type) {
-                        memory.setInt(destinationAddress, memory.getInt(sourceAddress));
+                        memory.setInt(dmaDestinationAddresses[channel], memory.getInt(dmaSourceAddresses[channel]));
                     } else {
-                        memory.setShort(destinationAddress, memory.getShort(sourceAddress));
+                        memory.setShort(dmaDestinationAddresses[channel], memory.getShort(dmaSourceAddresses[channel]));
                     }
-                    modifyAddress(sourceAddress, sourceAddressControl, increment);
-                    modifyAddress(destinationAddress, destinationAddressControl, increment);
+                    modifyAddress(dmaSourceAddresses[channel], sourceAddressControl, increment);
+                    modifyAddress(dmaDestinationAddresses[channel], destinationAddressControl, increment);
                 }
 
                 if (endIRQ) {
