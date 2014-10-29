@@ -5,6 +5,10 @@ GBAiD stands for <strong>G</strong>ame<strong>B</strong>oy <strong>A</strong>dva
 as an effort to learn the D programing language. The goal of this emulator
 is light CPU usage.
 
+## Current state ##
+
+Most of the necessary emulation features are in, and games can somewhat be played, but there are still some bugs, and sound has yet to be implemented.
+
 ## Building ##
 
 First install the [DUB](http://code.dlang.org/download) package manager if you haven't already.
@@ -12,13 +16,13 @@ GBAiD is officially built using [LDC](http://wiki.dlang.org/LDC), which should a
 
 Then use:
 
-    dub build --build=release --compiler=ldc2
+    dub build --compiler=ldc2 --build=release
 
 ## Running ##
 
 Use:
 
-    dub run --build=release --compiler=ldc2 -- (arguments)
+    dub run --compiler=ldc2 --build=release -- (arguments)
 
 Or get the binary from the bin folder after building and use:
 
@@ -26,9 +30,26 @@ Or get the binary from the bin folder after building and use:
 
 ### Arguments ###
 
-Specify the path to the bios and rom images with
+At minimum, you must specify the path to the bios and rom images with
 
     -b (path to bios) (path to rom)
+
+The following arguments are also recognized:
+
+| Long form   | Short form | Argument               | Usage                                                                         |
+|-------------|------------|------------------------|-------------------------------------------------------------------------------|
+| --bios      | -b         | path to bios           | Specify bios image                                                            |
+| --save      | -s         | path to save           | Specify path for loading and saving saves                                     |
+| --noload    | -n         | none                   | Don't load the save                                                           |
+| --nosave    | -N         | none                   | Don't save the save                                                           |
+| --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                    |
+| --upscaling | -u         | LINEAR or NONE         | When drawing at higher resolution, what technique to use to upscale the image |
+
+Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
+
+### Saves ###
+
+Saves use a custom format and .sav extension that is not compatible with other emulators. If no save path is specified, the same path as the ROM is used, but with the .sav extension instead of whatever the ROM image is using. If no save is found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit, unless the --nosave argument is used.
 
 ## Useful information ##
 
