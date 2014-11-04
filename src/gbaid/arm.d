@@ -530,9 +530,8 @@ public class ARM7TDMI {
 				if (writeFlags) {
 					mask |= 0xFF000000;
 				}
-				if (writeControl) {
-					// never write T
-					mask |= 0b11011111;
+				if (writeControl && mode != Mode.USER) {
+					mask |= 0xFF;
 				}
 				if (psrSrc) {
 					int spsr = getRegister(Register.SPSR);
