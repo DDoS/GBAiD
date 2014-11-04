@@ -13,11 +13,11 @@ import gbaid.util;
 
 public class ARM7TDMI {
 	private Memory memory;
-	private shared uint entryPointAddress;
+	private shared uint entryPointAddress = 0x0;
 	private Thread thread;
 	private shared bool running = false;
 	private int[37] registers = new int[37];
-	private Mode mode;
+	private Mode mode = Mode.SYSTEM;
 	private shared bool haltSignal = false;
 	private Condition haltCondition;
 	private shared bool irqSignal = false;
@@ -32,6 +32,7 @@ public class ARM7TDMI {
 		haltCondition = new Condition(new Mutex());
 		armPipeline = new ARMPipeline();
 		thumbPipeline = new THUMBPipeline();
+		pipeline = armPipeline;
 	}
 
 	public void setMemory(Memory memory) {
@@ -1675,6 +1676,7 @@ public class ARM7TDMI {
 			if (set == Set.THUMB) {
 				code &= 0xFFFF;
 			}
+			lastInstructions[index].mode = mode;
 			lastInstructions[index].address = address;
 			lastInstructions[index].code = code;
 			lastInstructions[index].mnemonic = mnemonic;
@@ -1699,10 +1701,10 @@ public class ARM7TDMI {
 				uint j = (i + start) % queueMaxSize;
 				final switch (lastInstructions[j].set) {
 					case Set.ARM:
-						writefln("%08x: %08x %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+						writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
 						break;
 					case Set.THUMB:
-						writefln("%08x: %04x     %s", lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+						writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
 						break;
 				}
 			}
@@ -1716,6 +1718,7 @@ public class ARM7TDMI {
 		}
 
 		private static struct Instruction {
+			Mode mode;
 			int address;
 			int code;
 			string mnemonic;
