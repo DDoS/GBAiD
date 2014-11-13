@@ -76,6 +76,7 @@ public void main(string[] args) {
 
 	// TODO:
 	//       investigate super mario advance glitches
+	//       properly time HBLANK
 	//       fix PKMN battle graphics glitches
 	//       figure out why PKMN says the save file is corrupt when it isn't
 	//       rewrite more of the graphics in x64
