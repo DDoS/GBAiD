@@ -316,6 +316,11 @@ public class GameBoyAdvance {
             memory.setInt(address, i);
         }
 
+        public override bool compareAndSet(uint address, int expected, int update) {
+            Memory memory = map(address);
+            return memory.compareAndSet(address, expected, update);
+        }
+
         private Memory map(ref uint address) {
             if (address >= BIOS_START && address <= BIOS_END) {
                 address -= BIOS_START;
@@ -437,8 +442,9 @@ public class GameBoyAdvance {
         }
 
         public override void setByte(uint address, byte b) {
-            handleSpecialWrite(address, b);
-            super.setByte(address, b);
+            if (handleSpecialWrite(address, b)) {
+                super.setByte(address, b);
+            }
         }
 
         public override short getShort(uint address) {
@@ -448,8 +454,9 @@ public class GameBoyAdvance {
         }
 
         public override void setShort(uint address, short s) {
-            handleSpecialWrite(address, s);
-            super.setShort(address, s);
+            if (handleSpecialWrite(address, s)) {
+                super.setShort(address, s);
+            }
         }
 
         public override int getInt(uint address) {
@@ -459,8 +466,9 @@ public class GameBoyAdvance {
         }
 
         public override void setInt(uint address, int i) {
-            handleSpecialWrite(address, i);
-            super.setInt(address, i);
+            if (handleSpecialWrite(address, i)) {
+                super.setInt(address, i);
+            }
         }
 
         private void handleSpecialRead(uint address, ref byte b) {
@@ -505,68 +513,68 @@ public class GameBoyAdvance {
             }
         }
 
-        private void handleSpecialWrite(uint address, ref byte b) {
+        private bool handleSpecialWrite(uint address, ref byte b) {
             int alignedAddress = address & ~3;
             int shift = ((address & 3) << 3);
             int mask = 0xFF << shift;
             int intValue = ucast(b) << shift;
-            handleSpecialWrite(alignedAddress, shift, mask, intValue);
+            bool write = handleSpecialWrite(alignedAddress, shift, mask, intValue);
             b = cast(byte) ((intValue & mask) >> shift);
+            return write;
         }
 
-        private void handleSpecialWrite(uint address, ref short s) {
+        private bool handleSpecialWrite(uint address, ref short s) {
             address &= ~1;
             int alignedAddress = address & ~3;
             int shift = ((address & 2) << 3);
             int mask = 0xFFFF << shift;
             int intValue = ucast(s) << shift;
-            handleSpecialWrite(alignedAddress, shift, mask, intValue);
+            bool write = handleSpecialWrite(alignedAddress, shift, mask, intValue);
             s = cast(short) ((intValue & mask) >> shift);
+            return write;
         }
 
-        private void handleSpecialWrite(uint address, ref int i) {
+        private bool handleSpecialWrite(uint address, ref int i) {
             address &= ~3;
             int alignedAddress = address;
             int shift = 0;
             int mask = 0xFFFFFFFF;
             int intValue = i;
-            handleSpecialWrite(alignedAddress, shift, mask, intValue);
+            bool write = handleSpecialWrite(alignedAddress, shift, mask, intValue);
             i = intValue;
+            return write;
         }
 
-        private void handleSpecialWrite(int address, int shift, int mask, ref int value) {
+        private bool handleSpecialWrite(int address, int shift, int mask, ref int value) {
             switch (address) {
                 case 0x000000B8:
                 case 0x000000C4:
                 case 0x000000D0:
                 case 0x000000DC:
-                    handleDMA(address, shift, mask, value);
-                    break;
+                    return handleDMAWrite(address, shift, mask, value);
                 case 0x00000100:
                 case 0x00000104:
                 case 0x00000108:
                 case 0x0000010C:
-                    handleTimerWrite(address, shift, mask, value);
-                    break;
+                    return handleTimerWrite(address, shift, mask, value);
                 case 0x00000200:
-                    handleInterruptAcknowledgeWrite(address, shift, mask, value);
-                    break;
+                    return handleInterruptAcknowledgeWrite(address, shift, mask, value);
                 case 0x00000300:
-                    handleHaltRequest(address, shift, mask, value);
-                    break;
+                    return handleHaltRequestWrite(address, shift, mask, value);
                 default:
-                    break;
+                    return true;
             }
         }
 
-        private void handleInterruptAcknowledgeWrite(int address, int shift, int mask, ref int value) {
+        private bool handleInterruptAcknowledgeWrite(int address, int shift, int mask, ref int value) {
             int flags = super.getInt(0x00000200);
             setBits(value, 16, 31, (flags & ~value) >> 16);
+            return true;
         }
 
-        private void handleHaltRequest(int address, int shift, int mask, ref int value) {
+        private bool handleHaltRequestWrite(int address, int shift, int mask, ref int value) {
             if (!checkBit(mask, 15)) {
-                return;
+                return true;
             }
             if (checkBit(value, 15)) {
                 // TODO: implement stop
@@ -574,12 +582,13 @@ public class GameBoyAdvance {
                 irqHalt = true;
                 processor.halt();
             }
+            return true;
         }
 
-        private void handleDMA(int address, int shift, int mask, ref int value) {
+        private bool handleDMAWrite(int address, int shift, int mask, ref int value) {
             int dmaFullControl = super.getInt(address);
             if (!checkBit(value, 31) || checkBit(dmaFullControl, 31)) {
-                return;
+                return true;
             }
 
             dmaFullControl = dmaFullControl & ~mask | value & mask;
@@ -595,6 +604,8 @@ public class GameBoyAdvance {
             dmaHalt = true;
             processor.halt();
             dmaSemaphore.notify();
+
+            return false;
         }
 
         private void runDMA() {
@@ -682,9 +693,11 @@ public class GameBoyAdvance {
                     }
                     atomicOp!"|="(dmaSignals, 0b1);
                 } else {
-                    short dmaControl = super.getShort(dmaAddress + 2);
-                    dmaControl &= 0x7FFF;
-                    super.setShort(dmaAddress + 2, dmaControl);
+                    int oldDMAControl = void, newDMAControl = void;
+                    do {
+                        oldDMAControl = super.getInt(dmaAddress);
+                        newDMAControl &= 0x7FFFFFFF;
+                    } while (!super.compareAndSet(dmaAddress, oldDMAControl, newDMAControl));
                 }
             }
 
@@ -751,7 +764,7 @@ public class GameBoyAdvance {
             value = value & ~mask | counter & mask;
         }
 
-        private void handleTimerWrite(int address, int shift, int mask, ref int value) {
+        private bool handleTimerWrite(int address, int shift, int mask, ref int value) {
             // get the timer number and previous value
             int i = (address - 0x100) / 4;
             int previousTimer = super.getInt(address);
@@ -772,7 +785,7 @@ public class GameBoyAdvance {
             int timer = previousTimer & ~mask | value & mask;
             // ignore IRQs in disabled timers
             if (!checkBit(timer, 23)) {
-                return;
+                return true;
             }
             // TODO: if this is an upcounter, we need to check if the previous timer is running too
             // get the control and reload
@@ -786,6 +799,7 @@ public class GameBoyAdvance {
                 // cancel the IRQ
                 cancelTimerIRQ(i);
             }
+            return true;
         }
 
         private void timer0IRQ() {

@@ -2,6 +2,7 @@ module gbaid.memory;
 
 import core.thread;
 import core.time;
+import core.atomic;
 
 import std.stdio;
 import std.string;
@@ -30,6 +31,8 @@ public abstract class Memory {
     public abstract int getInt(uint address);
 
     public abstract void setInt(uint address, int i);
+
+    public abstract bool compareAndSet(uint address, int expected, int update);
 }
 
 public class ROM : Memory {
@@ -84,6 +87,10 @@ public class ROM : Memory {
 
     public override void setInt(uint address, int i) {
     }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        return false;
+    }
 }
 
 public class RAM : ROM {
@@ -109,6 +116,10 @@ public class RAM : ROM {
 
     public override void setInt(uint address, int i) {
         (cast(int[]) memory)[address >> 2] = i;
+    }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        return cas(cast(shared int*) getPointer(address), expected, update);
     }
 }
 
@@ -282,6 +293,10 @@ public class Flash : RAM {
         throw new UnsupportedMemoryWidthException(address, 4);
     }
 
+    public override bool compareAndSet(uint address, int expected, int update) {
+        throw new UnsupportedMemoryOperationException("compareAndSet");
+    }
+
     private static enum Mode {
         NORMAL,
         ID,
@@ -417,6 +432,10 @@ public class EEPROM : RAM {
         throw new UnsupportedMemoryWidthException(address, 4);
     }
 
+    public override bool compareAndSet(uint address, int expected, int update) {
+        throw new UnsupportedMemoryOperationException("compareAndSet");
+    }
+
     private static enum Mode {
         NORMAL = 2,
         READ = 1,
@@ -457,6 +476,10 @@ public class NullMemory : Memory {
 
     public override void setInt(uint address, int i) {
     }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        return false;
+    }
 }
 
 public class ReadOnlyException : Exception {
@@ -474,6 +497,12 @@ public class UnsupportedMemoryWidthException : Exception {
 public class BadAddressException : Exception {
     public this(uint address) {
         super(format("Invalid address: 0x%X", address));
+    }
+}
+
+public class UnsupportedMemoryOperationException : Exception {
+    public this(string operation) {
+        super(format("Unsupported operation: %s", operation));
     }
 }
 

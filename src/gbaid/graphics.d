@@ -1028,12 +1028,15 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void setHBLANK(int line, bool state) {
-        int displayStatus = memory.getShort(0x4000004);
-        setBit(displayStatus, 1, state);
-        memory.setShort(0x4000004, cast(short) displayStatus);
+        int oldDisplayStatus = void, newDisplayStatus = void;
+        do {
+            oldDisplayStatus = memory.getInt(0x4000004);
+            newDisplayStatus = oldDisplayStatus;
+            setBit(newDisplayStatus, 1, state);
+        } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
         if (state && line < 160) {
             memory.signalEvent(SignalEvent.H_BLANK);
-            if (checkBit(displayStatus, 4)) {
+            if (checkBit(oldDisplayStatus, 4)) {
                 memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
             }
         }
@@ -1041,18 +1044,22 @@ public class GameBoyAdvanceDisplay {
 
     private void setVCOUNT(int line) {
         memory.setByte(0x4000006, cast(byte) line);
-        int displayStatus = memory.getShort(0x4000004);
-        setBit(displayStatus, 0, line >= 160 && line < 227);
-        bool vcounter = getBits(displayStatus, 8, 15) == line;
-        setBit(displayStatus, 2, vcounter);
-        memory.setShort(0x4000004, cast(short) displayStatus);
+        int oldDisplayStatus = void, newDisplayStatus = void;
+        bool vcounter = void;
+        do {
+            oldDisplayStatus = memory.getInt(0x4000004);
+            newDisplayStatus = oldDisplayStatus;
+            setBit(newDisplayStatus, 0, line >= 160 && line < 227);
+            vcounter = getBits(oldDisplayStatus, 8, 15) == line;
+            setBit(newDisplayStatus, 2, vcounter);
+        } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
         if (line == 160) {
             memory.signalEvent(SignalEvent.V_BLANK);
-            if (checkBit(displayStatus, 3)) {
+            if (checkBit(oldDisplayStatus, 3)) {
                 memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
             }
         }
-        if (vcounter && checkBit(displayStatus, 5)) {
+        if (vcounter && checkBit(oldDisplayStatus, 5)) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
     }

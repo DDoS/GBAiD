@@ -75,13 +75,14 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       investigate super mario advance glitches
 	//       properly time HBLANK and VBLANK
-	//       fix PKMN battle graphics glitches
-	//       figure out why PKMN says the save file is corrupt when it isn't
-	//       rewrite more of the graphics in x64
+	//       move drawing to a separate thread
 	//       fix timer implementation
 	//       fix DMA priorities
+	//       fix PKMN missing stat change graphics
+	//       figure out why PKMN says the save file is corrupt when it isn't
+	//       investigate super mario advance glitches
+	//       rewrite more of the graphics in x64
 	//       finish implementing bitmap modes in graphics
 	//       implement optional RTC
 }
