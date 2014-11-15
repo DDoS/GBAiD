@@ -75,7 +75,6 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       properly time HBLANK and VBLANK
 	//       move drawing to a separate thread
 	//       fix timer implementation
 	//       fix DMA priorities

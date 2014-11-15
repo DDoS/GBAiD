@@ -177,15 +177,10 @@ public class GameBoyAdvanceDisplay {
         short backColor = memory.getShort(0x5000000) & 0x7FFF;
 
         lineBackgroundText(line, lines[0], 0, bgEnables);
-
         lineBackgroundText(line, lines[1], 1, bgEnables);
-
         lineBackgroundText(line, lines[2], 2, bgEnables);
-
         lineBackgroundText(line, lines[3], 3, bgEnables);
-
         lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
@@ -377,15 +372,10 @@ public class GameBoyAdvanceDisplay {
         short backColor = memory.getShort(0x5000000)  & 0x7FFF;
 
         lineBackgroundText(line, lines[0], 0, bgEnables);
-
         lineBackgroundText(line, lines[1], 1, bgEnables);
-
         lineBackgroundAffine(line, lines[2], 2, bgEnables);
-
         lineTransparent(lines[3]);
-
         lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
@@ -401,15 +391,10 @@ public class GameBoyAdvanceDisplay {
         short backColor = memory.getShort(0x5000000) & 0x7FFF;
 
         lineTransparent(lines[0]);
-
         lineTransparent(lines[1]);
-
         lineBackgroundAffine(line, lines[2], 2, bgEnables);
-
         lineBackgroundAffine(line, lines[3], 3, bgEnables);
-
         lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-
         lineCompose(line, windowEnables, blendControl, backColor);
     }
 
