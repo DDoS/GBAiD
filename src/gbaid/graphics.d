@@ -33,6 +33,8 @@ public class GameBoyAdvanceDisplay {
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
+    private Condition frameSync;
+    private shared bool drawRunning = false;
     private LineType[7] lineTypes;
     private Timer timer = new Timer();
 
@@ -43,6 +45,7 @@ public class GameBoyAdvanceDisplay {
     }
 
     public this() {
+        frameSync = new Condition(new Mutex());
         lineTypes = [
             &lineMode0,
             &lineMode1,
@@ -116,11 +119,18 @@ public class GameBoyAdvanceDisplay {
         vertexArray.create();
         vertexArray.setData(generatePlane(2, 2));
 
-        Timer fpsTimer = new Timer();
+        Thread drawThread = new Thread(&drawRun);
+        drawThread.name = "Draw";
+        drawRunning = true;
+        drawThread.start();
+
+        //Timer fpsTimer = new Timer();
 
         while (!context.isWindowCloseRequested()) {
-            fpsTimer.start();
-            drawFrame(getMode());
+            //fpsTimer.start();
+            synchronized (frameSync.mutex) {
+                frameSync.wait();
+            }
             context.setMaxViewPort();
             context.getWindowSize(&width, &height);
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
@@ -132,22 +142,30 @@ public class GameBoyAdvanceDisplay {
             //writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
         }
 
+        drawRunning = false;
+
         context.destroy();
     }
 
-    private void drawFrame(Mode mode) {
-        LineType draw = lineTypes[mode];
-        for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
-            timer.start();
-            if (line < VERTICAL_RESOLUTION) {
-                draw(line);
+    private void drawRun() {
+        while (drawRunning) {
+            LineType draw = lineTypes[getMode()];
+            for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
+                timer.start();
+                if (line < VERTICAL_RESOLUTION) {
+                    draw(line);
+                } else if (line == VERTICAL_RESOLUTION) {
+                    synchronized (frameSync.mutex) {
+                        frameSync.notify();
+                    }
+                }
+                timer.waitUntil(H_VISIBLE_DURATION);
+                timer.restart();
+                setHBLANK(line, true);
+                timer.waitUntil(H_BLANK_DURATION);
+                setHBLANK(line, false);
+                setVCOUNT(line);
             }
-            timer.waitUntil(H_VISIBLE_DURATION);
-            timer.restart();
-            setHBLANK(line, true);
-            timer.waitUntil(H_BLANK_DURATION);
-            setHBLANK(line, false);
-            setVCOUNT(line);
         }
     }
 
