@@ -18,6 +18,11 @@ Then use:
 
     dub build --compiler=ldc2 --build=release
 
+### Dependencies ###
+
+GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound (eventually) and controller support (planned).  
+Support for OpenGL 2.0 or greater is also required.
+
 ## Running ##
 
 Use:
