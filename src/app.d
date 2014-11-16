@@ -75,9 +75,9 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       fix timer implementation
 	//       fix DMA priorities
 	//       fix PKMN missing stat change graphics
+	//       update performance of getRegisterIndex and memory mapping
 	//       figure out why PKMN says the save file is corrupt when it isn't
 	//       investigate super mario advance glitches
 	//       rewrite more of the graphics in x64

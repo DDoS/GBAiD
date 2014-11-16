@@ -416,7 +416,7 @@ public class GameBoyAdvance {
             super(IO_REGISTERS_SIZE);
             dmaSemaphore = new Semaphore();
             timerScheduler = new Scheduler();
-            timerIRQHandlers = [&timer0IRQ, &timer1IRQ, &timer2IRQ, &timer3IRQ];
+            timerIRQHandlers = [&timerIRQ!0, &timerIRQ!1, &timerIRQ!2, &timerIRQ!3];
         }
 
         private void start() {
@@ -781,47 +781,47 @@ public class GameBoyAdvance {
                     timerEndTimes[i] = TickDuration.currSystemTick().nsecs();
                 }
             }
-            // get the timer including the current write
+            // get the full timer including the current write
             int timer = previousTimer & ~mask | value & mask;
-            // ignore IRQs in disabled timers
-            if (!checkBit(timer, 23)) {
-                return true;
-            }
-            // TODO: if this is an upcounter, we need to check if the previous timer is running too
             // get the control and reload
             int control = timer >>> 16;
             int reload = timer & 0xFFFF;
-            // check using the previous control value for a change in the IRQ bit
-            if (checkBit(timer, 22)) {
-                // (re)schedule the IRQ
-                scheduleTimerIRQ(i, control, reload);
+            // update the IRQs
+            if (isTimerRunning(i, control)) {
+                // check for IRQ enable if the time is running
+                if (checkBit(control, 6)) {
+                    // (re)schedule the IRQ
+                    scheduleTimerIRQ(i, control, reload);
+                } else {
+                    // cancel the IRQ
+                    cancelTimerIRQ(i);
+                }
             } else {
-                // cancel the IRQ
+                // cancel the IRQs and any dependent ones (upcounters)
                 cancelTimerIRQ(i);
+                cancelDependentTimerIRQs(i + 1);
             }
             return true;
         }
 
-        private void timer0IRQ() {
-            timerIRQ(0);
+        private bool isTimerRunning(int i, int control) {
+            // check if timer is an upcounter
+            if (i != 0 && checkBit(control, 2)) {
+                // upcounters must also also have the previous timer running
+                int previousControl = super.getInt(i * 4 + 0xFC) >>> 16;
+                return checkBit(control, 7) && isTimerRunning(i - 1, previousControl);
+            } else {
+                // regular timers must just be running
+                return checkBit(control, 7);
+            }
         }
 
-        private void timer1IRQ() {
-            timerIRQ(1);
-        }
-
-        private void timer2IRQ() {
-            timerIRQ(2);
-        }
-
-        private void timer3IRQ() {
-            timerIRQ(3);
-        }
-
-        private void timerIRQ(int i) {
-            requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + i);
-            timerIRQTasks[i] = 0;
-            scheduleTimerIRQ(i);
+        private template timerIRQ(int i) {
+            private void timerIRQ() {
+                requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + i);
+                timerIRQTasks[i] = 0;
+                scheduleTimerIRQ(i);
+            }
         }
 
         private void scheduleTimerIRQ(int i) {
@@ -844,34 +844,63 @@ public class GameBoyAdvance {
             }
         }
 
+        private void cancelDependentTimerIRQs(int i) {
+            if (i > 3) {
+                // prevent infinite recursion
+                return;
+            }
+            int control = super.getInt(i * 4 + 0x100) >>> 16;
+            // if upcounter, cancel the IRQ and check the next timer
+            if (checkBit(control, 2)) {
+                cancelTimerIRQ(i);
+                cancelDependentTimerIRQs(i + 1);
+            }
+        }
+
         private double getTimeUntilIRQ(int i, int control, int reload) {
             // the time per tick multiplied by the number of ticks until overflow
             int remainingTicks = 0x10000 - formatTickCount(getTickCount(i, control, reload), reload);
-            return getTickPeriod(i, control, reload) * remainingTicks;
+            return getTickPeriod(i, control) * remainingTicks;
         }
 
         private short formatTickCount(double tickCount, int reload) {
             // remove overflows if any
             if (tickCount > 0xFFFF) {
-                tickCount = (tickCount - reload) % 0x10000 + reload;
+                tickCount = (tickCount - reload) % (0x10000 - reload) + reload;
             }
             // return as 16-bit
             return cast(short) tickCount;
         }
 
         private double getTickCount(int i, int control, int reload) {
-            // get the delta from start to end (or current if running)
-            long timeDelta = void;
-            if (checkBit(control, 7)) {
-                timeDelta = (TickDuration.currSystemTick().nsecs() - timerStartTimes[i]);
-            } else {
-                timeDelta = (timerEndTimes[i] - timerStartTimes[i]);
-            }
-            // then convert the time into using the period ticks and add the reload value
-            return (timeDelta / getTickPeriod(i, control, reload)) + reload;
+            // convert the time into using the period ticks and add the reload value
+            return getTimeDelta(i, control) / getTickPeriod(i, control) + reload;
         }
 
-        private double getTickPeriod(int i, int control, int reload) {
+        private long getTimeDelta(int i, int control) {
+            long getEndTime(int i, int control) {
+                // if running, return current time, else use end time, set when it was disabled
+                return checkBit(control, 7) ? TickDuration.currSystemTick().nsecs() : timerEndTimes[i];
+            }
+            // upcounters are a special case because they depend on the previous timers
+            if (i != 0 && checkBit(control, 2)) {
+                // they only tick if all previous upcounters and the normal timer are ticking
+                long maxStartTime = timerStartTimes[i], minEndTime = getEndTime(i, control);
+                // get the latest start time and earliest end time
+                while (--i >= 0 && checkBit(control, 2)) {
+                    maxStartTime = max(maxStartTime, timerStartTimes[i]);
+                    control = super.getInt(i * 4 + 0x100) >>> 16;
+                    minEndTime = min(minEndTime, getEndTime(i, control));
+                }
+                // if the delta of the exterma is negative, it never ran
+                long timeDelta = minEndTime - maxStartTime;
+                return timeDelta > 0 ? timeDelta : 0;
+            }
+            // for normal timers, get the delta from start to end (or current if running)
+            return getEndTime(i, control) - timerStartTimes[i];
+        }
+
+        private double getTickPeriod(int i, int control) {
             // tick duration for a 16.78MHz clock
             enum double clockTickPeriod = 2.0 ^^ -24 * 1e9;
             // handle up-counting timers separately
@@ -880,7 +909,7 @@ public class GameBoyAdvance {
                 int previousTimer = super.getInt(i * 4 + 0xFC);
                 int previousControl = previousTimer >>> 16;
                 int previousReload = previousTimer & 0xFFFF;
-                double previousTickPeriod = getTickPeriod(i - 1, previousControl, previousReload);
+                double previousTickPeriod = getTickPeriod(i - 1, previousControl);
                 // this timer increments when the previous one overflows, so multiply by the ticks until overflow
                 return previousTickPeriod * (0x10000 - previousReload);
             } else {
