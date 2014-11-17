@@ -124,7 +124,6 @@ public class ARM7TDMI {
 				dumpInstructions();
 				dumpRegisters();
 			}
-			throw ex;
 		}
 	}
 
@@ -1762,71 +1761,20 @@ private int rotateReadSigned(int address, short value) {
 	return intValue;
 }
 
+private static shared int[18][] REGISTER_MAP = new int[18][16];
+
+public shared static this() {
+	REGISTER_MAP[Mode.USER - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, -1];
+	REGISTER_MAP[Mode.SYSTEM - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, -1];
+	REGISTER_MAP[Mode.FIQ - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 17, 18, 19, 20, 21, 22, 23, 15, 16, 24];
+	REGISTER_MAP[Mode.SUPERVISOR - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 25, 26, 15, 16, 27];
+	REGISTER_MAP[Mode.ABORT - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 28, 29, 15, 16, 30];
+	REGISTER_MAP[Mode.IRQ - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 31, 32, 15, 16, 33];
+	REGISTER_MAP[Mode.UNDEFINED - 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 34, 35, 15, 16, 36];
+}
+
 private int getRegisterIndex(Mode mode, int register) {
-	/*
-		R0 - R15: 0 - 15
-		CPSR: 16
-		R8_fiq - R14_fiq: 17 - 23
-		SPSR_fiq = 24
-		R13_svc - R14_svc = 25 - 26
-		SPSR_svc = 27
-		R13_abt - R14_abt = 28 - 29
-		SPSR_abt = 30
-		R13_irq - R14_irq = 31 - 32
-		SPSR_irq = 33
-		R13_und - R14_und = 34 - 35
-		SPSR_und = 36
-	*/
-	final switch (mode) {
-		case Mode.USER:
-		case Mode.SYSTEM:
-			return register;
-		case Mode.FIQ:
-			switch (register) {
-				case 8: .. case 14:
-					return register + 9;
-				case 17:
-					return register + 7;
-				default:
-					return register;
-			}
-		case Mode.SUPERVISOR:
-			switch (register) {
-				case 13: .. case 14:
-					return register + 12;
-				case 17:
-					return register + 10;
-				default:
-					return register;
-			}
-		case Mode.ABORT:
-			switch (register) {
-				case 13: .. case 14:
-					return register + 15;
-				case 17:
-					return register + 13;
-				default:
-					return register;
-			}
-		case Mode.IRQ:
-			switch (register) {
-				case 13: .. case 14:
-					return register + 18;
-				case 17:
-					return register + 16;
-				default:
-					return register;
-			}
-		case Mode.UNDEFINED:
-			switch (register) {
-				case 13: .. case 14:
-					return register + 21;
-				case 17:
-					return register + 19;
-				default:
-					return register;
-			}
-	}
+	return REGISTER_MAP[mode - 16][register];
 }
 
 private bool carriedAdd(int a, int b, int c) {
