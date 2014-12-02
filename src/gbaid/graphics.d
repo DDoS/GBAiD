@@ -50,8 +50,8 @@ public class GameBoyAdvanceDisplay {
             &lineMode0,
             &lineMode1,
             &lineMode2,
-            &lineBlank,
-            &lineBlank,
+            &lineMode3,
+            &lineMode4,
             &lineBlank,
             &lineBlank
         ];
@@ -185,7 +185,6 @@ public class GameBoyAdvanceDisplay {
 
     private void lineMode0(int line) {
         int displayControl = memory.getShort(0x4000000);
-
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
@@ -380,7 +379,6 @@ public class GameBoyAdvanceDisplay {
 
     private void lineMode1(int line) {
         int displayControl = memory.getShort(0x4000000);
-
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
@@ -399,7 +397,6 @@ public class GameBoyAdvanceDisplay {
 
     private void lineMode2(int line) {
         int displayControl = memory.getShort(0x4000000);
-
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
@@ -594,6 +591,98 @@ public class GameBoyAdvanceDisplay {
                 jmp loop;
             end:
                 nop;
+        }
+    }
+
+    private void lineMode3(int line) {
+        int displayControl = memory.getShort(0x4000000);
+        int tileMapping = getBit(displayControl, 6);
+        int bgEnables = getBits(displayControl, 8, 12);
+        int windowEnables = getBits(displayControl, 13, 15);
+
+        int blendControl = memory.getShort(0x4000050);
+
+        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+
+        lineTransparent(lines[0]);
+        lineTransparent(lines[1]);
+        lineBackgroundBitmap16Single(line, lines[2]);
+        lineTransparent(lines[3]);
+        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
+        lineCompose(line, windowEnables, blendControl, backColor);
+    }
+
+    private void lineBackgroundBitmap16Single(int line, short[] colorBuffer) {
+        int pa = memory.getShort(0x4000020);
+        int pb = memory.getShort(0x4000022);
+        int pc = memory.getShort(0x4000024);
+        int pd = memory.getShort(0x4000026);
+        int dx = memory.getInt(0x4000028);
+        dx <<= 4;
+        dx >>= 4;
+        int dy = memory.getInt(0x400002C);
+        dy <<= 4;
+        dy >>= 4;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            int x = pa * column + pb * line + dx + 128 >> 8;
+            int y = pc * column + pd * line + dy + 128 >> 8;
+
+            int address = (x + y * 240 << 1) + 0x6000000;
+
+            short color = memory.getShort(address) & 0x7FFF;
+            colorBuffer[column] = color;
+        }
+    }
+
+    private void lineMode4(int line) {
+        int displayControl = memory.getShort(0x4000000);
+        int frame = getBit(displayControl, 4);
+        int tileMapping = getBit(displayControl, 6);
+        int bgEnables = getBits(displayControl, 8, 12);
+        int windowEnables = getBits(displayControl, 13, 15);
+
+        int blendControl = memory.getShort(0x4000050);
+
+        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+
+        lineTransparent(lines[0]);
+        lineTransparent(lines[1]);
+        lineBackgroundBitmap8Double(line, lines[2], frame);
+        lineTransparent(lines[3]);
+        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
+        lineCompose(line, windowEnables, blendControl, backColor);
+    }
+
+    private void lineBackgroundBitmap8Double(int line, short[] colorBuffer, int frame) {
+        int pa = memory.getShort(0x4000020);
+        int pb = memory.getShort(0x4000022);
+        int pc = memory.getShort(0x4000024);
+        int pd = memory.getShort(0x4000026);
+        int dx = memory.getInt(0x4000028);
+        dx <<= 4;
+        dx >>= 4;
+        int dy = memory.getInt(0x400002C);
+        dy <<= 4;
+        dy >>= 4;
+
+        int addressBase = frame ? 0x600A000 : 0x6000000;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            int x = pa * column + pb * line + dx + 128 >> 8;
+            int y = pc * column + pd * line + dy + 128 >> 8;
+
+            int address = x + y * 240 + addressBase;
+
+            int paletteIndex = memory.getByte(address) & 0xFF;
+            if (paletteIndex == 0) {
+                colorBuffer[column] = TRANSPARENT;
+                continue;
+            }
+            int paletteAddress = paletteIndex << 1;
+
+            short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
+            colorBuffer[column] = color;
         }
     }
 

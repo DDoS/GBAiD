@@ -667,7 +667,7 @@ public class GameBoyAdvance {
                 dmaHalt = true;
                 processor.halt();
 
-                //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddress, destinationAddress, wordCount * increment, startTiming);
+                //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, dmaSourceAddresses[channel], dmaDestinationAddresses[channel], wordCount * increment, startTiming);
 
                 for (int i = 0; i < wordCount; i++) {
                     if (type) {
