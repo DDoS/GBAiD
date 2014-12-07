@@ -1685,11 +1685,11 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void dumpInstructions() {
+		public void dumpInstructions() {
 			dumpInstructions(queueSize);
 		}
 
-		private void dumpInstructions(uint amount) {
+		public void dumpInstructions(uint amount) {
 			amount = amount > queueSize ? queueSize : amount;
 			uint start = (queueSize < queueMaxSize ? 0 : index) + queueSize - amount;
 			if (amount > 1) {
@@ -1708,7 +1708,7 @@ public class ARM7TDMI {
 			}
 		}
 
-		private void dumpRegisters() {
+		public void dumpRegisters() {
 			writefln("Dumping last known register states:");
 			for (int i = 0; i < 18; i++) {
 				writefln("%-4s: %08x", cast(Register) i, getRegister(i));

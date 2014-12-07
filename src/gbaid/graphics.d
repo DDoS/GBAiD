@@ -149,11 +149,10 @@ public class GameBoyAdvanceDisplay {
 
     private void drawRun() {
         while (drawRunning) {
-            LineType draw = lineTypes[getMode()];
             for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
                 timer.start();
                 if (line < VERTICAL_RESOLUTION) {
-                    draw(line);
+                    lineTypes[getMode()](line);
                 } else if (line == VERTICAL_RESOLUTION) {
                     synchronized (frameSync.mutex) {
                         frameSync.notify();
