@@ -158,6 +158,7 @@ public class Flash : RAM {
 
     public this(ulong capacity) {
         super(capacity);
+        erase(0, cast(uint) capacity);
         idChip();
     }
 
