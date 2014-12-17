@@ -300,6 +300,7 @@ public class GameBoyAdvanceDisplay {
                 add EDX, EBX;
                 add RDX, vramAddress;
                 // get tile
+                xor EBX, EBX;
                 mov BX, [RDX];
                 // EAX = tileColumn, EBX = tile
                 mov ECX, EAX;
@@ -360,7 +361,7 @@ public class GameBoyAdvanceDisplay {
                 // get color from palette
                 add RDX, paletteAddress;
                 mov CX, [RDX];
-                and CX, 0x7FFF;
+                and ECX, 0x7FFF;
             end_color:
                 // ECX = color
                 pop RAX;
@@ -500,8 +501,7 @@ public class GameBoyAdvanceDisplay {
                 pop RAX;
                 // EAX = x, EBX = y
                 // check and handle overflow
-                mov ECX, EAX;
-                and ECX, bgSizeInv;
+                test EAX, bgSizeInv;
                 jz skip_x_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent1;
@@ -510,8 +510,7 @@ public class GameBoyAdvanceDisplay {
             skip_transparent1:
                 and EAX, bgSize;
             skip_x_overflow:
-                mov ECX, EBX;
-                and ECX, bgSizeInv;
+                test EBX, bgSizeInv;
                 jz skip_y_overflow;
                 test displayOverflow, 1;
                 jnz skip_transparent2;
@@ -551,8 +550,8 @@ public class GameBoyAdvanceDisplay {
                 add EAX, mapBase;
                 add RAX, vramAddress;
                 // get the tile number
+                xor ECX, ECX;
                 mov CL, [RAX];
-                mov CH, 0;
                 // calculate the tile address
                 pop RBX;
                 pop RAX;
@@ -565,8 +564,8 @@ public class GameBoyAdvanceDisplay {
                 add EAX, tileBase;
                 add RAX, vramAddress;
                 // get the palette index
+                xor EDX, EDX;
                 mov DL, [RAX];
-                mov DH, 0;
                 // calculate the palette address
                 shl EDX, 1;
                 jnz end_palettes;
@@ -577,7 +576,7 @@ public class GameBoyAdvanceDisplay {
                 // get color from palette
                 add RDX, paletteAddress;
                 mov CX, [RDX];
-                and CX, 0x7FFF;
+                and ECX, 0x7FFF;
             end_color:
                 // ECX = color
                 pop RAX;
