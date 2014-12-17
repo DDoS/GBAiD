@@ -151,6 +151,11 @@ public class GameBoyAdvanceDisplay {
         while (drawRunning) {
             for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
                 timer.start();
+                if (line == VERTICAL_RESOLUTION + 1) {
+                    signalVBLANK();
+                }
+                setVCOUNT(line);
+                checkVCOUNTER(line);
                 if (line < VERTICAL_RESOLUTION) {
                     lineTypes[getMode()](line);
                 } else if (line == VERTICAL_RESOLUTION) {
@@ -161,9 +166,9 @@ public class GameBoyAdvanceDisplay {
                 timer.waitUntil(H_VISIBLE_DURATION);
                 timer.restart();
                 setHBLANK(line, true);
+                signalHBLANK(line);
                 timer.waitUntil(H_BLANK_DURATION);
                 setHBLANK(line, false);
-                setVCOUNT(line);
             }
         }
     }
@@ -1125,32 +1130,40 @@ public class GameBoyAdvanceDisplay {
             newDisplayStatus = oldDisplayStatus;
             setBit(newDisplayStatus, 1, state);
         } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
-        if (state && line < 160) {
-            memory.signalEvent(SignalEvent.H_BLANK);
-            if (checkBit(oldDisplayStatus, 4)) {
-                memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
-            }
-        }
     }
 
     private void setVCOUNT(int line) {
         memory.setByte(0x4000006, cast(byte) line);
         int oldDisplayStatus = void, newDisplayStatus = void;
-        bool vcounter = void;
         do {
             oldDisplayStatus = memory.getInt(0x4000004);
             newDisplayStatus = oldDisplayStatus;
-            setBit(newDisplayStatus, 0, line >= 160 && line < 227);
-            vcounter = getBits(oldDisplayStatus, 8, 15) == line;
-            setBit(newDisplayStatus, 2, vcounter);
+            setBit(newDisplayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
+            setBit(newDisplayStatus, 2, getBits(oldDisplayStatus, 8, 15) == line);
         } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
-        if (line == 160) {
-            memory.signalEvent(SignalEvent.V_BLANK);
-            if (checkBit(oldDisplayStatus, 3)) {
-                memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+    }
+
+    private void signalHBLANK(int line) {
+        int displayStatus = memory.getInt(0x4000004);
+        if (line < VERTICAL_RESOLUTION) {
+            memory.signalEvent(SignalEvent.H_BLANK);
+            if (checkBit(displayStatus, 4)) {
+                memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
             }
         }
-        if (vcounter && checkBit(oldDisplayStatus, 5)) {
+    }
+
+    private void signalVBLANK() {
+        int displayStatus = memory.getInt(0x4000004);
+        memory.signalEvent(SignalEvent.V_BLANK);
+        if (checkBit(displayStatus, 3)) {
+            memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+        }
+    }
+
+    private void checkVCOUNTER(int line) {
+        int displayStatus = memory.getInt(0x4000004);
+        if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
             memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
     }
