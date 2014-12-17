@@ -547,6 +547,14 @@ public class GameBoyAdvance {
 
         private bool handleSpecialWrite(int address, int shift, int mask, ref int value) {
             switch (address) {
+                case 0x00000028:
+                case 0x0000002C:
+                    display.reloadInternalAffineReferencePoint(2);
+                    return true;
+                case 0x00000038:
+                case 0x0000003C:
+                    display.reloadInternalAffineReferencePoint(3);
+                    return true;
                 case 0x000000B8:
                 case 0x000000C4:
                 case 0x000000D0:

@@ -33,6 +33,8 @@ public class GameBoyAdvanceDisplay {
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
+    private int[2] internalAffineReferenceX = new int[2];
+    private int[2] internalAffineReferenceY = new int[2];
     private Condition frameSync;
     private shared bool drawRunning = false;
     private LineType[7] lineTypes;
@@ -147,6 +149,15 @@ public class GameBoyAdvanceDisplay {
         context.destroy();
     }
 
+    public void reloadInternalAffineReferencePoint(int layer) {
+        layer -= 2;
+        int layerAddressOffset = layer << 4;
+        int dx = memory.getInt(0x4000028 + layerAddressOffset) << 4;
+        internalAffineReferenceX[layer] = dx >> 4;
+        int dy = memory.getInt(0x400002C + layerAddressOffset) << 4;
+        internalAffineReferenceY[layer] = dy >> 4;
+    }
+
     private void drawRun() {
         while (drawRunning) {
             for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
@@ -162,6 +173,8 @@ public class GameBoyAdvanceDisplay {
                     synchronized (frameSync.mutex) {
                         frameSync.notify();
                     }
+                    reloadInternalAffineReferencePoint(2);
+                    reloadInternalAffineReferencePoint(3);
                 }
                 timer.waitUntil(H_VISIBLE_DURATION);
                 timer.restart();
@@ -423,6 +436,14 @@ public class GameBoyAdvanceDisplay {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
                 buffer[column] = TRANSPARENT;
             }
+
+            int affineLayer = layer - 2;
+            int layerAddressOffset = affineLayer << 4;
+            int pb = memory.getShort(0x4000022 + layerAddressOffset);
+            int pd = memory.getShort(0x4000026 + layerAddressOffset);
+
+            internalAffineReferenceX[affineLayer] += pb;
+            internalAffineReferenceY[affineLayer] += pd;
             return;
         }
 
@@ -443,18 +464,71 @@ public class GameBoyAdvanceDisplay {
         int bgSizeInv = ~bgSize;
         int mapLineShift = screenSize + 4;
 
-        int layerAddressOffset = layer - 2 << 4;
+        int affineLayer = layer - 2;
+        int layerAddressOffset = affineLayer << 4;
         int pa = memory.getShort(0x4000020 + layerAddressOffset);
         int pb = memory.getShort(0x4000022 + layerAddressOffset);
         int pc = memory.getShort(0x4000024 + layerAddressOffset);
         int pd = memory.getShort(0x4000026 + layerAddressOffset);
-        int dx = memory.getInt(0x4000028 + layerAddressOffset);
-        dx <<= 4;
-        dx >>= 4;
-        int dy = memory.getInt(0x400002C + layerAddressOffset);
-        dy <<= 4;
-        dy >>= 4;
 
+        int dx = internalAffineReferenceX[affineLayer];
+        int dy = internalAffineReferenceY[affineLayer];
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+
+            int x = dx + 128 >> 8;
+            int y = dy + 128 >> 8;
+
+            if (x & bgSizeInv) {
+                if (displayOverflow) {
+                    x &= bgSize;
+                } else {
+                    buffer[column] = TRANSPARENT;
+                    continue;
+                }
+            }
+            if (y & bgSizeInv) {
+                if (displayOverflow) {
+                    y &= bgSize;
+                } else {
+                    buffer[column] = TRANSPARENT;
+                    continue;
+                }
+            }
+
+            if (mosaic) {
+                x -= x % mosaicSizeX;
+                y -= y % mosaicSizeY;
+            }
+
+            int mapColumn = x >> 3;
+            int mapLine = y >> 3;
+
+            int tileColumn = x & 7;
+            int tileLine = y & 7;
+
+            int mapAddress = 0x6000000 + mapBase + (mapLine << mapLineShift) + mapColumn;
+
+            int tileNumber = memory.getByte(mapAddress) & 0xFF;
+
+            int tileAddress = 0x6000000 + tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
+
+            int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
+
+            if (paletteAddress == 0) {
+                buffer[column] = TRANSPARENT;
+                continue;
+            }
+
+            short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
+
+            buffer[column] = color;
+        }
+
+        internalAffineReferenceX[affineLayer] += pb;
+        internalAffineReferenceY[affineLayer] += pd;
+
+/*
         size_t bufferAddress = cast(size_t) buffer.ptr;
         size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
         size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
@@ -595,6 +669,7 @@ public class GameBoyAdvanceDisplay {
             end:
                 nop;
         }
+*/
     }
 
     private void lineMode3(int line) {
@@ -620,22 +695,22 @@ public class GameBoyAdvanceDisplay {
         int pb = memory.getShort(0x4000022);
         int pc = memory.getShort(0x4000024);
         int pd = memory.getShort(0x4000026);
-        int dx = memory.getInt(0x4000028);
-        dx <<= 4;
-        dx >>= 4;
-        int dy = memory.getInt(0x400002C);
-        dy <<= 4;
-        dy >>= 4;
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            int x = pa * column + pb * line + dx + 128 >> 8;
-            int y = pc * column + pd * line + dy + 128 >> 8;
+        int dx = internalAffineReferenceX[0];
+        int dy = internalAffineReferenceY[0];
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+            int x = dx + 128 >> 8;
+            int y = dy + 128 >> 8;
 
             int address = (x + y * 240 << 1) + 0x6000000;
 
             short color = memory.getShort(address) & 0x7FFF;
             colorBuffer[column] = color;
         }
+
+        internalAffineReferenceX[0] += pb;
+        internalAffineReferenceY[0] += pd;
     }
 
     private void lineMode4(int line) {
@@ -662,18 +737,15 @@ public class GameBoyAdvanceDisplay {
         int pb = memory.getShort(0x4000022);
         int pc = memory.getShort(0x4000024);
         int pd = memory.getShort(0x4000026);
-        int dx = memory.getInt(0x4000028);
-        dx <<= 4;
-        dx >>= 4;
-        int dy = memory.getInt(0x400002C);
-        dy <<= 4;
-        dy >>= 4;
+
+        int dx = internalAffineReferenceX[0];
+        int dy = internalAffineReferenceY[0];
 
         int addressBase = frame ? 0x600A000 : 0x6000000;
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            int x = pa * column + pb * line + dx + 128 >> 8;
-            int y = pc * column + pd * line + dy + 128 >> 8;
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+            int x = dx + 128 >> 8;
+            int y = dy + 128 >> 8;
 
             int address = x + y * 240 + addressBase;
 
@@ -687,6 +759,9 @@ public class GameBoyAdvanceDisplay {
             short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
             colorBuffer[column] = color;
         }
+
+        internalAffineReferenceX[0] += pb;
+        internalAffineReferenceY[0] += pd;
     }
 
     private void lineObjects(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
