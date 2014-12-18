@@ -45,7 +45,7 @@ public class GameBoyAdvance {
             throw new NullPathException("ROM");
         }
         checkNotRunning();
-        memory.loadGamepakROM(file);
+        memory.getGamepak().loadROM(file);
     }
 
     public void loadSave(string file) {
@@ -53,7 +53,7 @@ public class GameBoyAdvance {
             throw new NullPathException("save");
         }
         checkNotRunning();
-        memory.loadGamepakSave(file);
+        memory.getGamepak().loadSave(file);
     }
 
     public void saveSave(string file) {
@@ -61,12 +61,12 @@ public class GameBoyAdvance {
             throw new NullPathException("save");
         }
         checkNotRunning();
-        memory.saveGamepakSave(file);
+        memory.getGamepak().saveSave(file);
     }
 
     public void loadNewSave() {
         checkNotRunning();
-        memory.loadEmptyGamepakSave();
+        memory.getGamepak().loadEmptySave();
     }
 
     public void setDisplayScale(float scale) {
@@ -83,10 +83,10 @@ public class GameBoyAdvance {
 
     public void run() {
         checkNotRunning();
-        if (!memory.hasGamepakROM()) {
+        if (!memory.getGamepak().hasROM()) {
             throw new NoROMException();
         }
-        if (!memory.hasGamepakSave()) {
+        if (!memory.getGamepak().hasSave()) {
             throw new NoSaveException();
         }
         if (!DerelictSDL2.isLoaded) {
@@ -109,14 +109,13 @@ public class GameBoyAdvance {
         }
     }
 
-    public class GameBoyAdvanceMemory : Memory {
+    public class GameBoyAdvanceMemory : MappedMemory {
         private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
         private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
         private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
         private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
-        private static immutable uint MAX_GAMEPAK_ROM_SIZE = 32 * BYTES_PER_MIB;
         private static immutable uint CHIP_WRAM_MIRROR_OFFSET = 0xFF8000;
         private static immutable uint BIOS_START = 0x00000000;
         private static immutable uint BIOS_END = 0x00003FFF;
@@ -134,13 +133,8 @@ public class GameBoyAdvance {
         private static immutable uint VRAM_END = 0x06017FFF;
         private static immutable uint OAM_START = 0x07000000;
         private static immutable uint OAM_END = 0x070003FF;
-        private static immutable uint GAMEPAK_ROM_START = 0x08000000;
-        private static immutable uint GAMEPAK_ROM_END = 0x0DFFFFFF;
-        private static immutable uint GAMEPAK_SAVE_START = 0x0E000000;
-        private static immutable uint GAMEPAK_SAVE_END = 0x0E00FFFF;
-        private static immutable uint GAMEPAK_EEPROM_START_NARROW = 0x0DFFFF00;
-        private static immutable uint GAMEPAK_EEPROM_START_WIDE = 0x0D000000;
-        private static immutable uint GAMEPAK_EEPROM_END = 0x0DFFFFFF;
+        private static immutable uint GAMEPAK_START = 0x08000000;
+        private static immutable uint GAMEPAK_END = 0x0E00FFFF;
         private Memory unusedMemory;
         private Memory bios;
         private Memory boardWRAM;
@@ -149,11 +143,7 @@ public class GameBoyAdvance {
         private Memory vram;
         private Memory oam;
         private Memory paletteRAM;
-        private Memory gamepakROM;
-        private Memory gamepakSave;
-        private Memory gamepakEEPROM;
-        private bool hasEEPROM;
-        private uint eepromStart;
+        private Gamepak gamepak;
         private ulong capacity;
 
         private this(string biosFile) {
@@ -165,9 +155,7 @@ public class GameBoyAdvance {
             vram = new RAM(VRAM_SIZE);
             oam = new RAM(OAM_SIZE);
             paletteRAM = new RAM(PALETTE_RAM_SIZE);
-            gamepakROM = unusedMemory;
-            gamepakSave = unusedMemory;
-            gamepakEEPROM = unusedMemory;
+            gamepak = new Gamepak();
             updateCapacity();
         }
 
@@ -179,86 +167,6 @@ public class GameBoyAdvance {
             ioRegisters.stop();
         }
 
-        private void loadGamepakROM(string romFile) {
-            gamepakROM = new ROM(romFile, MAX_GAMEPAK_ROM_SIZE);
-            eepromStart = gamepakROM.getCapacity() > 16 * BYTES_PER_MIB
-                    ? GAMEPAK_EEPROM_START_NARROW
-                    : GAMEPAK_EEPROM_START_WIDE;
-            updateCapacity();
-        }
-
-        private void loadGamepakSave(string saveFile) {
-            Memory[] save = loadFromFile(saveFile);
-            foreach (Memory memory; save) {
-                if (cast(EEPROM) memory) {
-                    gamepakEEPROM = memory;
-                    hasEEPROM = true;
-                } else if (cast(Flash) memory || cast(RAM) memory) {
-                    gamepakSave = memory;
-                } else {
-                    throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
-                }
-            }
-            updateCapacity();
-        }
-
-        private void saveGamepakSave(string saveFile) {
-            if (cast(NullMemory) gamepakEEPROM) {
-                saveToFile(saveFile, gamepakSave);
-            } else {
-                saveToFile(saveFile, gamepakSave, gamepakEEPROM);
-            }
-        }
-
-        private bool hasGamepakROM() {
-            return !(cast(NullMemory) gamepakROM);
-        }
-
-        private bool hasGamepakSave() {
-            return !(cast(NullMemory) gamepakSave);
-        }
-
-        private bool hasGamepakEEPROM() {
-            return !(cast(NullMemory) gamepakEEPROM);
-        }
-
-        private void loadEmptyGamepakSave() {
-            // Detect save types and size using ID strings in ROM
-            bool hasFlash = false;
-            int saveSize = GamepakSaveMemory.SRAM[1];
-            char[] romChars = cast(char[]) gamepakROM.getArray(0);
-            auto saveTypes = EnumMembers!GamepakSaveMemory;
-            for (ulong i = 0; i < romChars.length; i += 4) {
-                foreach (saveType; saveTypes) {
-                    string saveID = saveType[0];
-                    if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
-                        final switch (saveID) {
-                            case GamepakSaveMemory.EEPROM[0]:
-                                hasEEPROM = true;
-                                break;
-                            case GamepakSaveMemory.FLASH[0]:
-                            case GamepakSaveMemory.FLASH512[0]:
-                            case GamepakSaveMemory.FLASH1M[0]:
-                                hasFlash = true;
-                                saveSize = saveType[1];
-                                break;
-                        }
-                    }
-                }
-            }
-            // Allocate the memory
-            if (hasFlash) {
-                gamepakSave = new Flash(saveSize);
-            } else {
-                gamepakSave = new RAM(saveSize);
-            }
-            if (hasEEPROM) {
-                gamepakEEPROM = new EEPROM(GamepakSaveMemory.EEPROM[1]);
-            }
-            // Update the capacity
-            updateCapacity();
-        }
-
         private void updateCapacity() {
             capacity = bios.getCapacity()
                 + boardWRAM.getCapacity()
@@ -267,61 +175,14 @@ public class GameBoyAdvance {
                 + vram.getCapacity()
                 + oam.getCapacity()
                 + paletteRAM.getCapacity()
-                + gamepakROM.getCapacity()
-                + gamepakSave.getCapacity()
-                + gamepakEEPROM.getCapacity();
+                + gamepak.getCapacity();
         }
 
-        public override ulong getCapacity() {
-            return capacity;
+        private Gamepak getGamepak() {
+            return gamepak;
         }
 
-        public override void[] getArray(uint address) {
-            Memory memory = map(address);
-            return memory.getArray(address);
-        }
-
-        public override void* getPointer(uint address) {
-            Memory memory = map(address);
-            return memory.getPointer(address);
-        }
-
-        public override byte getByte(uint address) {
-            Memory memory = map(address);
-            return memory.getByte(address);
-        }
-
-        public override void setByte(uint address, byte b) {
-            Memory memory = map(address);
-            memory.setByte(address, b);
-        }
-
-        public override short getShort(uint address) {
-            Memory memory = map(address);
-            return memory.getShort(address);
-        }
-
-        public override void setShort(uint address, short s) {
-            Memory memory = map(address);
-            memory.setShort(address, s);
-        }
-
-        public override int getInt(uint address) {
-            Memory memory = map(address);
-            return memory.getInt(address);
-        }
-
-        public override void setInt(uint address, int i) {
-            Memory memory = map(address);
-            memory.setInt(address, i);
-        }
-
-        public override bool compareAndSet(uint address, int expected, int update) {
-            Memory memory = map(address);
-            return memory.compareAndSet(address, expected, update);
-        }
-
-        private Memory map(ref uint address) {
+        protected override Memory map(ref uint address) {
             if (address >= BIOS_START && address <= BIOS_END) {
                 address -= BIOS_START;
                 return bios;
@@ -354,28 +215,15 @@ public class GameBoyAdvance {
                 address -= OAM_START;
                 return oam;
             }
-            if (address >= GAMEPAK_ROM_START && address <= GAMEPAK_ROM_END) {
-                if (hasEEPROM && address >= eepromStart && address <= GAMEPAK_EEPROM_END) {
-                    address -= eepromStart;
-                    return gamepakEEPROM;
-                }
-                address -= GAMEPAK_ROM_START;
-                address &= MAX_GAMEPAK_ROM_SIZE - 1;
-                if (address < gamepakROM.getCapacity()) {
-                    return gamepakROM;
-                } else {
-                    return unusedMemory;
-                }
-            }
-            if (address >= GAMEPAK_SAVE_START && address <= GAMEPAK_SAVE_END) {
-                address -= GAMEPAK_SAVE_START;
-                if (address < gamepakSave.getCapacity()) {
-                    return gamepakSave;
-                } else {
-                    return unusedMemory;
-                }
+            if (address >= GAMEPAK_START && address <= GAMEPAK_END) {
+                address -= GAMEPAK_START;
+                return gamepak;
             }
             return unusedMemory;
+        }
+
+        public override ulong getCapacity() {
+            return capacity;
         }
 
         public void requestInterrupt(InterruptSource source) {
@@ -384,6 +232,139 @@ public class GameBoyAdvance {
 
         public void signalEvent(SignalEvent event) {
             ioRegisters.signalEvent(event);
+        }
+    }
+
+    private class Gamepak : MappedMemory {
+        private static immutable uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
+        private static immutable uint ROM_START = 0x00000000;
+        private static immutable uint ROM_END = 0x05FFFFFF;
+        private static immutable uint SAVE_START = 0x06000000;
+        private static immutable uint SAVE_END = 0x0600FFFF;
+        private static immutable uint EEPROM_START_NARROW = 0x05FFFF00;
+        private static immutable uint EEPROM_START_WIDE = 0x05000000;
+        private static immutable uint EEPROM_END = 0x05FFFFFF;
+        private Memory unusedMemory;
+        private Memory rom;
+        private Memory save;
+        private Memory eeprom;
+        private bool hasEEPROM;
+        private uint eepromStart;
+        private ulong capacity;
+
+        private this() {
+            unusedMemory = new NullMemory();
+            rom = unusedMemory;
+            save = unusedMemory;
+            eeprom = unusedMemory;
+            updateCapacity();
+        }
+
+        private void updateCapacity() {
+            capacity = rom.getCapacity() + save.getCapacity() + eeprom.getCapacity();
+        }
+
+        private void loadROM(string romFile) {
+            rom = new ROM(romFile, MAX_ROM_SIZE);
+            eepromStart = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_START_NARROW : EEPROM_START_WIDE;
+            updateCapacity();
+        }
+
+        private void loadSave(string saveFile) {
+            Memory[] loaded = loadFromFile(saveFile);
+            foreach (Memory memory; loaded) {
+                if (cast(EEPROM) memory) {
+                    eeprom = memory;
+                    hasEEPROM = true;
+                } else if (cast(Flash) memory || cast(RAM) memory) {
+                    save = memory;
+                } else {
+                    throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
+                }
+            }
+            updateCapacity();
+        }
+
+        private void saveSave(string saveFile) {
+            if (cast(NullMemory) eeprom) {
+                saveToFile(saveFile, save);
+            } else {
+                saveToFile(saveFile, save, eeprom);
+            }
+        }
+
+        private bool hasROM() {
+            return !(cast(NullMemory) rom);
+        }
+
+        private bool hasSave() {
+            return !(cast(NullMemory) save) || hasEEPROM;
+        }
+
+        private void loadEmptySave() {
+            // Detect save types and size using ID strings in ROM
+            bool hasFlash = false;
+            int saveSize = GamepakSaveMemory.SRAM[1];
+            char[] romChars = cast(char[]) rom.getArray(0);
+            auto saveTypes = EnumMembers!GamepakSaveMemory;
+            for (ulong i = 0; i < romChars.length; i += 4) {
+                foreach (saveType; saveTypes) {
+                    string saveID = saveType[0];
+                    if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
+                        final switch (saveID) {
+                            case GamepakSaveMemory.EEPROM[0]:
+                                hasEEPROM = true;
+                                break;
+                            case GamepakSaveMemory.FLASH[0]:
+                            case GamepakSaveMemory.FLASH512[0]:
+                            case GamepakSaveMemory.FLASH1M[0]:
+                                hasFlash = true;
+                                saveSize = saveType[1];
+                                break;
+                        }
+                    }
+                }
+            }
+            // Allocate the memory
+            if (hasFlash) {
+                save = new Flash(saveSize);
+            } else {
+                save = new RAM(saveSize);
+            }
+            if (hasEEPROM) {
+                eeprom = new EEPROM(GamepakSaveMemory.EEPROM[1]);
+            }
+            // Update the capacity
+            updateCapacity();
+        }
+
+        public override ulong getCapacity() {
+            return capacity;
+        }
+
+        protected override Memory map(ref uint address) {
+            if (address >= ROM_START && address <= ROM_END) {
+                if (hasEEPROM && address >= eepromStart && address <= EEPROM_END) {
+                    address -= eepromStart;
+                    return eeprom;
+                }
+                address -= ROM_START;
+                address &= MAX_ROM_SIZE - 1;
+                if (address < rom.getCapacity()) {
+                    return rom;
+                } else {
+                    return unusedMemory;
+                }
+            }
+            if (address >= SAVE_START && address <= SAVE_END) {
+                address -= SAVE_START;
+                if (address < save.getCapacity()) {
+                    return save;
+                } else {
+                    return unusedMemory;
+                }
+            }
+            return unusedMemory;
         }
 
         private static enum GamepakSaveMemory {
