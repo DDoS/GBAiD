@@ -444,6 +444,55 @@ public class EEPROM : RAM {
     }
 }
 
+public abstract class MappedMemory : Memory {
+    protected Memory map(ref uint address);
+
+    public override void[] getArray(uint address) {
+        Memory memory = map(address);
+        return memory.getArray(address);
+    }
+
+    public override void* getPointer(uint address) {
+        Memory memory = map(address);
+        return memory.getPointer(address);
+    }
+
+    public override byte getByte(uint address) {
+        Memory memory = map(address);
+        return memory.getByte(address);
+    }
+
+    public override void setByte(uint address, byte b) {
+        Memory memory = map(address);
+        memory.setByte(address, b);
+    }
+
+    public override short getShort(uint address) {
+        Memory memory = map(address);
+        return memory.getShort(address);
+    }
+
+    public override void setShort(uint address, short s) {
+        Memory memory = map(address);
+        memory.setShort(address, s);
+    }
+
+    public override int getInt(uint address) {
+        Memory memory = map(address);
+        return memory.getInt(address);
+    }
+
+    public override void setInt(uint address, int i) {
+        Memory memory = map(address);
+        memory.setInt(address, i);
+    }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        Memory memory = map(address);
+        return memory.compareAndSet(address, expected, update);
+    }
+}
+
 public class NullMemory : Memory {
     public override ulong getCapacity() {
         return 0;
