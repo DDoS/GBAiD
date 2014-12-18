@@ -127,7 +127,6 @@ public class GameBoyAdvanceDisplay {
         drawThread.start();
 
         //Timer fpsTimer = new Timer();
-
         while (!context.isWindowCloseRequested()) {
             //fpsTimer.start();
             synchronized (frameSync.mutex) {
@@ -274,8 +273,7 @@ public class GameBoyAdvanceDisplay {
         size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
 
         asm {
-                mov RBX, bufferAddress;
-                push RBX;
+                push bufferAddress;
                 mov EAX, 0;
                 push RAX;
             loop:
@@ -474,105 +472,27 @@ public class GameBoyAdvanceDisplay {
         int dx = internalAffineReferenceX[affineLayer];
         int dy = internalAffineReferenceY[affineLayer];
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-
-            int x = dx + 128 >> 8;
-            int y = dy + 128 >> 8;
-
-            if (x & bgSizeInv) {
-                if (displayOverflow) {
-                    x &= bgSize;
-                } else {
-                    buffer[column] = TRANSPARENT;
-                    continue;
-                }
-            }
-            if (y & bgSizeInv) {
-                if (displayOverflow) {
-                    y &= bgSize;
-                } else {
-                    buffer[column] = TRANSPARENT;
-                    continue;
-                }
-            }
-
-            if (mosaic) {
-                x -= x % mosaicSizeX;
-                y -= y % mosaicSizeY;
-            }
-
-            int mapColumn = x >> 3;
-            int mapLine = y >> 3;
-
-            int tileColumn = x & 7;
-            int tileLine = y & 7;
-
-            int mapAddress = 0x6000000 + mapBase + (mapLine << mapLineShift) + mapColumn;
-
-            int tileNumber = memory.getByte(mapAddress) & 0xFF;
-
-            int tileAddress = 0x6000000 + tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
-
-            int paletteAddress = (memory.getByte(tileAddress) & 0xFF) * 2;
-
-            if (paletteAddress == 0) {
-                buffer[column] = TRANSPARENT;
-                continue;
-            }
-
-            short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
-
-            buffer[column] = color;
-        }
-
         internalAffineReferenceX[affineLayer] += pb;
         internalAffineReferenceY[affineLayer] += pd;
 
-/*
         size_t bufferAddress = cast(size_t) buffer.ptr;
         size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
         size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
 
         asm {
-                mov RBX, bufferAddress;
-                push RBX;
-                mov EAX, 0;
+                mov EAX, dx;
                 push RAX;
+                mov EBX, dy;
+                push RBX;
+                push bufferAddress;
+                push 0;
             loop:
-                // push line an column to stack
-                mov EBX, line;
-                push RAX;
-                push RBX;
                 // calculate x
-                mov ECX, pa;
-                mul ECX;
-                push RAX;
-                mov EAX, EBX;
-                mov ECX, pb;
-                mul ECX;
-                pop RBX;
-                add EAX, EBX;
-                add EAX, dx;
                 add EAX, 128;
                 sar EAX, 8;
-                mov ECX, EAX;
-                pop RBX;
-                pop RAX;
-                push RCX;
                 // calculate y
-                mov ECX, pc;
-                mul ECX;
-                push RAX;
-                mov EAX, EBX;
-                mov ECX, pd;
-                mul ECX;
-                pop RBX;
-                add EAX, EBX;
-                add EAX, dy;
-                add EAX, 128;
-                sar EAX, 8;
-                mov EBX, EAX;
-                pop RAX;
+                add EBX, 128;
+                sar EBX, 8;
                 // EAX = x, EBX = y
                 // check and handle overflow
                 test EAX, bgSizeInv;
@@ -596,7 +516,6 @@ public class GameBoyAdvanceDisplay {
                 // check and apply mosaic
                 test mosaic, 1;
                 jz skip_mosaic;
-                push RDX;
                 push RBX;
                 mov EBX, EAX;
                 xor EDX, EDX;
@@ -611,7 +530,6 @@ public class GameBoyAdvanceDisplay {
                 div ECX;
                 sub EBX, EDX;
                 pop RAX;
-                pop RDX;
             skip_mosaic:
                 // calculate the map address
                 push RAX;
@@ -655,21 +573,32 @@ public class GameBoyAdvanceDisplay {
                 // ECX = color
                 pop RAX;
                 pop RBX;
+                // EAX = index, EBX = buffer address
                 // write color to line buffer
                 mov [RBX], CX;
+                pop RDX;
+                pop RCX;
+                // ECX = dx, EDX = dy
                 // check loop condition
                 cmp EAX, 239;
                 jge end;
+                // increment dx and dy
+                add ECX, pa;
+                push RCX;
+                add EDX, pc;
+                push RDX;
                 // increment address and counter
                 add RBX, 2;
                 push RBX;
                 add EAX, 1;
                 push RAX;
+                // prepare for next iteration
+                mov EAX, ECX;
+                mov EBX, EDX;
                 jmp loop;
             end:
                 nop;
         }
-*/
     }
 
     private void lineMode3(int line) {
