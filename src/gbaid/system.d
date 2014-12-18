@@ -116,25 +116,19 @@ public class GameBoyAdvance {
         private static immutable uint PALETTE_RAM_SIZE = 1 * BYTES_PER_KIB;
         private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
         private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
-        private static immutable uint CHIP_WRAM_MIRROR_OFFSET = 0xFF8000;
         private static immutable uint BIOS_START = 0x00000000;
-        private static immutable uint BIOS_END = 0x00003FFF;
-        private static immutable uint BOARD_WRAM_START = 0x02000000;
-        private static immutable uint BOARD_WRAM_END = 0x0203FFFF;
-        private static immutable uint CHIP_WRAM_START = 0x03000000;
-        private static immutable uint CHIP_WRAM_END = 0x03007FFF;
-        private static immutable uint CHIP_WRAM_MIRROR_START = 0x03FFFF00;
-        private static immutable uint CHIP_WRAM_MIRROR_END = 0x03FFFFFF;
-        private static immutable uint IO_REGISTERS_START = 0x04000000;
+        private static immutable uint BIOS_MASK = 0x3FFF;
+        private static immutable uint BOARD_WRAM_MASK = 0x3FFFF;
+        private static immutable uint CHIP_WRAM_MASK = 0x7FFF;
+        private static immutable uint CHIP_WRAM_MIRROR_START = 0xFFFF00;
+        private static immutable uint CHIP_WRAM_MIRROR_MASK = 0x7FFF;
         private static immutable uint IO_REGISTERS_END = 0x040003FE;
-        private static immutable uint PALETTE_RAM_START = 0x05000000;
-        private static immutable uint PALETTE_RAM_END = 0x050003FF;
-        private static immutable uint VRAM_START = 0x06000000;
+        private static immutable uint IO_REGISTERS_MASK = 0x3FF;
+        private static immutable uint PALETTE_RAM_MASK = 0x3FF;
         private static immutable uint VRAM_END = 0x06017FFF;
-        private static immutable uint OAM_START = 0x07000000;
-        private static immutable uint OAM_END = 0x070003FF;
+        private static immutable uint VRAM_MASK = 0x1FFFF;
+        private static immutable uint OAM_MASK = 0x3FF;
         private static immutable uint GAMEPAK_START = 0x08000000;
-        private static immutable uint GAMEPAK_END = 0x0E00FFFF;
         private Memory unusedMemory;
         private Memory bios;
         private Memory boardWRAM;
@@ -183,43 +177,61 @@ public class GameBoyAdvance {
         }
 
         protected override Memory map(ref uint address) {
-            if (address >= BIOS_START && address <= BIOS_END) {
-                address -= BIOS_START;
-                return bios;
+            int highAddress = address >> 24;
+            int lowAddress = address & 0xFFFFFF;
+            switch (highAddress) {
+                case 0x0:
+                    if (lowAddress & ~BIOS_MASK) {
+                        return unusedMemory;
+                    }
+                    address &= BIOS_MASK;
+                    return bios;
+                case 0x2:
+                    if (lowAddress & ~BOARD_WRAM_MASK) {
+                        return unusedMemory;
+                    }
+                    address &= BOARD_WRAM_MASK;
+                    return boardWRAM;
+                case 0x3:
+                    if (lowAddress & ~CHIP_WRAM_MASK) {
+                        if ((lowAddress & CHIP_WRAM_MIRROR_START) == CHIP_WRAM_MIRROR_START) {
+                            address &= CHIP_WRAM_MIRROR_MASK;
+                            return chipWRAM;
+                        }
+                        return unusedMemory;
+                    }
+                    address &= CHIP_WRAM_MASK;
+                    return chipWRAM;
+                case 0x4:
+                    if (address > IO_REGISTERS_END) {
+                        return unusedMemory;
+                    }
+                    address &= IO_REGISTERS_MASK;
+                    return ioRegisters;
+                case 0x5:
+                    if (lowAddress & ~PALETTE_RAM_MASK) {
+                        return unusedMemory;
+                    }
+                    address &= PALETTE_RAM_MASK;
+                    return paletteRAM;
+                case 0x6:
+                    if (address > VRAM_END) {
+                        return unusedMemory;
+                    }
+                    address &= VRAM_MASK;
+                    return vram;
+                case 0x7:
+                    if (lowAddress & ~OAM_MASK) {
+                        return unusedMemory;
+                    }
+                    address &= OAM_MASK;
+                    return oam;
+                case 0x8: .. case 0xE:
+                    address -= GAMEPAK_START;
+                    return gamepak;
+                default:
+                    return unusedMemory;
             }
-            if (address >= BOARD_WRAM_START && address <= BOARD_WRAM_END) {
-                address -= BOARD_WRAM_START;
-                return boardWRAM;
-            }
-            if (address >= CHIP_WRAM_START && address <= CHIP_WRAM_END) {
-                address -= CHIP_WRAM_START;
-                return chipWRAM;
-            }
-            if (address >= CHIP_WRAM_MIRROR_START && address <= CHIP_WRAM_MIRROR_END) {
-                address -= CHIP_WRAM_MIRROR_OFFSET + CHIP_WRAM_START;
-                return chipWRAM;
-            }
-            if (address >= IO_REGISTERS_START && address <= IO_REGISTERS_END) {
-                address -= IO_REGISTERS_START;
-                return ioRegisters;
-            }
-            if (address >= PALETTE_RAM_START && address <= PALETTE_RAM_END) {
-                address -= PALETTE_RAM_START;
-                return paletteRAM;
-            }
-            if (address >= VRAM_START && address <= VRAM_END) {
-                address -= VRAM_START;
-                return vram;
-            }
-            if (address >= OAM_START && address <= OAM_END) {
-                address -= OAM_START;
-                return oam;
-            }
-            if (address >= GAMEPAK_START && address <= GAMEPAK_END) {
-                address -= GAMEPAK_START;
-                return gamepak;
-            }
-            return unusedMemory;
         }
 
         public override ulong getCapacity() {
