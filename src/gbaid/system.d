@@ -549,12 +549,9 @@ public class GameBoyAdvance {
             switch (address) {
                 case 0x00000028:
                 case 0x0000002C:
-                    display.reloadInternalAffineReferencePoint(2);
-                    return true;
                 case 0x00000038:
                 case 0x0000003C:
-                    display.reloadInternalAffineReferencePoint(3);
-                    return true;
+                    return handleAffineReferencePointWrite(address, shift, mask, value);
                 case 0x000000B8:
                 case 0x000000C4:
                 case 0x000000D0:
@@ -572,6 +569,12 @@ public class GameBoyAdvance {
                 default:
                     return true;
             }
+        }
+
+        private bool handleAffineReferencePointWrite(int address, int shift, int mask, ref int value) {
+            super.setInt(address, super.getInt(address) & ~mask | value & mask);
+            display.reloadInternalAffineReferencePoint(address >> 4);
+            return false;
         }
 
         private bool handleInterruptAcknowledgeWrite(int address, int shift, int mask, ref int value) {
