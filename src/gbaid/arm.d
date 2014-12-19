@@ -28,15 +28,12 @@ public class ARM7TDMI {
 	private int decoded;
 	private bool branchSignal = false;
 
-	public this() {
+	public this(Memory memory) {
+		this.memory = memory;
 		haltCondition = new Condition(new Mutex());
 		armPipeline = new ARMPipeline();
 		thumbPipeline = new THUMBPipeline();
 		pipeline = armPipeline;
-	}
-
-	public void setMemory(Memory memory) {
-		this.memory = memory;
 	}
 
 	public void setEntryPointAddress(uint entryPointAddress) {
@@ -125,6 +122,8 @@ public class ARM7TDMI {
 				dumpRegisters();
 			}
 		}
+		//dumpInstructions();
+		//dumpRegisters();
 	}
 
 	private void branch() {

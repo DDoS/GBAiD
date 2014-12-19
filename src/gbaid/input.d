@@ -6,14 +6,16 @@ import core.time;
 import derelict.sdl2.sdl;
 
 import gbaid.system;
+import gbaid.memory;
 import gbaid.util;
 
-private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
+private alias InterruptHandler = GameBoyAdvance.InterruptHandler;
 private alias InterruptSource = GameBoyAdvance.InterruptSource;
 
 public class GameBoyAdvanceKeypad {
     private static TickDuration INPUT_PERIOD;
-    private GameBoyAdvanceMemory memory;
+    private Memory ioRegisters;
+    private InterruptHandler interruptHandler;
     private int[10] keyMap = [
         SDL_SCANCODE_P,
         SDL_SCANCODE_O,
@@ -33,8 +35,9 @@ public class GameBoyAdvanceKeypad {
         INPUT_PERIOD = TickDuration.from!"nsecs"(16666667);
     }
 
-    public void setMemory(GameBoyAdvanceMemory memory) {
-        this.memory = memory;
+    public this(MonitoredMemory ioRegisters, InterruptHandler interruptHandler) {
+        this.ioRegisters = ioRegisters.getMonitored();
+        this.interruptHandler = interruptHandler;
     }
 
     public void map(Key gbaKey, int button) {
@@ -62,15 +65,15 @@ public class GameBoyAdvanceKeypad {
         while (running) {
             timer.start();
             int state = ~updateState();
-            int control = memory.getShort(0x4000132);
+            int control = ioRegisters.getShort(0x132);
             if (checkBit(control, 14)) {
                 int requested = control & 0x3FF;
                 if (checkBit(control, 15)) {
                     if ((state & requested) == requested) {
-                        memory.requestInterrupt(InterruptSource.KEYPAD);
+                        interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
                     }
                 } else if (state & requested) {
-                    memory.requestInterrupt(InterruptSource.KEYPAD);
+                    interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
                 }
             }
             timer.waitUntil(INPUT_PERIOD);
@@ -84,7 +87,7 @@ public class GameBoyAdvanceKeypad {
             keypadState |= keyboard[key] << i;
         }
         keypadState = ~keypadState & 0x3FF;
-        memory.setShort(0x4000130, cast(short) keypadState);
+        ioRegisters.setShort(0x130, cast(short) keypadState);
         return keypadState;
     }
 

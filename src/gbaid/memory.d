@@ -493,6 +493,221 @@ public abstract class MappedMemory : Memory {
     }
 }
 
+public class MonitoredMemory : Memory {
+    private alias ReadMonitorDelegate = void delegate(Memory, int, int, int, ref int);
+    private alias PreWriteMonitorDelegate = bool delegate(Memory, int, int, int, ref int);
+    private alias PostWriteMonitorDelegate = void delegate(Memory, int, int, int, int, int);
+    private Memory memory;
+    private MemoryMonitor[] monitors;
+
+    public this(Memory memory) {
+        this.memory = memory;
+        monitors = new MemoryMonitor[divFourRoundUp(memory.getCapacity())];
+    }
+
+    public void addMonitor(ReadMonitorDelegate monitor, int address, int size) {
+        addMonitor(new ReadMemoryMonitor(monitor), address, size);
+    }
+
+    public void addMonitor(PreWriteMonitorDelegate monitor, int address, int size) {
+        addMonitor(new PreWriteMemoryMonitor(monitor), address, size);
+    }
+
+    public void addMonitor(PostWriteMonitorDelegate monitor, int address, int size) {
+        addMonitor(new PostWriteMemoryMonitor(monitor), address, size);
+    }
+
+    public void addMonitor(MemoryMonitor monitor, int address, int size) {
+        address >>= 2;
+        size = divFourRoundUp(size);
+        foreach (i; address .. address + size) {
+            monitors[i] = monitor;
+        }
+    }
+
+    public Memory getMonitored() {
+        return memory;
+    }
+
+    public override ulong getCapacity() {
+        return memory.getCapacity();
+    }
+
+    public override void[] getArray(uint address) {
+        return memory.getArray(address);
+    }
+
+    public override void* getPointer(uint address) {
+        return memory.getPointer(address);
+    }
+
+    public override byte getByte(uint address) {
+        byte b = memory.getByte(address);
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address & ~3;
+            int shift = ((address & 3) << 3);
+            int mask = 0xFF << shift;
+            int intValue = ucast(b) << shift;
+            monitor.onRead(memory, alignedAddress, shift, mask, intValue);
+            b = cast(byte) ((intValue & mask) >> shift);
+        }
+        return b;
+    }
+
+    public override void setByte(uint address, byte b) {
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address & ~3;
+            int shift = ((address & 3) << 3);
+            int mask = 0xFF << shift;
+            int intValue = ucast(b) << shift;
+            bool write = monitor.onPreWrite(memory, alignedAddress, shift, mask, intValue);
+            if (write) {
+                int oldValue = memory.getInt(alignedAddress);
+                b = cast(byte) ((intValue & mask) >> shift);
+                memory.setByte(address, b);
+                int newValue = oldValue & ~mask | intValue & mask;
+                monitor.onPostWrite(memory, alignedAddress, shift, mask, oldValue, newValue);
+            }
+        } else {
+            memory.setByte(address, b);
+        }
+    }
+
+    public override short getShort(uint address) {
+        address &= ~1;
+        short s = memory.getShort(address);
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address & ~3;
+            int shift = ((address & 2) << 3);
+            int mask = 0xFFFF << shift;
+            int intValue = ucast(s) << shift;
+            monitor.onRead(memory, alignedAddress, shift, mask, intValue);
+            s = cast(short) ((intValue & mask) >> shift);
+        }
+        return s;
+    }
+
+    public override void setShort(uint address, short s) {
+        address &= ~1;
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address & ~3;
+            int shift = ((address & 2) << 3);
+            int mask = 0xFFFF << shift;
+            int intValue = ucast(s) << shift;
+            bool write = monitor.onPreWrite(memory, alignedAddress, shift, mask, intValue);
+            if (write) {
+                int oldValue = memory.getInt(alignedAddress);
+                s = cast(byte) ((intValue & mask) >> shift);
+                memory.setShort(address, s);
+                int newValue = oldValue & ~mask | intValue & mask;
+                monitor.onPostWrite(memory, alignedAddress, shift, mask, oldValue, newValue);
+            }
+        } else {
+            memory.setShort(address, s);
+        }
+    }
+
+    public override int getInt(uint address) {
+        address &= ~3;
+        int i = memory.getInt(address);
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address;
+            int shift = 0;
+            int mask = 0xFFFFFFFF;
+            int intValue = i;
+            monitor.onRead(memory, alignedAddress, shift, mask, intValue);
+            i = intValue;
+        }
+        return i;
+    }
+
+    public override void setInt(uint address, int i) {
+        address &= ~3;
+        MemoryMonitor monitor = getMonitor(address);
+        if (monitor) {
+            int alignedAddress = address;
+            int shift = 0;
+            int mask = 0xFFFFFFFF;
+            int intValue = i;
+            bool write = monitor.onPreWrite(memory, alignedAddress, shift, mask, intValue);
+            if (write) {
+                int oldValue = memory.getInt(alignedAddress);
+                i = intValue;
+                memory.setInt(address, i);
+                int newValue = oldValue & ~mask | intValue & mask;
+                monitor.onPostWrite(memory, alignedAddress, shift, mask, oldValue, newValue);
+            }
+        } else {
+            memory.setInt(address, i);
+        }
+    }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        return memory.compareAndSet(address, expected, update);
+    }
+
+    private MemoryMonitor getMonitor(int address) {
+        return monitors[address >> 2];
+    }
+
+    private static int divFourRoundUp(ulong i) {
+        return cast(int) ((i >> 2) + ((i & 0b11) ? 1 : 0));
+    }
+
+    public static abstract class MemoryMonitor {
+        protected void onRead(Memory memory, int address, int shift, int mask, ref int value) {
+        }
+
+        protected bool onPreWrite(Memory memory, int address, int shift, int mask, ref int value) {
+            return true;
+        }
+
+        protected void onPostWrite(Memory memory, int address, int shift, int mask, int oldValue, int newValue) {
+        }
+    }
+
+    private static class ReadMemoryMonitor : MemoryMonitor {
+        private ReadMonitorDelegate monitor;
+
+        private this(ReadMonitorDelegate monitor) {
+            this.monitor = monitor;
+        }
+
+        protected override void onRead(Memory memory, int address, int shift, int mask, ref int value) {
+            monitor(memory, address, shift, mask, value);
+        }
+    }
+
+    private static class PreWriteMemoryMonitor : MemoryMonitor {
+        private PreWriteMonitorDelegate monitor;
+
+        private this(PreWriteMonitorDelegate monitor) {
+            this.monitor = monitor;
+        }
+
+        protected override bool onPreWrite(Memory memory, int address, int shift, int mask, ref int value) {
+            return monitor(memory, address, shift, mask, value);
+        }
+    }
+
+    private static class PostWriteMemoryMonitor : MemoryMonitor {
+        private PostWriteMonitorDelegate monitor;
+
+        private this(PostWriteMonitorDelegate monitor) {
+            this.monitor = monitor;
+        }
+
+        protected override void onPostWrite(Memory memory, int address, int shift, int mask, int oldValue, int newValue) {
+            monitor(memory, address, shift, mask, oldValue, newValue);
+        }
+    }
+}
+
 public class NullMemory : Memory {
     public override ulong getCapacity() {
         return 0;

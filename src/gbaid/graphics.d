@@ -13,6 +13,7 @@ import gbaid.gl, gbaid.gl20;
 import gbaid.util;
 
 private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
+private alias InterruptHandler = GameBoyAdvance.InterruptHandler;
 private alias InterruptSource = GameBoyAdvance.InterruptSource;
 private alias SignalEvent = GameBoyAdvance.SignalEvent;
 
@@ -28,6 +29,7 @@ public class GameBoyAdvanceDisplay {
     private static TickDuration H_BLANK_DURATION;
     private static TickDuration TOTAL_DURATION;
     private GameBoyAdvanceMemory memory;
+    private InterruptHandler interruptHandler;
     private Context context;
     private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
@@ -46,7 +48,9 @@ public class GameBoyAdvanceDisplay {
         TOTAL_DURATION = (H_VISIBLE_DURATION + H_BLANK_DURATION) * VERTICAL_TIMING_RESOLUTION;
     }
 
-    public this() {
+    public this(GameBoyAdvanceMemory memory, InterruptHandler interruptHandler) {
+        this.memory = memory;
+        this.interruptHandler = interruptHandler;
         frameSync = new Condition(new Mutex());
         lineTypes = [
             &lineMode0,
@@ -57,14 +61,13 @@ public class GameBoyAdvanceDisplay {
             &lineBlank,
             &lineBlank
         ];
-    }
-
-    public void setMemory(GameBoyAdvanceMemory memory) {
-        this.memory = memory;
-
         context = new GL20Context();
         context.setWindowTitle("GBAiD");
         context.setResizable(true);
+
+        MonitoredMemory ioRegisters = memory.getIORegisters();
+        ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x28, 8);
+        ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x38, 8);
     }
 
     public void setScale(float scale) {
@@ -148,13 +151,24 @@ public class GameBoyAdvanceDisplay {
         context.destroy();
     }
 
-    public void reloadInternalAffineReferencePoint(int layer) {
+    private void reloadInternalAffineReferencePoint(int layer) {
         layer -= 2;
         int layerAddressOffset = layer << 4;
         int dx = memory.getInt(0x4000028 + layerAddressOffset) << 4;
         internalAffineReferenceX[layer] = dx >> 4;
         int dy = memory.getInt(0x400002C + layerAddressOffset) << 4;
         internalAffineReferenceY[layer] = dy >> 4;
+    }
+
+    private void onAffineReferencePointPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
+        int layer = (address >> 4) - 2;
+        newValue <<= 4;
+        newValue >>= 4;
+        if ((address & 0b11) == 8) {
+            internalAffineReferenceX[layer] = newValue;
+        } else {
+            internalAffineReferenceY[layer] = newValue;
+        }
     }
 
     private void drawRun() {
@@ -1149,25 +1163,25 @@ public class GameBoyAdvanceDisplay {
     private void signalHBLANK(int line) {
         int displayStatus = memory.getInt(0x4000004);
         if (line < VERTICAL_RESOLUTION) {
-            memory.signalEvent(SignalEvent.H_BLANK);
+            interruptHandler.signalEvent(SignalEvent.H_BLANK);
             if (checkBit(displayStatus, 4)) {
-                memory.requestInterrupt(InterruptSource.LCD_H_BLANK);
+                interruptHandler.requestInterrupt(InterruptSource.LCD_H_BLANK);
             }
         }
     }
 
     private void signalVBLANK() {
         int displayStatus = memory.getInt(0x4000004);
-        memory.signalEvent(SignalEvent.V_BLANK);
+        interruptHandler.signalEvent(SignalEvent.V_BLANK);
         if (checkBit(displayStatus, 3)) {
-            memory.requestInterrupt(InterruptSource.LCD_V_BLANK);
+            interruptHandler.requestInterrupt(InterruptSource.LCD_V_BLANK);
         }
     }
 
     private void checkVCOUNTER(int line) {
         int displayStatus = memory.getInt(0x4000004);
         if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
-            memory.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
+            interruptHandler.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
     }
 
