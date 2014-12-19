@@ -15,7 +15,7 @@ import gbaid.util;
 private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
 private alias InterruptHandler = GameBoyAdvance.InterruptHandler;
 private alias InterruptSource = GameBoyAdvance.InterruptSource;
-private alias SignalEvent = GameBoyAdvance.SignalEvent;
+private alias DMAs = GameBoyAdvance.DMAs;
 
 public class GameBoyAdvanceDisplay {
     private alias LineType = void delegate(int);
@@ -30,6 +30,7 @@ public class GameBoyAdvanceDisplay {
     private static TickDuration TOTAL_DURATION;
     private GameBoyAdvanceMemory memory;
     private InterruptHandler interruptHandler;
+    private DMAs dmas;
     private Context context;
     private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
@@ -48,9 +49,11 @@ public class GameBoyAdvanceDisplay {
         TOTAL_DURATION = (H_VISIBLE_DURATION + H_BLANK_DURATION) * VERTICAL_TIMING_RESOLUTION;
     }
 
-    public this(GameBoyAdvanceMemory memory, InterruptHandler interruptHandler) {
+    public this(GameBoyAdvanceMemory memory, InterruptHandler interruptHandler, DMAs dmas) {
         this.memory = memory;
         this.interruptHandler = interruptHandler;
+        this.dmas = dmas;
+
         frameSync = new Condition(new Mutex());
         lineTypes = [
             &lineMode0,
@@ -1163,7 +1166,7 @@ public class GameBoyAdvanceDisplay {
     private void signalHBLANK(int line) {
         int displayStatus = memory.getInt(0x4000004);
         if (line < VERTICAL_RESOLUTION) {
-            interruptHandler.signalEvent(SignalEvent.H_BLANK);
+            dmas.signalHBLANK();
             if (checkBit(displayStatus, 4)) {
                 interruptHandler.requestInterrupt(InterruptSource.LCD_H_BLANK);
             }
@@ -1172,7 +1175,7 @@ public class GameBoyAdvanceDisplay {
 
     private void signalVBLANK() {
         int displayStatus = memory.getInt(0x4000004);
-        interruptHandler.signalEvent(SignalEvent.V_BLANK);
+        dmas.signalVBLANK();
         if (checkBit(displayStatus, 3)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_V_BLANK);
         }

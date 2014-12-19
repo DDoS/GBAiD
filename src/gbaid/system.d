@@ -39,14 +39,11 @@ public class GameBoyAdvance {
         MonitoredMemory ioRegisters = memory.getIORegisters();
 
         processor = new ARM7TDMI(memory);
-        interruptHandler = new InterruptHandler(processor, null, ioRegisters);
-        display = new GameBoyAdvanceDisplay(memory, interruptHandler);
+        interruptHandler = new InterruptHandler(processor, ioRegisters);
         keypad = new GameBoyAdvanceKeypad(ioRegisters, interruptHandler);
         timers = new Timers(interruptHandler, ioRegisters);
         dmas = new DMAs(memory, interruptHandler, ioRegisters);
-
-        // TODO: fix this circular dependency
-        interruptHandler.setDMAs(dmas);
+        display = new GameBoyAdvanceDisplay(memory, interruptHandler, dmas);
 
         processor.setEntryPointAddress(GameBoyAdvanceMemory.BIOS_START);
     }
@@ -390,7 +387,7 @@ public class GameBoyAdvance {
         }
     }
 
-    private static class DMAs {
+    public static class DMAs {
         private GameBoyAdvanceMemory memory;
         private InterruptHandler interruptHandler;
         private Memory ioRegisters;
@@ -427,17 +424,14 @@ public class GameBoyAdvance {
             }
         }
 
-        private void signalEvent(int event) {
-            final switch (event) {
-                case SignalEvent.V_BLANK:
-                    atomicOp!"|="(signals, 0b10);
-                    semaphore.notify();
-                    break;
-                case SignalEvent.H_BLANK:
-                    atomicOp!"|="(signals, 0b100);
-                    semaphore.notify();
-                    break;
-            }
+        public void signalVBLANK() {
+            atomicOp!"|="(signals, 0b10);
+            semaphore.notify();
+        }
+
+        public void signalHBLANK() {
+            atomicOp!"|="(signals, 0b100);
+            semaphore.notify();
         }
 
         private void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
@@ -794,20 +788,14 @@ public class GameBoyAdvance {
 
     public static class InterruptHandler {
         private ARM7TDMI processor;
-        private DMAs dmas;
         private Memory ioRegisters;
         private bool isSoftwareHalt = false, isDMAHalt = false;
 
-        private this(ARM7TDMI processor, DMAs dmas, MonitoredMemory ioRegisters) {
+        private this(ARM7TDMI processor, MonitoredMemory ioRegisters) {
             this.processor = processor;
-            this.dmas = dmas;
             this.ioRegisters = ioRegisters.getMonitored();
             ioRegisters.addMonitor(&onInterruptAcknowledgePreWrite, 0x202, 2);
             ioRegisters.addMonitor(&onHaltRequestPostWrite, 0x301, 1);
-        }
-
-        private void setDMAs(DMAs dmas) {
-            this.dmas = dmas;
         }
 
         public void requestInterrupt(int source) {
@@ -825,10 +813,6 @@ public class GameBoyAdvance {
             int flags = ioRegisters.getInt(0x200);
             setBits(value, 16, 31, (flags & ~value) >> 16);
             return true;
-        }
-
-        public void signalEvent(int event) {
-            dmas.signalEvent(event);
         }
 
         private void dmaHalt() {
@@ -874,11 +858,6 @@ public class GameBoyAdvance {
         DMA_3 = 11,
         KEYPAD = 12,
         GAMEPAK = 13
-    }
-
-    public static enum SignalEvent {
-        V_BLANK = 0,
-        H_BLANK = 1
     }
 }
 
