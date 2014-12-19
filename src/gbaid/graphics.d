@@ -167,10 +167,10 @@ public class GameBoyAdvanceDisplay {
         int layer = (address >> 4) - 2;
         newValue <<= 4;
         newValue >>= 4;
-        if ((address & 0b11) == 8) {
-            internalAffineReferenceX[layer] = newValue;
-        } else {
+        if (address & 0b100) {
             internalAffineReferenceY[layer] = newValue;
+        } else {
+            internalAffineReferenceX[layer] = newValue;
         }
     }
 
