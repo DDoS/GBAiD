@@ -19,13 +19,15 @@ import gbaid.memory;
 import gbaid.input;
 import gbaid.util;
 
-public alias InterruptSource = InterruptHandler.InterruptSource;
 public alias IORegisters = MonitoredMemory!RAM;
+public alias InterruptSource = InterruptHandler.InterruptSource;
+public alias HaltSource = HaltHandler.HaltSource;
 
 public class GameBoyAdvance {
     private MainMemory memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
+    private HaltHandler haltHandler;
     private Display display;
     private Keypad keypad;
     private Timers timers;
@@ -42,10 +44,11 @@ public class GameBoyAdvance {
         IORegisters ioRegisters = memory.getIORegisters();
 
         processor = new ARM7TDMI(memory);
-        interruptHandler = new InterruptHandler(ioRegisters, processor);
+        haltHandler = new HaltHandler(processor);
+        interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
         timers = new Timers(ioRegisters, interruptHandler);
-        dmas = new DMAs(memory, ioRegisters, interruptHandler);
+        dmas = new DMAs(memory, ioRegisters, interruptHandler, haltHandler);
         display = new Display(ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
 
         processor.setEntryPointAddress(MainMemory.BIOS_START);
@@ -123,7 +126,7 @@ public class GameBoyAdvance {
     }
 }
 
-public static class MainMemory : MappedMemory {
+public class MainMemory : MappedMemory {
     private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
     private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
     private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
@@ -262,7 +265,7 @@ public static class MainMemory : MappedMemory {
     }
 }
 
-private static class GamePak : MappedMemory {
+private class GamePak : MappedMemory {
     private static immutable uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
     private static immutable uint ROM_START = 0x00000000;
     private static immutable uint ROM_END = 0x05FFFFFF;
@@ -403,10 +406,11 @@ private static class GamePak : MappedMemory {
     }
 }
 
-public static class DMAs {
+public class DMAs {
     private MainMemory memory;
-    private InterruptHandler interruptHandler;
     private RAM ioRegisters;
+    private InterruptHandler interruptHandler;
+    private HaltHandler haltHandler;
     private Thread thread;
     private shared bool running = false;
     private Semaphore semaphore;
@@ -415,10 +419,11 @@ public static class DMAs {
     private shared int[4] destinationAddresses = new int[4];
     private shared int[4] wordCounts = new int[4];
 
-    private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler) {
+    private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
-        this.interruptHandler = interruptHandler;
         this.ioRegisters = ioRegisters.getMonitored();
+        this.interruptHandler = interruptHandler;
+        this.haltHandler = haltHandler;
         semaphore = new Semaphore();
         ioRegisters.addMonitor(&onPostWrite, 0xBA, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xC6, 2);
@@ -461,7 +466,7 @@ public static class DMAs {
         wordCounts[channel] = formatWordCount(newControl, channel);
 
         atomicOp!"|="(signals, 0b1);
-        interruptHandler.dmaHalt();
+        haltHandler.halt(HaltSource.DMA);
         semaphore.notify();
     }
 
@@ -478,7 +483,7 @@ public static class DMAs {
                         for (int c = 0; c < 4; c++) {
                             tryDMA(c, s);
                         }
-                        interruptHandler.dmaResume();
+                        haltHandler.resume(HaltSource.DMA);
                     }
                 }
             }
@@ -521,7 +526,7 @@ public static class DMAs {
 
         int increment = type ? 4 : 2;
 
-        interruptHandler.dmaHalt();
+        haltHandler.halt(HaltSource.DMA);
 
         //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddresses[channel], destinationAddresses[channel], wordCount * increment, startTiming);
 
@@ -549,7 +554,7 @@ public static class DMAs {
             interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
         }
 
-        interruptHandler.dmaResume();
+        haltHandler.resume(HaltSource.DMA);
     }
 
     private void modifyAddress(ref shared int address, int control, int amount) {
@@ -596,9 +601,9 @@ public static class DMAs {
     }
 }
 
-private static class Timers {
-    private InterruptHandler interruptHandler;
+private class Timers {
     private RAM ioRegisters;
+    private InterruptHandler interruptHandler;
     private long[4] startTimes = new long[4];
     private long[4] endTimes = new long[4];
     private Scheduler scheduler;
@@ -606,8 +611,8 @@ private static class Timers {
     private void delegate()[4] irqHandlers;
 
     public this(IORegisters ioRegisters, InterruptHandler interruptHandler) {
-        this.interruptHandler = interruptHandler;
         this.ioRegisters = ioRegisters.getMonitored();
+        this.interruptHandler = interruptHandler;
         scheduler = new Scheduler();
         irqHandlers = [&irqHandler!0, &irqHandler!1, &irqHandler!2, &irqHandler!3];
         ioRegisters.addMonitor(new TimerMemoryMonitor(), 0x100, 16);
@@ -797,14 +802,15 @@ private static class Timers {
     }
 }
 
-public static class InterruptHandler {
-    private ARM7TDMI processor;
+public class InterruptHandler {
     private RAM ioRegisters;
-    private bool isSoftwareHalt = false, isDMAHalt = false;
+    private ARM7TDMI processor;
+    private HaltHandler haltHandler;
 
-    private this(IORegisters ioRegisters, ARM7TDMI processor) {
-        this.processor = processor;
+    private this(IORegisters ioRegisters, ARM7TDMI processor, HaltHandler haltHandler) {
         this.ioRegisters = ioRegisters.getMonitored();
+        this.processor = processor;
+        this.haltHandler = haltHandler;
         ioRegisters.addMonitor(&onInterruptAcknowledgePreWrite, 0x202, 2);
         ioRegisters.addMonitor(&onHaltRequestPostWrite, 0x301, 1);
     }
@@ -815,8 +821,7 @@ public static class InterruptHandler {
             setBit(flags, source, 1);
             ioRegisters.setShort(0x202, cast(short) flags);
             processor.triggerIRQ();
-            isSoftwareHalt = false;
-            tryResume();
+            haltHandler.resume(HaltSource.SOFTWARE);
         }
     }
 
@@ -826,30 +831,13 @@ public static class InterruptHandler {
         return true;
     }
 
-    private void dmaHalt() {
-        isDMAHalt = true;
-        processor.halt();
-    }
-
-    private void dmaResume() {
-        isDMAHalt = false;
-        tryResume();
-    }
-
     private void onHaltRequestPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
         if (checkBit(mask, 15)) {
             if (checkBit(newValue, 15)) {
                 // TODO: implement stop
             } else {
-                isSoftwareHalt = true;
-                processor.halt();
+                haltHandler.halt(HaltSource.SOFTWARE);
             }
-        }
-    }
-
-    private void tryResume() {
-        if (!isSoftwareHalt && !isDMAHalt) {
-            processor.resume();
         }
     }
 
@@ -868,6 +856,32 @@ public static class InterruptHandler {
         DMA_3 = 11,
         KEYPAD = 12,
         GAMEPAK = 13
+    }
+}
+
+private class HaltHandler {
+    private ARM7TDMI processor;
+    private bool[2] halts = new bool[2];
+
+    private this(ARM7TDMI processor) {
+        this.processor = processor;
+    }
+
+    private void halt(HaltSource source) {
+        halts[source] = true;
+        processor.halt();
+    }
+
+    private void resume(HaltSource source) {
+        halts[source] = false;
+        if (!halts[0] && !halts[1]) {
+            processor.resume();
+        }
+    }
+
+    private static enum HaltSource {
+        SOFTWARE = 0,
+        DMA = 1
     }
 }
 
