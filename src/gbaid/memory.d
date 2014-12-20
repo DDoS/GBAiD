@@ -601,7 +601,7 @@ public class MonitoredMemory : Memory {
             bool write = monitor.onPreWrite(memory, alignedAddress, shift, mask, intValue);
             if (write) {
                 int oldValue = memory.getInt(alignedAddress);
-                s = cast(byte) ((intValue & mask) >> shift);
+                s = cast(short) ((intValue & mask) >> shift);
                 memory.setShort(address, s);
                 int newValue = oldValue & ~mask | intValue & mask;
                 monitor.onPostWrite(memory, alignedAddress, shift, mask, oldValue, newValue);
