@@ -122,8 +122,6 @@ public class ARM7TDMI {
 				dumpRegisters();
 			}
 		}
-		//dumpInstructions();
-		//dumpRegisters();
 	}
 
 	private void branch() {

@@ -462,6 +462,7 @@ public class GameBoyAdvance {
                             for (int c = 0; c < 4; c++) {
                                 tryDMA(c, s);
                             }
+                            interruptHandler.dmaResume();
                         }
                     }
                 }
@@ -473,13 +474,11 @@ public class GameBoyAdvance {
 
             int control = ioRegisters.getShort(dmaAddress + 2);
             if (!checkBit(control, 15)) {
-                interruptHandler.dmaResume();
                 return;
             }
 
             int startTiming = getBits(control, 12, 13);
             if (startTiming != source) {
-                interruptHandler.dmaResume();
                 return;
             }
 
@@ -504,20 +503,6 @@ public class GameBoyAdvance {
             int repeat = getBit(control, 9);
             int endIRQ = getBit(control, 14);
 
-            void modifyAddress(ref shared int address, int control, int amount) {
-                final switch (control) {
-                    case 0:
-                    case 3:
-                        atomicOp!"+="(address, amount);
-                        break;
-                    case 1:
-                        atomicOp!"-="(address, amount);
-                        break;
-                    case 2:
-                        break;
-                }
-            }
-
             int increment = type ? 4 : 2;
 
             interruptHandler.dmaHalt();
@@ -534,12 +519,6 @@ public class GameBoyAdvance {
                 modifyAddress(destinationAddresses[channel], destinationAddressControl, increment);
             }
 
-            if (endIRQ) {
-                interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
-            }
-
-            interruptHandler.dmaResume();
-
             if (repeat) {
                 wordCounts[channel] = formatWordCount(ioRegisters.getInt(dmaAddress), channel);
                 if (destinationAddressControl == 3) {
@@ -547,11 +526,27 @@ public class GameBoyAdvance {
                 }
                 atomicOp!"|="(signals, 0b1);
             } else {
-                int oldDMAControl = void, newDMAControl = void;
-                do {
-                    oldDMAControl = ioRegisters.getInt(dmaAddress);
-                    newDMAControl &= 0x7FFFFFFF;
-                } while (!ioRegisters.compareAndSet(dmaAddress, oldDMAControl, newDMAControl));
+                ioRegisters.setShort(dmaAddress + 2, cast(short) (control & 0x7FFF));
+            }
+
+            if (endIRQ) {
+                interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
+            }
+
+            interruptHandler.dmaResume();
+        }
+
+        private void modifyAddress(ref shared int address, int control, int amount) {
+            final switch (control) {
+                case 0:
+                case 3:
+                    atomicOp!"+="(address, amount);
+                    break;
+                case 1:
+                    atomicOp!"-="(address, amount);
+                    break;
+                case 2:
+                    break;
             }
         }
 
@@ -799,7 +794,7 @@ public class GameBoyAdvance {
         }
 
         public void requestInterrupt(int source) {
-            if (ioRegisters.getInt(0x208) && checkBit(ioRegisters.getShort(0x200), source)) {
+            if ((ioRegisters.getInt(0x208) & 0b1) && checkBit(ioRegisters.getShort(0x200), source)) {
                 int flags = ioRegisters.getShort(0x202);
                 setBit(flags, source, 1);
                 ioRegisters.setShort(0x202, cast(short) flags);
