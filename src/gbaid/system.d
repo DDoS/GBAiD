@@ -54,33 +54,12 @@ public class GameBoyAdvance {
         processor.setEntryPointAddress(MainMemory.BIOS_START);
     }
 
-    public void loadROM(string file) {
-        if (file is null) {
-            throw new NullPathException("ROM");
+    public void setGamePak(GamePak gamePak) {
+        if (gamePak is null) {
+            throw new NullGamePakException();
         }
         checkNotRunning();
-        memory.getGamePak().loadROM(file);
-    }
-
-    public void loadSave(string file) {
-        if (file is null) {
-            throw new NullPathException("save");
-        }
-        checkNotRunning();
-        memory.getGamePak().loadSave(file);
-    }
-
-    public void saveSave(string file) {
-        if (file is null) {
-            throw new NullPathException("save");
-        }
-        checkNotRunning();
-        memory.getGamePak().saveSave(file);
-    }
-
-    public void loadNewSave() {
-        checkNotRunning();
-        memory.getGamePak().loadEmptySave();
+        memory.setGamePak(gamePak);
     }
 
     public void setDisplayScale(float scale) {
@@ -97,12 +76,6 @@ public class GameBoyAdvance {
 
     public void run() {
         checkNotRunning();
-        if (!memory.getGamePak().hasROM()) {
-            throw new NoROMException();
-        }
-        if (!memory.getGamePak().hasSave()) {
-            throw new NoSaveException();
-        }
         if (!DerelictSDL2.isLoaded) {
             DerelictSDL2.load();
         }
@@ -155,7 +128,7 @@ public class MainMemory : MappedMemory {
     private RAM vram;
     private RAM oam;
     private RAM palette;
-    private GamePak gamePak;
+    private Memory gamePak;
     private ulong capacity;
 
     private this(string biosFile) {
@@ -167,7 +140,7 @@ public class MainMemory : MappedMemory {
         vram = new RAM(VRAM_SIZE);
         oam = new RAM(OAM_SIZE);
         palette = new RAM(PALETTE_SIZE);
-        gamePak = new GamePak();
+        gamePak = unusedMemory;
         updateCapacity();
     }
 
@@ -199,7 +172,12 @@ public class MainMemory : MappedMemory {
     }
 
     private GamePak getGamePak() {
-        return gamePak;
+        return cast(GamePak) gamePak;
+    }
+
+    private void setGamePak(GamePak gamePak) {
+        this.gamePak = gamePak;
+        updateCapacity();
     }
 
     protected override Memory map(ref uint address) {
@@ -265,7 +243,7 @@ public class MainMemory : MappedMemory {
     }
 }
 
-private class GamePak : MappedMemory {
+public class GamePak : MappedMemory {
     private static immutable uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
     private static immutable uint ROM_START = 0x00000000;
     private static immutable uint ROM_END = 0x05FFFFFF;
@@ -275,32 +253,46 @@ private class GamePak : MappedMemory {
     private static immutable uint EEPROM_START_WIDE = 0x05000000;
     private static immutable uint EEPROM_END = 0x05FFFFFF;
     private NullMemory unusedMemory;
-    private Memory rom;
+    private ROM rom;
     private Memory save;
     private Memory eeprom;
     private bool hasEEPROM;
     private uint eepromStart;
     private ulong capacity;
 
-    private this() {
-        unusedMemory = new NullMemory();
-        rom = unusedMemory;
-        save = unusedMemory;
-        eeprom = unusedMemory;
-        updateCapacity();
+    public this(string romFile) {
+        this(romFile, null);
     }
 
-    private void updateCapacity() {
+    public this(string romFile, string saveFile) {
+        unusedMemory = new NullMemory();
+
+        if (romFile is null) {
+            throw new NullPathException("ROM");
+        }
+        loadROM(romFile);
+
+        if (saveFile is null) {
+            loadEmptySave();
+        } else {
+            loadSave(saveFile);
+        }
+
         capacity = rom.getCapacity() + save.getCapacity() + eeprom.getCapacity();
     }
 
     private void loadROM(string romFile) {
         rom = new ROM(romFile, MAX_ROM_SIZE);
         eepromStart = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_START_NARROW : EEPROM_START_WIDE;
-        updateCapacity();
+    }
+
+    private void discardSave() {
+        save = unusedMemory;
+        eeprom = unusedMemory;
     }
 
     private void loadSave(string saveFile) {
+        discardSave();
         Memory[] loaded = loadFromFile(saveFile);
         foreach (Memory memory; loaded) {
             if (cast(EEPROM) memory) {
@@ -312,26 +304,10 @@ private class GamePak : MappedMemory {
                 throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
             }
         }
-        updateCapacity();
-    }
-
-    private void saveSave(string saveFile) {
-        if (cast(NullMemory) eeprom) {
-            saveToFile(saveFile, save);
-        } else {
-            saveToFile(saveFile, save, eeprom);
-        }
-    }
-
-    private bool hasROM() {
-        return !(cast(NullMemory) rom);
-    }
-
-    private bool hasSave() {
-        return !(cast(NullMemory) save) || hasEEPROM;
     }
 
     private void loadEmptySave() {
+        discardSave();
         // Detect save types and size using ID strings in ROM
         bool hasFlash = false;
         int saveSize = SaveMemory.SRAM[1];
@@ -364,8 +340,6 @@ private class GamePak : MappedMemory {
         if (hasEEPROM) {
             eeprom = new EEPROM(SaveMemory.EEPROM[1]);
         }
-        // Update the capacity
-        updateCapacity();
     }
 
     protected override Memory map(ref uint address) {
@@ -395,6 +369,14 @@ private class GamePak : MappedMemory {
 
     public override ulong getCapacity() {
         return capacity;
+    }
+
+    public void saveSave(string saveFile) {
+        if (cast(NullMemory) eeprom) {
+            saveToFile(saveFile, save);
+        } else {
+            saveToFile(saveFile, save, eeprom);
+        }
     }
 
     private static enum SaveMemory {
@@ -891,15 +873,9 @@ public class NullPathException : Exception {
     }
 }
 
-public class NoROMException : Exception {
+public class NullGamePakException : Exception {
     protected this() {
-        super("No loaded gamepak ROM");
-    }
-}
-
-public class NoSaveException : Exception {
-    protected this() {
-        super("No loaded gamepak save");
+        super("Game Pak is null");
     }
 }
 

@@ -9,6 +9,7 @@ import gbaid.graphics;
 import gbaid.util;
 
 public void main(string[] args) {
+	// Parse comand line arguments
 	string bios = null, save = null;
 	bool noLoad = false, noSave = false;
 	float scale = 2;
@@ -25,6 +26,7 @@ public void main(string[] args) {
 		"upscaling|u", &upscaling
 	);
 
+	// Resolve BIOS
 	if (bios is null) {
 		writeln("Missing BIOS file path, sepcify with \"-b (path to bios)\"");
 		return;
@@ -35,6 +37,7 @@ public void main(string[] args) {
 		return;
 	}
 
+	// Resolve ROM
 	string rom = getSafe!string(args, 1, null);
 	if (rom is null) {
 		writeln("Missing ROM file path, sepcify as last argument");
@@ -46,31 +49,43 @@ public void main(string[] args) {
 		return;
 	}
 
-	if (save is null) {
-		save = setExtension(rom, ".sav");
-		writeln("Missing save file path, using \"" ~ save ~ "\". Specify with \"-s (path to save)\"");
-	} else {
-		save = expandPath(save);
-	}
-
-	GameBoyAdvance gba = new GameBoyAdvance(bios);
-
-	gba.loadROM(rom);
-	if (!noLoad && exists(save)) {
-		gba.loadSave(save);
-		writeln("Loaded save \"" ~ save ~ "\"");
-	} else {
-		gba.loadNewSave();
+	// Resolve save
+	if (noLoad) {
+		save = null;
 		writeln("Using new save");
+	} else {
+		if (save is null) {
+			save = setExtension(rom, ".sav");
+			writeln("Save path not specified, using default \"" ~ save ~ "\"");
+		} else {
+			save = expandPath(save);
+		}
+		if (exists(save)) {
+			writeln("Loaded save \"" ~ save ~ "\"");
+		} else {
+			save = null;
+			writeln("Save file not found, using new save");
+		}
 	}
 
+	// Create Game Pak
+	GamePak gamePak = new GamePak(rom, save);
+
+	// Create and configure GBA
+	GameBoyAdvance gba = new GameBoyAdvance(bios);
+	gba.setGamePak(gamePak);
 	gba.setDisplayScale(scale);
 	gba.setDisplayUpscalingMode(upscaling);
 
+	// Run GBA
 	gba.run();
 
+	// Save Game Pak save
 	if (!noSave) {
-		gba.saveSave(save);
+		if (save is null) {
+			save = setExtension(rom, ".sav");
+		}
+		gamePak.saveSave(save);
 		writeln("Saved save \"" ~ save ~ "\"");
 	}
 
