@@ -493,14 +493,14 @@ public abstract class MappedMemory : Memory {
     }
 }
 
-public class MonitoredMemory : Memory {
+public class MonitoredMemory(M : Memory) : Memory {
     private alias ReadMonitorDelegate = void delegate(Memory, int, int, int, ref int);
     private alias PreWriteMonitorDelegate = bool delegate(Memory, int, int, int, ref int);
     private alias PostWriteMonitorDelegate = void delegate(Memory, int, int, int, int, int);
-    private Memory memory;
+    private M memory;
     private MemoryMonitor[] monitors;
 
-    public this(Memory memory) {
+    public this(M memory) {
         this.memory = memory;
         monitors = new MemoryMonitor[divFourRoundUp(memory.getCapacity())];
     }
@@ -525,7 +525,7 @@ public class MonitoredMemory : Memory {
         }
     }
 
-    public Memory getMonitored() {
+    public M getMonitored() {
         return memory;
     }
 
@@ -659,18 +659,6 @@ public class MonitoredMemory : Memory {
         return cast(int) ((i >> 2) + ((i & 0b11) ? 1 : 0));
     }
 
-    public static abstract class MemoryMonitor {
-        protected void onRead(Memory memory, int address, int shift, int mask, ref int value) {
-        }
-
-        protected bool onPreWrite(Memory memory, int address, int shift, int mask, ref int value) {
-            return true;
-        }
-
-        protected void onPostWrite(Memory memory, int address, int shift, int mask, int oldValue, int newValue) {
-        }
-    }
-
     private static class ReadMemoryMonitor : MemoryMonitor {
         private ReadMonitorDelegate monitor;
 
@@ -705,6 +693,18 @@ public class MonitoredMemory : Memory {
         protected override void onPostWrite(Memory memory, int address, int shift, int mask, int oldValue, int newValue) {
             monitor(memory, address, shift, mask, oldValue, newValue);
         }
+    }
+}
+
+public abstract class MemoryMonitor {
+    protected void onRead(Memory memory, int address, int shift, int mask, ref int value) {
+    }
+
+    protected bool onPreWrite(Memory memory, int address, int shift, int mask, ref int value) {
+        return true;
+    }
+
+    protected void onPostWrite(Memory memory, int address, int shift, int mask, int oldValue, int newValue) {
     }
 }
 

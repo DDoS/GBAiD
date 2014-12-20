@@ -9,12 +9,11 @@ import gbaid.system;
 import gbaid.memory;
 import gbaid.util;
 
-private alias InterruptHandler = GameBoyAdvance.InterruptHandler;
-private alias InterruptSource = GameBoyAdvance.InterruptSource;
+public alias Key = Keypad.Key;
 
-public class GameBoyAdvanceKeypad {
+public class Keypad {
     private static TickDuration INPUT_PERIOD;
-    private Memory ioRegisters;
+    private RAM ioRegisters;
     private InterruptHandler interruptHandler;
     private int[10] keyMap = [
         SDL_SCANCODE_P,
@@ -35,7 +34,7 @@ public class GameBoyAdvanceKeypad {
         INPUT_PERIOD = TickDuration.from!"nsecs"(16666667);
     }
 
-    public this(MonitoredMemory ioRegisters, InterruptHandler interruptHandler) {
+    public this(IORegisters ioRegisters, InterruptHandler interruptHandler) {
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
     }

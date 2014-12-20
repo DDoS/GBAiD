@@ -12,12 +12,7 @@ import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
 import gbaid.util;
 
-private alias GameBoyAdvanceMemory = GameBoyAdvance.GameBoyAdvanceMemory;
-private alias InterruptHandler = GameBoyAdvance.InterruptHandler;
-private alias InterruptSource = GameBoyAdvance.InterruptSource;
-private alias DMAs = GameBoyAdvance.DMAs;
-
-public class GameBoyAdvanceDisplay {
+public class Display {
     private alias LineType = void delegate(int);
     private static immutable uint HORIZONTAL_RESOLUTION = 240;
     private static immutable uint VERTICAL_RESOLUTION = 160;
@@ -28,7 +23,7 @@ public class GameBoyAdvanceDisplay {
     private static TickDuration H_VISIBLE_DURATION;
     private static TickDuration H_BLANK_DURATION;
     private static TickDuration TOTAL_DURATION;
-    private GameBoyAdvanceMemory memory;
+    private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
     private Context context;
@@ -49,8 +44,11 @@ public class GameBoyAdvanceDisplay {
         TOTAL_DURATION = (H_VISIBLE_DURATION + H_BLANK_DURATION) * VERTICAL_TIMING_RESOLUTION;
     }
 
-    public this(GameBoyAdvanceMemory memory, InterruptHandler interruptHandler, DMAs dmas) {
-        this.memory = memory;
+    public this(IORegisters ioRegisters, RAM palette, RAM vram, RAM oam, InterruptHandler interruptHandler, DMAs dmas) {
+        this.ioRegisters = ioRegisters.getMonitored();
+        this.palette = palette;
+        this.vram = vram;
+        this.oam = oam;
         this.interruptHandler = interruptHandler;
         this.dmas = dmas;
 
@@ -68,7 +66,6 @@ public class GameBoyAdvanceDisplay {
         context.setWindowTitle("GBAiD");
         context.setResizable(true);
 
-        MonitoredMemory ioRegisters = memory.getIORegisters();
         ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x28, 8);
         ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x38, 8);
     }
@@ -157,9 +154,9 @@ public class GameBoyAdvanceDisplay {
     private void reloadInternalAffineReferencePoint(int layer) {
         layer -= 2;
         int layerAddressOffset = layer << 4;
-        int dx = memory.getInt(0x4000028 + layerAddressOffset) << 4;
+        int dx = ioRegisters.getInt(0x28 + layerAddressOffset) << 4;
         internalAffineReferenceX[layer] = dx >> 4;
-        int dy = memory.getInt(0x400002C + layerAddressOffset) << 4;
+        int dy = ioRegisters.getInt(0x2C + layerAddressOffset) << 4;
         internalAffineReferenceY[layer] = dy >> 4;
     }
 
@@ -217,14 +214,14 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineMode0(int line) {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = memory.getShort(0x4000050);
+        int blendControl = ioRegisters.getShort(0x50);
 
-        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+        short backColor = palette.getShort(0x0) & 0x7FFF;
 
         lineBackgroundText(line, lines[0], 0, bgEnables);
         lineBackgroundText(line, lines[1], 1, bgEnables);
@@ -242,8 +239,8 @@ public class GameBoyAdvanceDisplay {
             return;
         }
 
-        int bgControlAddress = 0x4000008 + (layer << 1);
-        int bgControl = memory.getShort(bgControlAddress);
+        int bgControlAddress = 0x8 + (layer << 1);
+        int bgControl = ioRegisters.getShort(bgControlAddress);
 
         int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
@@ -251,7 +248,7 @@ public class GameBoyAdvanceDisplay {
         int mapBase = getBits(bgControl, 8, 12) << 11;
         int screenSize = getBits(bgControl, 14, 15);
 
-        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicControl = ioRegisters.getInt(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
@@ -262,8 +259,8 @@ public class GameBoyAdvanceDisplay {
         int totalHeight = (256 << ((screenSize & 0b10) >> 1)) - 1;
 
         int layerAddressOffset = layer << 2;
-        int xOffset = memory.getShort(0x4000010 + layerAddressOffset) & 0x1FF;
-        int yOffset = memory.getShort(0x4000012 + layerAddressOffset) & 0x1FF;
+        int xOffset = ioRegisters.getShort(0x10 + layerAddressOffset) & 0x1FF;
+        int yOffset = ioRegisters.getShort(0x12 + layerAddressOffset) & 0x1FF;
 
         int y = (line + yOffset) & totalHeight;
 
@@ -286,8 +283,8 @@ public class GameBoyAdvanceDisplay {
         int lineMapOffset = mapLine << 5;
 
         size_t bufferAddress = cast(size_t) buffer.ptr;
-        size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
-        size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
+        size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+        size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
 
         asm {
                 push bufferAddress;
@@ -411,14 +408,14 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineMode1(int line) {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = memory.getShort(0x4000050);
+        int blendControl = ioRegisters.getShort(0x50);
 
-        short backColor = memory.getShort(0x5000000)  & 0x7FFF;
+        short backColor = palette.getShort(0x0)  & 0x7FFF;
 
         lineBackgroundText(line, lines[0], 0, bgEnables);
         lineBackgroundText(line, lines[1], 1, bgEnables);
@@ -429,14 +426,14 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineMode2(int line) {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = memory.getShort(0x4000050);
+        int blendControl = ioRegisters.getShort(0x50);
 
-        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+        short backColor = palette.getShort(0x0) & 0x7FFF;
 
         lineTransparent(lines[0]);
         lineTransparent(lines[1]);
@@ -454,16 +451,16 @@ public class GameBoyAdvanceDisplay {
 
             int affineLayer = layer - 2;
             int layerAddressOffset = affineLayer << 4;
-            int pb = memory.getShort(0x4000022 + layerAddressOffset);
-            int pd = memory.getShort(0x4000026 + layerAddressOffset);
+            int pb = ioRegisters.getShort(0x22 + layerAddressOffset);
+            int pd = ioRegisters.getShort(0x26 + layerAddressOffset);
 
             internalAffineReferenceX[affineLayer] += pb;
             internalAffineReferenceY[affineLayer] += pd;
             return;
         }
 
-        int bgControlAddress = 0x4000008 + (layer << 1);
-        int bgControl = memory.getShort(bgControlAddress);
+        int bgControlAddress = 0x8 + (layer << 1);
+        int bgControl = ioRegisters.getShort(bgControlAddress);
 
         int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
@@ -471,7 +468,7 @@ public class GameBoyAdvanceDisplay {
         int displayOverflow = getBit(bgControl, 13);
         int screenSize = getBits(bgControl, 14, 15);
 
-        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicControl = ioRegisters.getInt(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
@@ -481,10 +478,10 @@ public class GameBoyAdvanceDisplay {
 
         int affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
-        int pa = memory.getShort(0x4000020 + layerAddressOffset);
-        int pb = memory.getShort(0x4000022 + layerAddressOffset);
-        int pc = memory.getShort(0x4000024 + layerAddressOffset);
-        int pd = memory.getShort(0x4000026 + layerAddressOffset);
+        int pa = ioRegisters.getShort(0x20 + layerAddressOffset);
+        int pb = ioRegisters.getShort(0x22 + layerAddressOffset);
+        int pc = ioRegisters.getShort(0x24 + layerAddressOffset);
+        int pd = ioRegisters.getShort(0x26 + layerAddressOffset);
 
         int dx = internalAffineReferenceX[affineLayer];
         int dy = internalAffineReferenceY[affineLayer];
@@ -493,8 +490,8 @@ public class GameBoyAdvanceDisplay {
         internalAffineReferenceY[affineLayer] += pd;
 
         size_t bufferAddress = cast(size_t) buffer.ptr;
-        size_t vramAddress = cast(size_t) memory.getPointer(0x6000000);
-        size_t paletteAddress = cast(size_t) memory.getPointer(0x5000000);
+        size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+        size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
 
         asm {
                 mov EAX, dx;
@@ -619,14 +616,14 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineMode3(int line) {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = memory.getShort(0x4000050);
+        int blendControl = ioRegisters.getShort(0x50);
 
-        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+        short backColor = palette.getShort(0x0) & 0x7FFF;
 
         lineTransparent(lines[0]);
         lineTransparent(lines[1]);
@@ -637,10 +634,10 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineBackgroundBitmap16Single(int line, short[] colorBuffer) {
-        int pa = memory.getShort(0x4000020);
-        int pb = memory.getShort(0x4000022);
-        int pc = memory.getShort(0x4000024);
-        int pd = memory.getShort(0x4000026);
+        int pa = ioRegisters.getShort(0x20);
+        int pb = ioRegisters.getShort(0x22);
+        int pc = ioRegisters.getShort(0x24);
+        int pd = ioRegisters.getShort(0x26);
 
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
@@ -649,9 +646,9 @@ public class GameBoyAdvanceDisplay {
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
-            int address = (x + y * 240 << 1) + 0x6000000;
+            int address = (x + y * 240 << 1);
 
-            short color = memory.getShort(address) & 0x7FFF;
+            short color = vram.getShort(address) & 0x7FFF;
             colorBuffer[column] = color;
         }
 
@@ -660,15 +657,15 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineMode4(int line) {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         int frame = getBit(displayControl, 4);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = memory.getShort(0x4000050);
+        int blendControl = ioRegisters.getShort(0x50);
 
-        short backColor = memory.getShort(0x5000000) & 0x7FFF;
+        short backColor = palette.getShort(0x0) & 0x7FFF;
 
         lineTransparent(lines[0]);
         lineTransparent(lines[1]);
@@ -679,15 +676,15 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void lineBackgroundBitmap8Double(int line, short[] colorBuffer, int frame) {
-        int pa = memory.getShort(0x4000020);
-        int pb = memory.getShort(0x4000022);
-        int pc = memory.getShort(0x4000024);
-        int pd = memory.getShort(0x4000026);
+        int pa = ioRegisters.getShort(0x20);
+        int pb = ioRegisters.getShort(0x22);
+        int pc = ioRegisters.getShort(0x24);
+        int pd = ioRegisters.getShort(0x26);
 
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
 
-        int addressBase = frame ? 0x600A000 : 0x6000000;
+        int addressBase = frame ? 0xA000 : 0x0;
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
             int x = dx + 128 >> 8;
@@ -695,14 +692,14 @@ public class GameBoyAdvanceDisplay {
 
             int address = x + y * 240 + addressBase;
 
-            int paletteIndex = memory.getByte(address) & 0xFF;
+            int paletteIndex = vram.getByte(address) & 0xFF;
             if (paletteIndex == 0) {
                 colorBuffer[column] = TRANSPARENT;
                 continue;
             }
             int paletteAddress = paletteIndex << 1;
 
-            short color = memory.getShort(0x5000000 + paletteAddress) & 0x7FFF;
+            short color = palette.getShort(paletteAddress) & 0x7FFF;
             colorBuffer[column] = color;
         }
 
@@ -720,19 +717,19 @@ public class GameBoyAdvanceDisplay {
             return;
         }
 
-        int tileBase = 0x6010000;
+        int tileBase = 0x10000;
         if (getMode() >= 3) {
             tileBase += 0x4000;
         }
 
-        int mosaicControl = memory.getInt(0x400004C);
+        int mosaicControl = ioRegisters.getInt(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
         for (int i = 127; i >= 0; i--) {
-            int attributeAddress = 0x7000000 + (i << 3);
+            int attributeAddress = i << 3;
 
-            int attribute0 = memory.getShort(attributeAddress);
+            int attribute0 = oam.getShort(attributeAddress);
 
             int rotAndScale = getBit(attribute0, 8);
             int doubleSize = getBit(attribute0, 9);
@@ -747,7 +744,7 @@ public class GameBoyAdvanceDisplay {
             int singlePalette = getBit(attribute0, 13);
             int shape = getBits(attribute0, 14, 15);
 
-            int attribute1 = memory.getShort(attributeAddress + 2);
+            int attribute1 = oam.getShort(attributeAddress + 2);
 
             int x = attribute1 & 0x1FF;
             int horizontalFlip = void, verticalFlip = void;
@@ -756,11 +753,11 @@ public class GameBoyAdvanceDisplay {
                 horizontalFlip = 0;
                 verticalFlip = 0;
                 int rotAndScaleParameters = getBits(attribute1, 9, 13);
-                int parametersAddress = (rotAndScaleParameters << 5) + 0x7000006;
-                pa = memory.getShort(parametersAddress);
-                pb = memory.getShort(parametersAddress + 8);
-                pc = memory.getShort(parametersAddress + 16);
-                pd = memory.getShort(parametersAddress + 24);
+                int parametersAddress = (rotAndScaleParameters << 5) + 0x6;
+                pa = oam.getShort(parametersAddress);
+                pb = oam.getShort(parametersAddress + 8);
+                pc = oam.getShort(parametersAddress + 16);
+                pd = oam.getShort(parametersAddress + 24);
             } else {
                 horizontalFlip = getBit(attribute1, 12);
                 verticalFlip = getBit(attribute1, 13);
@@ -771,7 +768,7 @@ public class GameBoyAdvanceDisplay {
             }
             int size = getBits(attribute1, 14, 15);
 
-            int attribute2 = memory.getShort(attributeAddress + 4);
+            int attribute2 = oam.getShort(attributeAddress + 4);
 
             int tileNumber = attribute2 & 0x3FF;
             int priority = getBits(attribute2, 10, 11);
@@ -901,20 +898,20 @@ public class GameBoyAdvanceDisplay {
 
                 int paletteAddress = void;
                 if (singlePalette) {
-                    int paletteIndex = memory.getByte(tileAddress) & 0xFF;
+                    int paletteIndex = vram.getByte(tileAddress) & 0xFF;
                     if (paletteIndex == 0) {
                         continue;
                     }
                     paletteAddress = paletteIndex << 1;
                 } else {
-                    int paletteIndex = memory.getByte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
+                    int paletteIndex = vram.getByte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
                     if (paletteIndex == 0) {
                         continue;
                     }
                     paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
                 }
 
-                short color = memory.getShort(0x5000200 + paletteAddress) & 0x7FFF;
+                short color = palette.getShort(0x200 + paletteAddress) & 0x7FFF;
 
                 if (mode != 2) {
                     colorBuffer[column] = color;
@@ -932,44 +929,44 @@ public class GameBoyAdvanceDisplay {
         }
 
         if (windowEnables & 0b1) {
-            int horizontalDimensions = memory.getShort(0x4000040);
+            int horizontalDimensions = ioRegisters.getShort(0x40);
 
             int x1 = getBits(horizontalDimensions, 8, 15);
             int x2 = horizontalDimensions & 0xFF;
 
-            int verticalDimensions = memory.getShort(0x4000044);
+            int verticalDimensions = ioRegisters.getShort(0x44);
 
             int y1 = getBits(verticalDimensions, 8, 15);
             int y2 = verticalDimensions & 0xFF;
 
             if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x4000048;
+                return 0x48;
             }
         }
 
         if (windowEnables & 0b10) {
-            int horizontalDimensions = memory.getShort(0x4000042);
+            int horizontalDimensions = ioRegisters.getShort(0x42);
 
             int x1 = getBits(horizontalDimensions, 8, 15);
             int x2 = horizontalDimensions & 0xFF;
 
-            int verticalDimensions = memory.getShort(0x4000046);
+            int verticalDimensions = ioRegisters.getShort(0x46);
 
             int y1 = getBits(verticalDimensions, 8, 15);
             int y2 = verticalDimensions & 0xFF;
 
             if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x4000049;
+                return 0x49;
             }
         }
 
         if (windowEnables & 0b100) {
             if (objectMode & 0b10) {
-                return 0x400004B;
+                return 0x4B;
             }
         }
 
-        return 0x400004A;
+        return 0x4A;
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
@@ -978,10 +975,10 @@ public class GameBoyAdvanceDisplay {
         int colorEffect = getBits(blendControl, 6, 7);
 
         int[5] priorities = [
-            memory.getShort(0x4000008) & 0b11,
-            memory.getShort(0x400000A) & 0b11,
-            memory.getShort(0x400000C) & 0b11,
-            memory.getShort(0x400000E) & 0b11,
+            ioRegisters.getShort(0x8) & 0b11,
+            ioRegisters.getShort(0xA) & 0b11,
+            ioRegisters.getShort(0xC) & 0b11,
+            ioRegisters.getShort(0xE) & 0b11,
             0
         ];
 
@@ -998,7 +995,7 @@ public class GameBoyAdvanceDisplay {
 
             int window = getWindow(windowEnables, objMode, line, column);
             if (window != 0) {
-                int windowControl = memory.getByte(window);
+                int windowControl = ioRegisters.getByte(window);
                 layerEnables = windowControl & 0b11111;
                 specialEffectEnabled = checkBit(windowControl, 5);
             } else {
@@ -1086,7 +1083,7 @@ public class GameBoyAdvanceDisplay {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = min(memory.getInt(0x4000054) & 0b11111, 16);
+        int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
         firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
         firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
         firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
@@ -1099,7 +1096,7 @@ public class GameBoyAdvanceDisplay {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = min(memory.getInt(0x4000054) & 0b11111, 16);
+        int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
         firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
         firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
         firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
@@ -1116,7 +1113,7 @@ public class GameBoyAdvanceDisplay {
         int secondGreen = getBits(second, 5, 9);
         int secondBlue = getBits(second, 10, 14);
 
-        int blendAlpha = memory.getShort(0x4000052);
+        int blendAlpha = ioRegisters.getShort(0x52);
 
         int eva = min(blendAlpha & 0b11111, 16);
         firstRed = ((firstRed << 4) * eva >> 4) + 8 >> 4;
@@ -1136,7 +1133,7 @@ public class GameBoyAdvanceDisplay {
     }
 
     private Mode getMode() {
-        int displayControl = memory.getShort(0x4000000);
+        int displayControl = ioRegisters.getShort(0x0);
         if (checkBit(displayControl, 7)) {
             return Mode.BLANK;
         }
@@ -1146,25 +1143,25 @@ public class GameBoyAdvanceDisplay {
     private void setHBLANK(int line, bool state) {
         int oldDisplayStatus = void, newDisplayStatus = void;
         do {
-            oldDisplayStatus = memory.getInt(0x4000004);
+            oldDisplayStatus = ioRegisters.getInt(0x4);
             newDisplayStatus = oldDisplayStatus;
             setBit(newDisplayStatus, 1, state);
-        } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
+        } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
     }
 
     private void setVCOUNT(int line) {
-        memory.setByte(0x4000006, cast(byte) line);
+        ioRegisters.setByte(0x6, cast(byte) line);
         int oldDisplayStatus = void, newDisplayStatus = void;
         do {
-            oldDisplayStatus = memory.getInt(0x4000004);
+            oldDisplayStatus = ioRegisters.getInt(0x4);
             newDisplayStatus = oldDisplayStatus;
             setBit(newDisplayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
             setBit(newDisplayStatus, 2, getBits(oldDisplayStatus, 8, 15) == line);
-        } while (!memory.compareAndSet(0x4000004, oldDisplayStatus, newDisplayStatus));
+        } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
     }
 
     private void signalHBLANK(int line) {
-        int displayStatus = memory.getInt(0x4000004);
+        int displayStatus = ioRegisters.getInt(0x4);
         if (line < VERTICAL_RESOLUTION) {
             dmas.signalHBLANK();
             if (checkBit(displayStatus, 4)) {
@@ -1174,7 +1171,7 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void signalVBLANK() {
-        int displayStatus = memory.getInt(0x4000004);
+        int displayStatus = ioRegisters.getInt(0x4);
         dmas.signalVBLANK();
         if (checkBit(displayStatus, 3)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_V_BLANK);
@@ -1182,7 +1179,7 @@ public class GameBoyAdvanceDisplay {
     }
 
     private void checkVCOUNTER(int line) {
-        int displayStatus = memory.getInt(0x4000004);
+        int displayStatus = ioRegisters.getInt(0x4);
         if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
         }
