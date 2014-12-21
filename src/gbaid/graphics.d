@@ -57,9 +57,9 @@ public class Display {
             &lineMode0,
             &lineMode1,
             &lineMode2,
-            &lineMode3,
-            &lineMode4,
-            &lineBlank,
+            &lineModeBitmap!"lineBackgroundBitmap16Single",
+            &lineModeBitmap!"lineBackgroundBitmap8Double",
+            &lineModeBitmap!"lineBackgroundBitmap16Double",
             &lineBlank
         ];
         context = new GL20Context();
@@ -199,20 +199,6 @@ public class Display {
         }
     }
 
-    private void lineBlank(int line) {
-        uint p = line * HORIZONTAL_RESOLUTION;
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            frame[p] = cast(short) 0xFFFF;
-            p++;
-        }
-    }
-
-    private void lineTransparent(short[] buffer) {
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
-            buffer[column] = TRANSPARENT;
-        }
-    }
-
     private void lineMode0(int line) {
         int displayControl = ioRegisters.getShort(0x0);
         int tileMapping = getBit(displayControl, 6);
@@ -229,6 +215,77 @@ public class Display {
         lineBackgroundText(line, lines[3], 3, bgEnables);
         lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
         lineCompose(line, windowEnables, blendControl, backColor);
+    }
+
+    private void lineMode1(int line) {
+        int displayControl = ioRegisters.getShort(0x0);
+        int tileMapping = getBit(displayControl, 6);
+        int bgEnables = getBits(displayControl, 8, 12);
+        int windowEnables = getBits(displayControl, 13, 15);
+
+        int blendControl = ioRegisters.getShort(0x50);
+
+        short backColor = palette.getShort(0x0)  & 0x7FFF;
+
+        lineBackgroundText(line, lines[0], 0, bgEnables);
+        lineBackgroundText(line, lines[1], 1, bgEnables);
+        lineBackgroundAffine(line, lines[2], 2, bgEnables);
+        lineTransparent(lines[3]);
+        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
+        lineCompose(line, windowEnables, blendControl, backColor);
+    }
+
+    private void lineMode2(int line) {
+        int displayControl = ioRegisters.getShort(0x0);
+        int tileMapping = getBit(displayControl, 6);
+        int bgEnables = getBits(displayControl, 8, 12);
+        int windowEnables = getBits(displayControl, 13, 15);
+
+        int blendControl = ioRegisters.getShort(0x50);
+
+        short backColor = palette.getShort(0x0) & 0x7FFF;
+
+        lineTransparent(lines[0]);
+        lineTransparent(lines[1]);
+        lineBackgroundAffine(line, lines[2], 2, bgEnables);
+        lineBackgroundAffine(line, lines[3], 3, bgEnables);
+        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
+        lineCompose(line, windowEnables, blendControl, backColor);
+    }
+
+    private template lineModeBitmap(string lineBackgroundBitmap) {
+        private void lineModeBitmap(int line) {
+            int displayControl = ioRegisters.getShort(0x0);
+            int frame = getBit(displayControl, 4);
+            int tileMapping = getBit(displayControl, 6);
+            int bgEnables = getBits(displayControl, 8, 12);
+            int windowEnables = getBits(displayControl, 13, 15);
+
+            int blendControl = ioRegisters.getShort(0x50);
+
+            short backColor = palette.getShort(0x0) & 0x7FFF;
+
+            lineTransparent(lines[0]);
+            lineTransparent(lines[1]);
+            mixin(lineBackgroundBitmap ~ "(line, lines[2], bgEnables, frame);");
+            lineTransparent(lines[3]);
+            lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
+            lineCompose(line, windowEnables, blendControl, backColor);
+        }
+    }
+
+    private void lineBlank(int line) {
+        uint p = line * HORIZONTAL_RESOLUTION;
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            frame[p] = cast(short) 0xFFFF;
+            p++;
+        }
+    }
+
+    private void lineTransparent(short[] buffer) {
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            buffer[column] = TRANSPARENT;
+        }
     }
 
     private void lineBackgroundText(int line, short[] buffer, int layer, int bgEnables) {
@@ -407,42 +464,6 @@ public class Display {
         }
     }
 
-    private void lineMode1(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
-
-        int blendControl = ioRegisters.getShort(0x50);
-
-        short backColor = palette.getShort(0x0)  & 0x7FFF;
-
-        lineBackgroundText(line, lines[0], 0, bgEnables);
-        lineBackgroundText(line, lines[1], 1, bgEnables);
-        lineBackgroundAffine(line, lines[2], 2, bgEnables);
-        lineTransparent(lines[3]);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
-
-    private void lineMode2(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
-
-        int blendControl = ioRegisters.getShort(0x50);
-
-        short backColor = palette.getShort(0x0) & 0x7FFF;
-
-        lineTransparent(lines[0]);
-        lineTransparent(lines[1]);
-        lineBackgroundAffine(line, lines[2], 2, bgEnables);
-        lineBackgroundAffine(line, lines[3], 3, bgEnables);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
-
     private void lineBackgroundAffine(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
@@ -615,25 +636,27 @@ public class Display {
         }
     }
 
-    private void lineMode3(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
+    private void lineBackgroundBitmap16Single(int line, short[] buffer, int bgEnables, int frame) {
+        if (!checkBit(bgEnables, 2)) {
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                buffer[column] = TRANSPARENT;
+            }
 
-        int blendControl = ioRegisters.getShort(0x50);
+            int pb = ioRegisters.getShort(0x22);
+            int pd = ioRegisters.getShort(0x26);
 
-        short backColor = palette.getShort(0x0) & 0x7FFF;
+            internalAffineReferenceX[0] += pb;
+            internalAffineReferenceY[0] += pd;
+            return;
+        }
 
-        lineTransparent(lines[0]);
-        lineTransparent(lines[1]);
-        lineBackgroundBitmap16Single(line, lines[2]);
-        lineTransparent(lines[3]);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
+        int bgControl = ioRegisters.getShort(0xC);
+        int mosaic = getBit(bgControl, 6);
 
-    private void lineBackgroundBitmap16Single(int line, short[] colorBuffer) {
+        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+
         int pa = ioRegisters.getShort(0x20);
         int pb = ioRegisters.getShort(0x22);
         int pc = ioRegisters.getShort(0x24);
@@ -646,36 +669,47 @@ public class Display {
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
-            int address = (x + y * 240 << 1);
+            if (x < 0 || x >= 240 || y < 0 || y >= 160) {
+                buffer[column] = TRANSPARENT;
+                continue;
+            }
+
+            if (mosaic) {
+                x -= x % mosaicSizeX;
+                y -= y % mosaicSizeY;
+            }
+
+            int address = x + y * 240 << 1;
 
             short color = vram.getShort(address) & 0x7FFF;
-            colorBuffer[column] = color;
+            buffer[column] = color;
         }
 
         internalAffineReferenceX[0] += pb;
         internalAffineReferenceY[0] += pd;
     }
 
-    private void lineMode4(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int frame = getBit(displayControl, 4);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
+    private void lineBackgroundBitmap8Double(int line, short[] buffer, int bgEnables, int frame) {
+        if (!checkBit(bgEnables, 2)) {
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                buffer[column] = TRANSPARENT;
+            }
 
-        int blendControl = ioRegisters.getShort(0x50);
+            int pb = ioRegisters.getShort(0x22);
+            int pd = ioRegisters.getShort(0x26);
 
-        short backColor = palette.getShort(0x0) & 0x7FFF;
+            internalAffineReferenceX[0] += pb;
+            internalAffineReferenceY[0] += pd;
+            return;
+        }
 
-        lineTransparent(lines[0]);
-        lineTransparent(lines[1]);
-        lineBackgroundBitmap8Double(line, lines[2], frame);
-        lineTransparent(lines[3]);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
+        int bgControl = ioRegisters.getShort(0xC);
+        int mosaic = getBit(bgControl, 6);
 
-    private void lineBackgroundBitmap8Double(int line, short[] colorBuffer, int frame) {
+        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+
         int pa = ioRegisters.getShort(0x20);
         int pb = ioRegisters.getShort(0x22);
         int pc = ioRegisters.getShort(0x24);
@@ -690,17 +724,83 @@ public class Display {
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
+            if (x < 0 || x >= 240 || y < 0 || y >= 160) {
+                buffer[column] = TRANSPARENT;
+                continue;
+            }
+
+            if (mosaic) {
+                x -= x % mosaicSizeX;
+                y -= y % mosaicSizeY;
+            }
+
             int address = x + y * 240 + addressBase;
 
             int paletteIndex = vram.getByte(address) & 0xFF;
             if (paletteIndex == 0) {
-                colorBuffer[column] = TRANSPARENT;
+                buffer[column] = TRANSPARENT;
                 continue;
             }
             int paletteAddress = paletteIndex << 1;
 
             short color = palette.getShort(paletteAddress) & 0x7FFF;
-            colorBuffer[column] = color;
+            buffer[column] = color;
+        }
+
+        internalAffineReferenceX[0] += pb;
+        internalAffineReferenceY[0] += pd;
+    }
+
+    private void lineBackgroundBitmap16Double(int line, short[] buffer, int bgEnables, int frame) {
+        if (!checkBit(bgEnables, 2)) {
+            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+                buffer[column] = TRANSPARENT;
+            }
+
+            int pb = ioRegisters.getShort(0x22);
+            int pd = ioRegisters.getShort(0x26);
+
+            internalAffineReferenceX[0] += pb;
+            internalAffineReferenceY[0] += pd;
+            return;
+        }
+
+        int bgControl = ioRegisters.getShort(0xC);
+        int mosaic = getBit(bgControl, 6);
+
+        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
+        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+
+        int pa = ioRegisters.getShort(0x20);
+        int pb = ioRegisters.getShort(0x22);
+        int pc = ioRegisters.getShort(0x24);
+        int pd = ioRegisters.getShort(0x26);
+
+        int dx = internalAffineReferenceX[0];
+        int dy = internalAffineReferenceY[0];
+
+        int addressBase = frame ? 0xA000 : 0x0;
+
+        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+
+            int x = dx + 128 >> 8;
+            int y = dy + 128 >> 8;
+
+            if (x < 0 || x >= 160 || y < 0 || y >= 128) {
+                buffer[column] = TRANSPARENT;
+                continue;
+            }
+
+            if (mosaic) {
+                x -= x % mosaicSizeX;
+                y -= y % mosaicSizeY;
+            }
+
+            int address = x + y * 160 << 1;
+
+            short color = vram.getShort(address) & 0x7FFF;
+            buffer[column] = color;
         }
 
         internalAffineReferenceX[0] += pb;
@@ -923,52 +1023,6 @@ public class Display {
         }
     }
 
-    private int getWindow(int windowEnables, int objectMode, int line, int column) {
-        if (!windowEnables) {
-            return 0;
-        }
-
-        if (windowEnables & 0b1) {
-            int horizontalDimensions = ioRegisters.getShort(0x40);
-
-            int x1 = getBits(horizontalDimensions, 8, 15);
-            int x2 = horizontalDimensions & 0xFF;
-
-            int verticalDimensions = ioRegisters.getShort(0x44);
-
-            int y1 = getBits(verticalDimensions, 8, 15);
-            int y2 = verticalDimensions & 0xFF;
-
-            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x48;
-            }
-        }
-
-        if (windowEnables & 0b10) {
-            int horizontalDimensions = ioRegisters.getShort(0x42);
-
-            int x1 = getBits(horizontalDimensions, 8, 15);
-            int x2 = horizontalDimensions & 0xFF;
-
-            int verticalDimensions = ioRegisters.getShort(0x46);
-
-            int y1 = getBits(verticalDimensions, 8, 15);
-            int y2 = verticalDimensions & 0xFF;
-
-            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x49;
-            }
-        }
-
-        if (windowEnables & 0b100) {
-            if (objectMode & 0b10) {
-                return 0x4B;
-            }
-        }
-
-        return 0x4A;
-    }
-
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
         uint p = line * HORIZONTAL_RESOLUTION;
 
@@ -1076,6 +1130,52 @@ public class Display {
 
             p++;
         }
+    }
+
+    private int getWindow(int windowEnables, int objectMode, int line, int column) {
+        if (!windowEnables) {
+            return 0;
+        }
+
+        if (windowEnables & 0b1) {
+            int horizontalDimensions = ioRegisters.getShort(0x40);
+
+            int x1 = getBits(horizontalDimensions, 8, 15);
+            int x2 = horizontalDimensions & 0xFF;
+
+            int verticalDimensions = ioRegisters.getShort(0x44);
+
+            int y1 = getBits(verticalDimensions, 8, 15);
+            int y2 = verticalDimensions & 0xFF;
+
+            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
+                return 0x48;
+            }
+        }
+
+        if (windowEnables & 0b10) {
+            int horizontalDimensions = ioRegisters.getShort(0x42);
+
+            int x1 = getBits(horizontalDimensions, 8, 15);
+            int x2 = horizontalDimensions & 0xFF;
+
+            int verticalDimensions = ioRegisters.getShort(0x46);
+
+            int y1 = getBits(verticalDimensions, 8, 15);
+            int y2 = verticalDimensions & 0xFF;
+
+            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
+                return 0x49;
+            }
+        }
+
+        if (windowEnables & 0b100) {
+            if (objectMode & 0b10) {
+                return 0x4B;
+            }
+        }
+
+        return 0x4A;
     }
 
     private void applyBrightnessIncreaseEffect(ref short first) {

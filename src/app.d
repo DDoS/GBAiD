@@ -93,8 +93,7 @@ public void main(string[] args) {
 	//       fix DMA priorities
 	//       fix PKMN missing stat change graphics
 	//       figure out why PKMN says the save file is corrupt when it isn't
-	//       investigate super mario advance glitches
+	//       investigate super mario advance crash when selecting the original super mario
 	//       rewrite more of the graphics in x64
-	//       finish implementing bitmap modes in graphics
 	//       implement optional RTC
 }
