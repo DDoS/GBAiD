@@ -14,12 +14,12 @@ import gbaid.util;
 
 public class Display {
     private alias LineType = void delegate(int);
-    private static immutable uint HORIZONTAL_RESOLUTION = 240;
-    private static immutable uint VERTICAL_RESOLUTION = 160;
-    private static immutable uint LAYER_COUNT = 6;
-    private static immutable uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
-    private static immutable short TRANSPARENT = cast(short) 0x8000;
-    private static immutable uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
+    private static enum uint HORIZONTAL_RESOLUTION = 240;
+    private static enum uint VERTICAL_RESOLUTION = 160;
+    private static enum uint LAYER_COUNT = 6;
+    private static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
+    private static enum short TRANSPARENT = cast(short) 0x8000;
+    private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
     private static TickDuration H_VISIBLE_DURATION;
     private static TickDuration H_BLANK_DURATION;
     private static TickDuration TOTAL_DURATION;
@@ -34,7 +34,7 @@ public class Display {
     private int[2] internalAffineReferenceX = new int[2];
     private int[2] internalAffineReferenceY = new int[2];
     private Condition frameSync;
-    private shared bool drawRunning = false;
+    private bool drawRunning = false;
     private LineType[7] lineTypes;
     private Timer timer = new Timer();
 
@@ -1316,7 +1316,7 @@ private VertexData generatePlane(float width, float height) {
     return vertexData;
 }
 
-private immutable string vertexShaderSource =
+private enum string vertexShaderSource =
 `
 // $shader_type: vertex
 
@@ -1333,7 +1333,7 @@ void main() {
     gl_Position = vec4(position, 1);
 }
 `;
-private immutable string fragmentShaderSource =
+private enum string fragmentShaderSource =
 `
 // $shader_type: fragment
 

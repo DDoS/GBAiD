@@ -28,7 +28,7 @@ public class Keypad {
         SDL_SCANCODE_Q
     ];
     private Thread thread;
-    private shared bool running = false;
+    private bool running = false;
 
     static this() {
         INPUT_PERIOD = TickDuration.from!"nsecs"(16666667);

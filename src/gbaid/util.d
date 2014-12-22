@@ -100,7 +100,7 @@ public class Scheduler {
     private Mutex mutex;
     private Condition emptyCondition;
     private Condition waitingCondition;
-    private shared bool running = false;
+    private bool running = false;
     private int nextFreeID = 1;
     private Task* first;
 

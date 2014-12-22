@@ -10,8 +10,8 @@ import std.file;
 
 import gbaid.util;
 
-public immutable uint BYTES_PER_KIB = 1024;
-public immutable uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
+public enum uint BYTES_PER_KIB = 1024;
+public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
 public abstract class Memory {
     public abstract ulong getCapacity();
@@ -124,20 +124,20 @@ public class RAM : ROM {
 }
 
 public class Flash : RAM {
-    private static immutable uint PANASONIC_64K_ID = 0x1B32;
-    private static immutable uint SANYO_128K_ID = 0x1362;
-    private static immutable uint DEVICE_ID_ADDRESS = 0x1;
-    private static immutable uint FIRST_CMD_ADDRESS = 0x5555;
-    private static immutable uint SECOND_CMD_ADDRESS = 0x2AAA;
-    private static immutable uint FIRST_CMD_START_BYTE = 0xAA;
-    private static immutable uint SECOND_CMD_START_BYTE = 0x55;
-    private static immutable uint ID_MODE_START_CMD_BYTE = 0x90;
-    private static immutable uint ID_MODE_STOP_CMD_BYTE = 0xF0;
-    private static immutable uint ERASE_CMD_BYTE = 0x80;
-    private static immutable uint ERASE_ALL_CMD_BYTE = 0x10;
-    private static immutable uint ERASE_SECTOR_CMD_BYTE = 0x30;
-    private static immutable uint WRITE_BYTE_CMD_BYTE = 0xA0;
-    private static immutable uint SWITCH_BANK_CMD_BYTE = 0xB0;
+    private static enum uint PANASONIC_64K_ID = 0x1B32;
+    private static enum uint SANYO_128K_ID = 0x1362;
+    private static enum uint DEVICE_ID_ADDRESS = 0x1;
+    private static enum uint FIRST_CMD_ADDRESS = 0x5555;
+    private static enum uint SECOND_CMD_ADDRESS = 0x2AAA;
+    private static enum uint FIRST_CMD_START_BYTE = 0xAA;
+    private static enum uint SECOND_CMD_START_BYTE = 0x55;
+    private static enum uint ID_MODE_START_CMD_BYTE = 0x90;
+    private static enum uint ID_MODE_STOP_CMD_BYTE = 0xF0;
+    private static enum uint ERASE_CMD_BYTE = 0x80;
+    private static enum uint ERASE_ALL_CMD_BYTE = 0x10;
+    private static enum uint ERASE_SECTOR_CMD_BYTE = 0x30;
+    private static enum uint WRITE_BYTE_CMD_BYTE = 0xA0;
+    private static enum uint SWITCH_BANK_CMD_BYTE = 0xB0;
     private static TickDuration WRITE_TIMEOUT = 10;
     private static TickDuration ERASE_SECTOR_TIMEOUT = 500;
     private static TickDuration ERASE_ALL_TIMEOUT = 500;

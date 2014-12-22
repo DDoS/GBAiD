@@ -13,14 +13,14 @@ import gbaid.util;
 
 public class ARM7TDMI {
 	private Memory memory;
-	private shared uint entryPointAddress = 0x0;
+	private uint entryPointAddress = 0x0;
 	private Thread thread;
-	private shared bool running = false;
+	private bool running = false;
 	private int[37] registers = new int[37];
 	private Mode mode = Mode.SYSTEM;
-	private shared bool haltSignal = false;
+	private bool haltSignal = false;
 	private Condition haltCondition;
-	private shared bool irqSignal = false;
+	private bool irqSignal = false;
 	private Pipeline armPipeline;
 	private Pipeline thumbPipeline;
 	private Pipeline pipeline;

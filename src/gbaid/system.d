@@ -100,26 +100,26 @@ public class GameBoyAdvance {
 }
 
 public class MainMemory : MappedMemory {
-    private static immutable uint BIOS_SIZE = 16 * BYTES_PER_KIB;
-    private static immutable uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
-    private static immutable uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
-    private static immutable uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
-    private static immutable uint PALETTE_SIZE = 1 * BYTES_PER_KIB;
-    private static immutable uint VRAM_SIZE = 96 * BYTES_PER_KIB;
-    private static immutable uint OAM_SIZE = 1 * BYTES_PER_KIB;
-    private static immutable uint BIOS_START = 0x00000000;
-    private static immutable uint BIOS_MASK = 0x3FFF;
-    private static immutable uint BOARD_WRAM_MASK = 0x3FFFF;
-    private static immutable uint CHIP_WRAM_MASK = 0x7FFF;
-    private static immutable uint CHIP_WRAM_MIRROR_START = 0xFFFF00;
-    private static immutable uint CHIP_WRAM_MIRROR_MASK = 0x7FFF;
-    private static immutable uint IO_REGISTERS_END = 0x040003FE;
-    private static immutable uint IO_REGISTERS_MASK = 0x3FF;
-    private static immutable uint PALETTE_MASK = 0x3FF;
-    private static immutable uint VRAM_END = 0x06017FFF;
-    private static immutable uint VRAM_MASK = 0x1FFFF;
-    private static immutable uint OAM_MASK = 0x3FF;
-    private static immutable uint GAME_PAK_START = 0x08000000;
+    private static enum uint BIOS_SIZE = 16 * BYTES_PER_KIB;
+    private static enum uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
+    private static enum uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
+    private static enum uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
+    private static enum uint PALETTE_SIZE = 1 * BYTES_PER_KIB;
+    private static enum uint VRAM_SIZE = 96 * BYTES_PER_KIB;
+    private static enum uint OAM_SIZE = 1 * BYTES_PER_KIB;
+    private static enum uint BIOS_START = 0x00000000;
+    private static enum uint BIOS_MASK = 0x3FFF;
+    private static enum uint BOARD_WRAM_MASK = 0x3FFFF;
+    private static enum uint CHIP_WRAM_MASK = 0x7FFF;
+    private static enum uint CHIP_WRAM_MIRROR_START = 0xFFFF00;
+    private static enum uint CHIP_WRAM_MIRROR_MASK = 0x7FFF;
+    private static enum uint IO_REGISTERS_END = 0x040003FE;
+    private static enum uint IO_REGISTERS_MASK = 0x3FF;
+    private static enum uint PALETTE_MASK = 0x3FF;
+    private static enum uint VRAM_END = 0x06017FFF;
+    private static enum uint VRAM_MASK = 0x1FFFF;
+    private static enum uint OAM_MASK = 0x3FF;
+    private static enum uint GAME_PAK_START = 0x08000000;
     private NullMemory unusedMemory;
     private ROM bios;
     private RAM boardWRAM;
@@ -244,14 +244,14 @@ public class MainMemory : MappedMemory {
 }
 
 public class GamePak : MappedMemory {
-    private static immutable uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
-    private static immutable uint ROM_START = 0x00000000;
-    private static immutable uint ROM_END = 0x05FFFFFF;
-    private static immutable uint SAVE_START = 0x06000000;
-    private static immutable uint SAVE_END = 0x0600FFFF;
-    private static immutable uint EEPROM_START_NARROW = 0x05FFFF00;
-    private static immutable uint EEPROM_START_WIDE = 0x05000000;
-    private static immutable uint EEPROM_END = 0x05FFFFFF;
+    private static enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
+    private static enum uint ROM_START = 0x00000000;
+    private static enum uint ROM_END = 0x05FFFFFF;
+    private static enum uint SAVE_START = 0x06000000;
+    private static enum uint SAVE_END = 0x0600FFFF;
+    private static enum uint EEPROM_START_NARROW = 0x05FFFF00;
+    private static enum uint EEPROM_START_WIDE = 0x05000000;
+    private static enum uint EEPROM_END = 0x05FFFFFF;
     private NullMemory unusedMemory;
     private ROM rom;
     private Memory save;
