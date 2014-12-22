@@ -90,7 +90,6 @@ public void main(string[] args) {
 	}
 
 	// TODO:
-	//       fix PKMN missing stat change graphics
 	//       figure out why PKMN says the save file is corrupt when it isn't
 	//       investigate super mario advance crash when selecting the original super mario
 	//       rewrite more of the graphics in x64

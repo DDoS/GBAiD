@@ -902,9 +902,9 @@ public class InterruptHandler {
     }
 
     public static enum InterruptSource {
-        LCD_V_BLANK = 0,
-        LCD_H_BLANK = 1,
-        LCD_V_COUNTER_MATCH = 2,
+        LCD_VBLANK = 0,
+        LCD_HBLANK = 1,
+        LCD_VCOUNTER_MATCH = 2,
         TIMER_0_OVERFLOW = 3,
         TIMER_1_OVERFLOW = 4,
         TIMER_2_OVERFLOW = 5,

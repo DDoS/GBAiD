@@ -1013,19 +1013,18 @@ public class Display {
 
                 short color = palette.getShort(0x200 + paletteAddress) & 0x7FFF;
 
-                if (mode != 2) {
-                    colorBuffer[column] = color;
-                }
-
                 int modeFlags = mode << 2 | previousInfo & 0b1000;
-                infoBuffer[column] = cast(short) (modeFlags | priority);
+                if (mode == 2) {
+                    infoBuffer[column] = cast(short) (modeFlags | previousPriority);
+                } else {
+                    colorBuffer[column] = color;
+                    infoBuffer[column] = cast(short) (modeFlags | priority);
+                }
             }
         }
     }
 
     private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
-        uint p = line * HORIZONTAL_RESOLUTION;
-
         int colorEffect = getBits(blendControl, 6, 7);
 
         int[5] priorities = [
@@ -1038,7 +1037,7 @@ public class Display {
 
         int[5] layerMap = [3, 2, 1, 0, 4];
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+        for (int column = 0, p = line * HORIZONTAL_RESOLUTION; column < HORIZONTAL_RESOLUTION; column++, p++) {
 
             int objInfo = lines[5][column];
             int objPriority = objInfo & 0b11;
@@ -1127,8 +1126,6 @@ public class Display {
             }
 
             frame[p] = firstColor;
-
-            p++;
         }
     }
 
@@ -1265,7 +1262,7 @@ public class Display {
         if (line < VERTICAL_RESOLUTION) {
             dmas.signalHBLANK();
             if (checkBit(displayStatus, 4)) {
-                interruptHandler.requestInterrupt(InterruptSource.LCD_H_BLANK);
+                interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
             }
         }
     }
@@ -1274,14 +1271,14 @@ public class Display {
         int displayStatus = ioRegisters.getInt(0x4);
         dmas.signalVBLANK();
         if (checkBit(displayStatus, 3)) {
-            interruptHandler.requestInterrupt(InterruptSource.LCD_V_BLANK);
+            interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
         }
     }
 
     private void checkVCOUNTER(int line) {
         int displayStatus = ioRegisters.getInt(0x4);
         if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
-            interruptHandler.requestInterrupt(InterruptSource.LCD_V_COUNTER_MATCH);
+            interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
     }
 
