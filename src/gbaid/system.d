@@ -2,7 +2,7 @@ module gbaid.system;
 
 import core.time;
 import core.thread;
-import core.sync.semaphore;
+import core.sync.condition;
 import core.atomic;
 
 import std.stdio;
@@ -394,19 +394,24 @@ public class DMAs {
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
     private Thread thread;
-    private shared bool running = false;
-    private Semaphore semaphore;
-    private shared int signals = 0;
-    private shared int[4] sourceAddresses = new int[4];
-    private shared int[4] destinationAddresses = new int[4];
-    private shared int[4] wordCounts = new int[4];
+    private bool running = false;
+    private Condition dmaWait;
+    private bool interruptDMA = false;
+    private int[4] sourceAddresses = new int[4];
+    private int[4] destinationAddresses = new int[4];
+    private int[4] wordCounts = new int[4];
+    private int[4] controls = new int[4];
+    private Timing[4] timings = new Timing[4];
+    private bool[4] incomplete = new bool[4];
+    private Timing currentTiming = Timing.DISABLED;
 
     private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
         this.haltHandler = haltHandler;
-        semaphore = new Semaphore();
+        dmaWait = new Condition(new Mutex());
+
         ioRegisters.addMonitor(&onPostWrite, 0xBA, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xC6, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xD2, 2);
@@ -423,75 +428,121 @@ public class DMAs {
     private void stop() {
         if (running) {
             running = false;
-            semaphore.notify();
+            synchronized (dmaWait.mutex) {
+                dmaWait.notify();
+            }
         }
     }
 
     public void signalVBLANK() {
-        atomicOp!"|="(signals, 0b10);
-        semaphore.notify();
+        triggerDMA(Timing.VBLANK);
     }
 
     public void signalHBLANK() {
-        atomicOp!"|="(signals, 0b100);
-        semaphore.notify();
+        triggerDMA(Timing.HBLANK);
     }
 
     private void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
-        if (!checkBit(newControl, 31) || checkBit(oldControl, 31)) {
+        if (!(mask & 0xFFFF0000)) {
             return;
         }
 
         int channel = (address - 0xB8) / 0xC;
-        sourceAddresses[channel] = formatSourceAddress(ioRegisters.getInt(address - 8), channel);
-        destinationAddresses[channel] = formatDestinationAddress(ioRegisters.getInt(address - 4), channel);
-        wordCounts[channel] = formatWordCount(newControl, channel);
+        controls[channel] = newControl >>> 16;
+        timings[channel] = getTiming(channel, newControl);
 
-        atomicOp!"|="(signals, 0b1);
-        haltHandler.halt(HaltSource.DMA);
-        semaphore.notify();
+        if (!checkBit(oldControl, 31) && checkBit(newControl, 31)) {
+            sourceAddresses[channel] = formatSourceAddress(channel, ioRegisters.getInt(address - 8));
+            destinationAddresses[channel] = formatDestinationAddress(channel, ioRegisters.getInt(address - 4));
+            wordCounts[channel] = getWordCount(channel, newControl);
+            triggerDMA(Timing.IMMEDIATE);
+        }
+    }
+
+    private void triggerDMA(Timing timing) {
+        if (!hasPendingDMA(timing)) {
+            return;
+        }
+        currentTiming = timing;
+        interruptDMA = true;
+        synchronized (dmaWait.mutex) {
+            dmaWait.notify();
+        }
+        if (timing == Timing.IMMEDIATE) {
+            haltHandler.halt(HaltSource.DMA);
+        }
+    }
+
+    private bool hasPendingDMA(Timing timing) {
+        foreach (int channel; 0 .. 4) {
+            if (timings[channel] == timing) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void run() {
         while (true) {
-            semaphore.wait();
-            if (!running) {
-                return;
+            while (currentTiming == Timing.DISABLED) {
+                haltHandler.resume(HaltSource.DMA);
+                synchronized (dmaWait.mutex) {
+                    dmaWait.wait();
+                }
+                if (!running) {
+                    return;
+                }
             }
-            while (atomicLoad(signals) != 0) {
-                for (int s = 0; s < 4; s++) {
-                    if (checkBit(atomicLoad(signals), s)) {
-                        atomicOp!"&="(signals, ~(1 << s));
-                        for (int c = 0; c < 4; c++) {
-                            tryDMA(c, s);
-                        }
-                        haltHandler.resume(HaltSource.DMA);
+
+            Timing timing = currentTiming;
+            currentTiming = Timing.DISABLED;
+
+            foreach (int channel; 0 .. 4) {
+                if (timings[channel] == timing || incomplete[channel]) {
+                    haltHandler.halt(HaltSource.DMA);
+                    interruptDMA = false;
+                    if (!runDMA(channel)) {
+                        break;
                     }
                 }
             }
         }
     }
 
-    private void tryDMA(int channel, int source) {
+    private bool runDMA(int channel) {
+        int control = controls[channel];
+
+        if (!doCopy(channel, control)) {
+            incomplete[channel] = true;
+            return false;
+        }
+        incomplete[channel] = false;
+
         int dmaAddress = channel * 0xC + 0xB8;
-
-        int control = ioRegisters.getShort(dmaAddress + 2);
-        if (!checkBit(control, 15)) {
-            return;
+        if (checkBit(control, 9)) {
+            wordCounts[channel] = getWordCount(channel, ioRegisters.getInt(dmaAddress));
+            if (getBits(control, 5, 6) == 3) {
+                destinationAddresses[channel] = formatDestinationAddress(channel, ioRegisters.getInt(dmaAddress - 4));
+            }
+        } else {
+            ioRegisters.setShort(dmaAddress + 2, cast(short) (control & 0x7FFF));
+            timings[channel] = Timing.DISABLED;
         }
 
+        if (checkBit(control, 14)) {
+            interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
+        }
+
+        return true;
+    }
+
+    private bool doCopy(int channel, int control) {
         int startTiming = getBits(control, 12, 13);
-        if (startTiming != source) {
-            return;
-        }
 
-        int wordCount = wordCounts[channel];
         int type = void;
         int destinationAddressControl = void;
-
         if (startTiming == 3) {
             if (channel == 1 || channel == 2) {
-                wordCount = 4;
                 type = 1;
                 destinationAddressControl = 2;
             } else if (channel == 3) {
@@ -503,83 +554,110 @@ public class DMAs {
         }
 
         int sourceAddressControl = getBits(control, 7, 8);
-        int repeat = getBit(control, 9);
-        int endIRQ = getBit(control, 14);
-
         int increment = type ? 4 : 2;
 
-        haltHandler.halt(HaltSource.DMA);
+        //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddresses[channel], destinationAddresses[channel], wordCounts[channel] * increment, getTiming(channel, control << 16));
 
-        //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddresses[channel], destinationAddresses[channel], wordCount * increment, startTiming);
+        while (wordCounts[channel] > 0) {
+            if (interruptDMA) {
+                interruptDMA = false;
+                return false;
+            }
 
-        for (int i = 0; i < wordCount; i++) {
             if (type) {
                 memory.setInt(destinationAddresses[channel], memory.getInt(sourceAddresses[channel]));
             } else {
                 memory.setShort(destinationAddresses[channel], memory.getShort(sourceAddresses[channel]));
             }
+
             modifyAddress(sourceAddresses[channel], sourceAddressControl, increment);
             modifyAddress(destinationAddresses[channel], destinationAddressControl, increment);
+            wordCounts[channel]--;
         }
 
-        if (repeat) {
-            wordCounts[channel] = formatWordCount(ioRegisters.getInt(dmaAddress), channel);
-            if (destinationAddressControl == 3) {
-                destinationAddresses[channel] = formatDestinationAddress(ioRegisters.getInt(dmaAddress - 4), channel);
-            }
-            atomicOp!"|="(signals, 0b1);
-        } else {
-            ioRegisters.setShort(dmaAddress + 2, cast(short) (control & 0x7FFF));
-        }
-
-        if (endIRQ) {
-            interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
-        }
-
-        haltHandler.resume(HaltSource.DMA);
+        return true;
     }
 
-    private void modifyAddress(ref shared int address, int control, int amount) {
+    private static void modifyAddress(ref int address, int control, int amount) {
         final switch (control) {
             case 0:
             case 3:
-                atomicOp!"+="(address, amount);
+                address += amount;
                 break;
             case 1:
-                atomicOp!"-="(address, amount);
+                address -= amount;
                 break;
             case 2:
                 break;
         }
     }
 
-    private int formatSourceAddress(int sourceAddress, int channel) {
+    private static int formatSourceAddress(int channel, int sourceAddress) {
         if (channel == 0) {
             return sourceAddress & 0x7FFFFFF;
         }
         return sourceAddress & 0xFFFFFFF;
     }
 
-    private int formatDestinationAddress(int destinationAddress, int channel) {
+    private static int formatDestinationAddress(int channel, int destinationAddress) {
         if (channel == 3) {
             return destinationAddress & 0xFFFFFFF;
         }
         return destinationAddress & 0x7FFFFFF;
     }
 
-    private int formatWordCount(int wordCount, int channel) {
+    private static int getWordCount(int channel, int fullControl) {
+        if (getBits(fullControl, 28, 29) == 3) {
+            if (channel == 1 || channel == 2) {
+                return 0x4;
+            } else if (channel == 3) {
+                // TODO: implement video capture
+                return 0x0;
+            }
+        }
         if (channel < 3) {
-            wordCount &= 0x3FFF;
-            if (wordCount == 0) {
+            fullControl &= 0x3FFF;
+            if (fullControl == 0) {
                 return 0x4000;
             }
-            return wordCount;
+            return fullControl;
         }
-        wordCount &= 0xFFFF;
-        if (wordCount == 0) {
+        fullControl &= 0xFFFF;
+        if (fullControl == 0) {
             return 0x10000;
         }
-        return wordCount;
+        return fullControl;
+    }
+
+    private static Timing getTiming(int channel, int fullControl) {
+        if (!checkBit(fullControl, 31)) {
+            return Timing.DISABLED;
+        }
+        final switch (getBits(fullControl, 28, 29)) {
+            case 0:
+                return Timing.IMMEDIATE;
+            case 1:
+                return Timing.VBLANK;
+            case 2:
+                return Timing.HBLANK;
+            case 3:
+                final switch (channel) {
+                    case 1:
+                    case 2:
+                        return Timing.SOUND_FIFO;
+                    case 3:
+                        return Timing.VIDEO_CAPTURE;
+                }
+        }
+    }
+
+    public static enum Timing {
+        DISABLED,
+        IMMEDIATE,
+        VBLANK,
+        HBLANK,
+        SOUND_FIFO,
+        VIDEO_CAPTURE
     }
 }
 
