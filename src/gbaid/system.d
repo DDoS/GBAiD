@@ -111,13 +111,12 @@ public class MainMemory : MappedMemory {
     private static enum uint BIOS_MASK = 0x3FFF;
     private static enum uint BOARD_WRAM_MASK = 0x3FFFF;
     private static enum uint CHIP_WRAM_MASK = 0x7FFF;
-    private static enum uint CHIP_WRAM_MIRROR_START = 0xFFFF00;
-    private static enum uint CHIP_WRAM_MIRROR_MASK = 0x7FFF;
     private static enum uint IO_REGISTERS_END = 0x040003FE;
     private static enum uint IO_REGISTERS_MASK = 0x3FF;
     private static enum uint PALETTE_MASK = 0x3FF;
-    private static enum uint VRAM_END = 0x06017FFF;
     private static enum uint VRAM_MASK = 0x1FFFF;
+    private static enum uint VRAM_LOWER_MASK = 0xFFFF;
+    private static enum uint VRAM_HIGH_MASK = 0x17FFF;
     private static enum uint OAM_MASK = 0x3FF;
     private static enum uint GAME_PAK_START = 0x08000000;
     private NullMemory unusedMemory;
@@ -191,19 +190,9 @@ public class MainMemory : MappedMemory {
                 address &= BIOS_MASK;
                 return bios;
             case 0x2:
-                if (lowAddress & ~BOARD_WRAM_MASK) {
-                    return unusedMemory;
-                }
                 address &= BOARD_WRAM_MASK;
                 return boardWRAM;
             case 0x3:
-                if (lowAddress & ~CHIP_WRAM_MASK) {
-                    if ((lowAddress & CHIP_WRAM_MIRROR_START) == CHIP_WRAM_MIRROR_START) {
-                        address &= CHIP_WRAM_MIRROR_MASK;
-                        return chipWRAM;
-                    }
-                    return unusedMemory;
-                }
                 address &= CHIP_WRAM_MASK;
                 return chipWRAM;
             case 0x4:
@@ -213,21 +202,15 @@ public class MainMemory : MappedMemory {
                 address &= IO_REGISTERS_MASK;
                 return ioRegisters;
             case 0x5:
-                if (lowAddress & ~PALETTE_MASK) {
-                    return unusedMemory;
-                }
                 address &= PALETTE_MASK;
                 return palette;
             case 0x6:
-                if (address > VRAM_END) {
-                    return unusedMemory;
-                }
                 address &= VRAM_MASK;
+                if (address & ~VRAM_LOWER_MASK) {
+                    address &= VRAM_HIGH_MASK;
+                }
                 return vram;
             case 0x7:
-                if (lowAddress & ~OAM_MASK) {
-                    return unusedMemory;
-                }
                 address &= OAM_MASK;
                 return oam;
             case 0x8: .. case 0xE:
@@ -245,19 +228,16 @@ public class MainMemory : MappedMemory {
 
 public class GamePak : MappedMemory {
     private static enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
-    private static enum uint ROM_START = 0x00000000;
-    private static enum uint ROM_END = 0x05FFFFFF;
-    private static enum uint SAVE_START = 0x06000000;
-    private static enum uint SAVE_END = 0x0600FFFF;
-    private static enum uint EEPROM_START_NARROW = 0x05FFFF00;
-    private static enum uint EEPROM_START_WIDE = 0x05000000;
-    private static enum uint EEPROM_END = 0x05FFFFFF;
+    private static enum uint ROM_MASK = 0x1FFFFFF;
+    private static enum uint SAVE_MASK = 0xFFFF;
+    private static enum uint EEPROM_MASK_HIGH = 0xFFFF00;
+    private static enum uint EEPROM_MASK_LOW = 0x0;
     private NullMemory unusedMemory;
     private ROM rom;
     private Memory save;
     private Memory eeprom;
     private bool hasEEPROM;
-    private uint eepromStart;
+    private uint eepromMask;
     private ulong capacity;
 
     public this(string romFile) {
@@ -283,7 +263,7 @@ public class GamePak : MappedMemory {
 
     private void loadROM(string romFile) {
         rom = new ROM(romFile, MAX_ROM_SIZE);
-        eepromStart = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_START_NARROW : EEPROM_START_WIDE;
+        eepromMask = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_MASK_HIGH : EEPROM_MASK_LOW;
     }
 
     private void discardSave() {
@@ -343,28 +323,28 @@ public class GamePak : MappedMemory {
     }
 
     protected override Memory map(ref uint address) {
-        if (address >= ROM_START && address <= ROM_END) {
-            if (hasEEPROM && address >= eepromStart && address <= EEPROM_END) {
-                address -= eepromStart;
-                return eeprom;
-            }
-            address -= ROM_START;
-            address &= MAX_ROM_SIZE - 1;
-            if (address < rom.getCapacity()) {
-                return rom;
-            } else {
-                return unusedMemory;
-            }
-        }
-        if (address >= SAVE_START && address <= SAVE_END) {
-            address -= SAVE_START;
-            if (address < save.getCapacity()) {
+        int highAddress = address >> 24;
+        switch (highAddress) {
+            case 0: .. case 4:
+                address &= ROM_MASK;
+                if (address < rom.getCapacity()) {
+                    return rom;
+                } else {
+                    return unusedMemory;
+                }
+            case 5:
+                int lowAddress = address & 0xFFFFFF;
+                if (hasEEPROM && (lowAddress & eepromMask) == eepromMask) {
+                    address = lowAddress & ~eepromMask;
+                    return eeprom;
+                }
+                goto case 4;
+            case 6:
+                address &= SAVE_MASK;
                 return save;
-            } else {
+            default:
                 return unusedMemory;
-            }
         }
-        return unusedMemory;
     }
 
     public override ulong getCapacity() {
