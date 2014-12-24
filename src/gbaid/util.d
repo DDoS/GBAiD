@@ -54,6 +54,15 @@ public int sign(long v) {
     return 1 - (v >>> 62 & 0b10);
 }
 
+public int mirror(byte b) {
+    int bi = b & 0xFF;
+    return bi << 24 | bi << 16 | bi << 8 | bi;
+}
+
+public int mirror(short s) {
+    return s << 16 | (s & 0xFF);
+}
+
 template getSafe(T) {
     public T getSafe(T[] array, int index, T def) {
         if (index < 0 || index >= array.length) {

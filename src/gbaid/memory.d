@@ -708,6 +708,105 @@ public abstract class MemoryMonitor {
     }
 }
 
+public class ProtectedROM : ROM {
+    private bool delegate(uint) guard;
+    private int delegate(uint) fallback;
+
+    public this(void[] memory) {
+        super(memory);
+        guard = &unguarded;
+        fallback = &nullFallback;
+    }
+
+    public this(string file, uint maxSize) {
+        super(file, maxSize);
+        guard = &unguarded;
+        fallback = &nullFallback;
+    }
+
+    public void setGuard(bool delegate(uint) guard) {
+        this.guard = guard;
+    }
+
+    public void setFallback(int delegate(uint) fallback) {
+        this.fallback = fallback;
+    }
+
+    public override byte getByte(uint address) {
+        if (guard(address)) {
+            return super.getByte(address);
+        }
+        return cast(byte) fallback(address);
+    }
+
+    public override short getShort(uint address) {
+        if (guard(address)) {
+            return super.getShort(address);
+        }
+        return cast(short) fallback(address);
+    }
+
+    public override int getInt(uint address) {
+        if (guard(address)) {
+            return super.getInt(address);
+        }
+        return fallback(address);
+    }
+
+    private bool unguarded(uint address) {
+        return true;
+    }
+
+    private int nullFallback(uint address) {
+        return 0;
+    }
+}
+
+public class UnitMemory : Memory {
+    private shared int unit;
+
+    public void setUnit(int unit) {
+        this.unit = unit;
+    }
+
+    public override ulong getCapacity() {
+        return 4;
+    }
+
+    public override void[] getArray(uint address) {
+        return getPointer(address)[0 .. 4];
+    }
+
+    public override void* getPointer(uint address) {
+        return cast(void*) &unit;
+    }
+
+    public override byte getByte(uint address) {
+        return cast(byte) unit;
+    }
+
+    public override void setByte(uint address, byte b) {
+    }
+
+    public override short getShort(uint address) {
+        return cast(short) unit;
+    }
+
+    public override void setShort(uint address, short s) {
+    }
+
+    public override int getInt(uint address) {
+        return unit;
+    }
+
+    public override void setInt(uint address, int i) {
+    }
+
+    public override bool compareAndSet(uint address, int expected, int update) {
+        return cas(&unit, expected, update);
+    }
+}
+
 public class NullMemory : Memory {
     public override ulong getCapacity() {
         return 0;
@@ -749,19 +848,23 @@ public class NullMemory : Memory {
 
 public class ReadOnlyException : Exception {
     public this(uint address) {
-        super(format("Memory is read only: 0x%X", address));
+        super(format("Memory is read only: 0x%08X", address));
     }
 }
 
 public class UnsupportedMemoryWidthException : Exception {
     public this(uint address, uint badByteWidth) {
-        super(format("Attempted to access 0x%X with unsupported memory width of %s bytes", address, badByteWidth));
+        super(format("Attempted to access 0x%08X with unsupported memory width of %s bytes", address, badByteWidth));
     }
 }
 
 public class BadAddressException : Exception {
     public this(uint address) {
-        super(format("Invalid address: 0x%X", address));
+        this("Invalid address", address);
+    }
+
+    public this(string message, uint address) {
+        super(format("%s: 0x%08X", message, address));
     }
 }
 

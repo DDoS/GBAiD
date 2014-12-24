@@ -33,6 +33,7 @@ public class GameBoyAdvance {
     private Timers timers;
     private DMAs dmas;
     private bool running = false;
+    private int lastBIOSPreFetch;
 
     public this(string biosFile) {
         if (biosFile is null) {
@@ -51,6 +52,7 @@ public class GameBoyAdvance {
         dmas = new DMAs(memory, ioRegisters, interruptHandler, haltHandler);
         display = new Display(ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
 
+        memory.setBIOSProtection(&biosReadGuard, &biosReadFallback);
         processor.setEntryPointAddress(MainMemory.BIOS_START);
     }
 
@@ -97,6 +99,18 @@ public class GameBoyAdvance {
             throw new EmulatorRunningException();
         }
     }
+
+    private bool biosReadGuard(uint address) {
+        if (processor.getProgramCounter() < cast(int) MainMemory.BIOS_SIZE) {
+            lastBIOSPreFetch = processor.getPreFetch();
+            return true;
+        }
+        return false;
+    }
+
+    private int biosReadFallback(uint address) {
+        return lastBIOSPreFetch;
+    }
 }
 
 public class MainMemory : MappedMemory {
@@ -120,7 +134,8 @@ public class MainMemory : MappedMemory {
     private static enum uint OAM_MASK = 0x3FF;
     private static enum uint GAME_PAK_START = 0x08000000;
     private NullMemory unusedMemory;
-    private ROM bios;
+    private UnitMemory lastPreFetch;
+    private ProtectedROM bios;
     private RAM boardWRAM;
     private RAM chipWRAM;
     private IORegisters ioRegisters;
@@ -132,7 +147,8 @@ public class MainMemory : MappedMemory {
 
     private this(string biosFile) {
         unusedMemory = new NullMemory();
-        bios = new ROM(biosFile, BIOS_SIZE);
+        lastPreFetch = new UnitMemory();
+        bios = new ProtectedROM(biosFile, BIOS_SIZE);
         boardWRAM = new RAM(BOARD_WRAM_SIZE);
         chipWRAM = new RAM(CHIP_WRAM_SIZE);
         ioRegisters = new IORegisters(new RAM(IO_REGISTERS_SIZE));
@@ -152,6 +168,10 @@ public class MainMemory : MappedMemory {
             + oam.getCapacity()
             + palette.getCapacity()
             + gamePak.getCapacity();
+    }
+
+    private ProtectedROM getBIOS() {
+        return bios;
     }
 
     private IORegisters getIORegisters() {
@@ -179,16 +199,41 @@ public class MainMemory : MappedMemory {
         updateCapacity();
     }
 
+    private void setBIOSProtection(bool delegate(uint) guard, int delegate(uint) fallback) {
+        bios.setGuard(guard);
+        bios.setFallback(fallback);
+    }
+
+    public override byte getByte(uint address) {
+        byte b = super.getByte(address);
+        lastPreFetch.setUnit(mirror(b));
+        return b;
+    }
+
+    public override short getShort(uint address) {
+        short s = super.getShort(address);
+        lastPreFetch.setUnit(mirror(s));
+        return s;
+    }
+
+    public override int getInt(uint address) {
+        int i = super.getInt(address);
+        lastPreFetch.setUnit(i);
+        return i;
+    }
+
     protected override Memory map(ref uint address) {
         int highAddress = address >> 24;
         int lowAddress = address & 0xFFFFFF;
         switch (highAddress) {
             case 0x0:
                 if (lowAddress & ~BIOS_MASK) {
-                    return unusedMemory;
+                    return lastPreFetch;
                 }
                 address &= BIOS_MASK;
                 return bios;
+            case 0x1:
+                return lastPreFetch;
             case 0x2:
                 address &= BOARD_WRAM_MASK;
                 return boardWRAM;
@@ -217,7 +262,7 @@ public class MainMemory : MappedMemory {
                 address -= GAME_PAK_START;
                 return gamePak;
             default:
-                return unusedMemory;
+                return lastPreFetch;
         }
     }
 
@@ -325,21 +370,21 @@ public class GamePak : MappedMemory {
     protected override Memory map(ref uint address) {
         int highAddress = address >> 24;
         switch (highAddress) {
-            case 0: .. case 4:
+            case 0x0: .. case 0x4:
                 address &= ROM_MASK;
                 if (address < rom.getCapacity()) {
                     return rom;
                 } else {
                     return unusedMemory;
                 }
-            case 5:
+            case 0x5:
                 int lowAddress = address & 0xFFFFFF;
                 if (hasEEPROM && (lowAddress & eepromMask) == eepromMask) {
                     address = lowAddress & ~eepromMask;
                     return eeprom;
                 }
-                goto case 4;
-            case 6:
+                goto case 0x4;
+            case 0x6:
                 address &= SAVE_MASK;
                 return save;
             default:

@@ -82,6 +82,18 @@ public class ARM7TDMI {
 		irqSignal = true;
 	}
 
+	public int getProgramCounter() {
+		return getRegister(Register.PC) - 2 * pipeline.getPCIncrement();
+	}
+
+	public int getPreFetch() {
+		return instruction;
+	}
+
+	public int getNextInstruction() {
+		return decoded;
+	}
+
 	private void run() {
 		try {
 			// initialize the stack pointers
@@ -1657,7 +1669,7 @@ public class ARM7TDMI {
 	}
 
 	debug (outputInstructions) {
-		private enum uint queueMaxSize = 400;
+		private enum uint queueMaxSize = 1024;
 		private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
 		private uint queueSize = 0;
 		private uint index = 0;
