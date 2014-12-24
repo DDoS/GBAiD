@@ -53,6 +53,8 @@ public class GameBoyAdvance {
         display = new Display(ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
 
         memory.setBIOSProtection(&biosReadGuard, &biosReadFallback);
+        memory.setUnusedMemoryFallBack(&unusedReadFallBack);
+
         processor.setEntryPointAddress(MainMemory.BIOS_START);
     }
 
@@ -111,6 +113,10 @@ public class GameBoyAdvance {
     private int biosReadFallback(uint address) {
         return lastBIOSPreFetch;
     }
+
+    private int unusedReadFallBack(uint address) {
+        return processor.getPreFetch();
+    }
 }
 
 public class MainMemory : MappedMemory {
@@ -133,8 +139,7 @@ public class MainMemory : MappedMemory {
     private static enum uint VRAM_HIGH_MASK = 0x17FFF;
     private static enum uint OAM_MASK = 0x3FF;
     private static enum uint GAME_PAK_START = 0x08000000;
-    private NullMemory unusedMemory;
-    private UnitMemory lastPreFetch;
+    private DelegatedROM unusedMemory;
     private ProtectedROM bios;
     private RAM boardWRAM;
     private RAM chipWRAM;
@@ -146,8 +151,7 @@ public class MainMemory : MappedMemory {
     private ulong capacity;
 
     private this(string biosFile) {
-        unusedMemory = new NullMemory();
-        lastPreFetch = new UnitMemory();
+        unusedMemory = new DelegatedROM(0);
         bios = new ProtectedROM(biosFile, BIOS_SIZE);
         boardWRAM = new RAM(BOARD_WRAM_SIZE);
         chipWRAM = new RAM(CHIP_WRAM_SIZE);
@@ -155,7 +159,7 @@ public class MainMemory : MappedMemory {
         vram = new RAM(VRAM_SIZE);
         oam = new RAM(OAM_SIZE);
         palette = new RAM(PALETTE_SIZE);
-        gamePak = unusedMemory;
+        gamePak = new NullMemory();
         updateCapacity();
     }
 
@@ -204,22 +208,8 @@ public class MainMemory : MappedMemory {
         bios.setFallback(fallback);
     }
 
-    public override byte getByte(uint address) {
-        byte b = super.getByte(address);
-        lastPreFetch.setUnit(mirror(b));
-        return b;
-    }
-
-    public override short getShort(uint address) {
-        short s = super.getShort(address);
-        lastPreFetch.setUnit(mirror(s));
-        return s;
-    }
-
-    public override int getInt(uint address) {
-        int i = super.getInt(address);
-        lastPreFetch.setUnit(i);
-        return i;
+    private void setUnusedMemoryFallBack(int delegate(uint) fallback) {
+        unusedMemory.setDelegate(fallback);
     }
 
     protected override Memory map(ref uint address) {
@@ -228,12 +218,12 @@ public class MainMemory : MappedMemory {
         switch (highAddress) {
             case 0x0:
                 if (lowAddress & ~BIOS_MASK) {
-                    return lastPreFetch;
+                    return unusedMemory;
                 }
                 address &= BIOS_MASK;
                 return bios;
             case 0x1:
-                return lastPreFetch;
+                return unusedMemory;
             case 0x2:
                 address &= BOARD_WRAM_MASK;
                 return boardWRAM;
@@ -262,7 +252,7 @@ public class MainMemory : MappedMemory {
                 address -= GAME_PAK_START;
                 return gamePak;
             default:
-                return lastPreFetch;
+                return unusedMemory;
         }
     }
 

@@ -161,11 +161,7 @@ public class ARM7TDMI {
 
 	private void updateModeAndSet() {
 		mode = getMode();
-		if (getFlag(CPSRFlag.T)) {
-			pipeline = thumbPipeline;
-		} else {
-			pipeline = armPipeline;
-		}
+		pipeline = getFlag(CPSRFlag.T) ? thumbPipeline : armPipeline;
 	}
 
 	private void processIRQ() {
@@ -1735,7 +1731,7 @@ public class ARM7TDMI {
 }
 
 private int getConditionBits(int instruction) {
-	return instruction >> 28 & 0xF;
+	return instruction >>> 28;
 }
 
 private int rotateRead(int address, int value) {

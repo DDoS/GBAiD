@@ -762,48 +762,58 @@ public class ProtectedROM : ROM {
     }
 }
 
-public class UnitMemory : Memory {
-    private shared int unit;
+public class DelegatedROM : Memory {
+    private int delegate(uint) memory;
+    private ulong apparentCapacity;
 
-    public void setUnit(int unit) {
-        this.unit = unit;
+    public this(ulong apparentCapacity) {
+        this.apparentCapacity = apparentCapacity;
+        memory = &nullDelegate;
+    }
+
+    public void setDelegate(int delegate(uint) memory) {
+        this.memory = memory;
     }
 
     public override ulong getCapacity() {
-        return 4;
+        return apparentCapacity;
     }
 
     public override void[] getArray(uint address) {
-        return getPointer(address)[0 .. 4];
+        throw new UnsupportedMemoryOperationException("getArray");
     }
 
     public override void* getPointer(uint address) {
-        return cast(void*) &unit;
+        throw new UnsupportedMemoryOperationException("getPointer");
     }
 
     public override byte getByte(uint address) {
-        return cast(byte) unit;
+        return cast(byte) memory(address);
     }
 
     public override void setByte(uint address, byte b) {
     }
 
     public override short getShort(uint address) {
-        return cast(short) unit;
+        return cast(short) memory(address);
     }
 
     public override void setShort(uint address, short s) {
     }
 
     public override int getInt(uint address) {
-        return unit;
+        return memory(address);
     }
 
     public override void setInt(uint address, int i) {
     }
 
     public override bool compareAndSet(uint address, int expected, int update) {
-        return cas(&unit, expected, update);
+        throw new UnsupportedMemoryOperationException("compareAndSet");
+    }
+
+    private int nullDelegate(uint address) {
+        return 0;
     }
 }
 

@@ -1035,7 +1035,7 @@ public class Display {
             0
         ];
 
-        int[5] layerMap = [3, 2, 1, 0, 4];
+        enum int[5] layerMap = [3, 2, 1, 0, 4];
 
         for (int column = 0, p = line * HORIZONTAL_RESOLUTION; column < HORIZONTAL_RESOLUTION; column++, p++) {
 

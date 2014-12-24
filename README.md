@@ -5,7 +5,7 @@ GBAiD stands for <strong>G</strong>ame<strong>B</strong>oy <strong>A</strong>dva
 as an effort to learn the D programing language. The goal of this emulator
 is light CPU usage.
 
-This emulator is writen mostly in pure D, with some inline x86_64 assembly in the graphics
+This emulator is written mostly in pure D, with some inline x86_64 assembly in the graphics
 to help with performance.
 
 I haven't tried compiling it on Windows or Linux yet, only on OS X, but it doesn't use any platform specific
