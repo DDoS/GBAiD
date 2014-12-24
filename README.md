@@ -81,6 +81,23 @@ the same path as the ROM is used, but with the .sav extension instead of whateve
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the --nosave argument is used.
 
+### Controls ###
+
+These will be re-mapable soon.
+
+| Gamepad | Keyboard |
+|---------|----------|
+| A       | P        |
+| B       | O        |
+| Up      | W        |
+| Down    | S        |
+| Right   | D        |
+| Left    | A        |
+| R       | E        |
+| L       | Q        |
+| Start   | Enter    |
+| Select  | Tab      |
+
 ## License ##
 
 GBAiD is licensed under [MIT](LICENSE.txt)

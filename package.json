@@ -1,7 +1,7 @@
 {
 	"name": "gbaid",
 	"targetName": "gbaid",
-	"description": "A GameBoy Advance emulator in D.",
+	"description": "A GameBoy Advance emulator in D",
 	"authors": ["Aleksi \"DDoS\" Sapon"],
 	"license": "MIT",
 	"targetPath": "bin",
