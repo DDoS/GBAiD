@@ -41,14 +41,14 @@ At minimum, you must specify the path to the bios and rom images with
 
 The following arguments are also recognized:
 
-| Long form   | Short form | Argument               | Usage                                                                         |
-|-------------|------------|------------------------|-------------------------------------------------------------------------------|
-| --bios      | -b         | path to bios           | Specify bios image                                                            |
-| --save      | -s         | path to save           | Specify path for loading and saving saves                                     |
-| --noload    | -n         | none                   | Don't load the save                                                           |
-| --nosave    | -N         | none                   | Don't save the save                                                           |
-| --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                    |
-| --upscaling | -u         | LINEAR or NONE         | When drawing at higher resolution, what technique to use to upscale the image |
+| Long form   | Short form | Argument               | Usage                                                                        |
+|-------------|------------|------------------------|------------------------------------------------------------------------------|
+| --bios      | -b         | path to bios           | Specify bios image                                                           |
+| --save      | -s         | path to save           | Specify path for loading and saving saves                                    |
+| --noload    | -n         | none                   | Don't load the save                                                          |
+| --nosave    | -N         | none                   | Don't save the save                                                          |
+| --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                   |
+| --filtering | -f         | LINEAR or NEAREST      | What technique to use to filter the output texture to be drawn to the screen |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
 

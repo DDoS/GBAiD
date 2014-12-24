@@ -13,7 +13,7 @@ public void main(string[] args) {
 	string bios = null, save = null;
 	bool noLoad = false, noSave = false;
 	float scale = 2;
-	UpscalingMode upscaling = UpscalingMode.NONE;
+	FilteringMode filtering = FilteringMode.NONE;
 	getopt(args,
 		config.caseSensitive,
 		"bios|b", &bios,
@@ -23,7 +23,7 @@ public void main(string[] args) {
 		"nosave|N", &noSave,
 		config.noBundling,
 		"scale|r", &scale,
-		"upscaling|u", &upscaling
+		"filtering|f", &filtering
 	);
 
 	// Resolve BIOS
@@ -75,7 +75,7 @@ public void main(string[] args) {
 	GameBoyAdvance gba = new GameBoyAdvance(bios);
 	gba.setGamePak(gamePak);
 	gba.setDisplayScale(scale);
-	gba.setDisplayUpscalingMode(upscaling);
+	gba.setDisplayFilteringMode(filtering);
 
 	// Run GBA
 	gba.run();

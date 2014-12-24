@@ -68,8 +68,8 @@ public class GameBoyAdvance {
         display.setScale(scale);
     }
 
-    public void setDisplayUpscalingMode(UpscalingMode mode) {
-        display.setUpscalingMode(mode);
+    public void setDisplayFilteringMode(FilteringMode mode) {
+        display.setFilteringMode(mode);
     }
 
     public MainMemory getMemory() {

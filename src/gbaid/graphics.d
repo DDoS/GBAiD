@@ -28,7 +28,7 @@ public class Display {
     private DMAs dmas;
     private Context context;
     private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
-    private UpscalingMode upscalingMode = UpscalingMode.NONE;
+    private FilteringMode filteringMode = FilteringMode.NONE;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
     private int[2] internalAffineReferenceX = new int[2];
@@ -79,8 +79,8 @@ public class Display {
         }
     }
 
-    public void setUpscalingMode(UpscalingMode mode) {
-        upscalingMode = mode;
+    public void setFilteringMode(FilteringMode mode) {
+        filteringMode = mode;
     }
 
     public void run() {
@@ -111,11 +111,11 @@ public class Display {
         texture.setFormat(RGBA, RGB5_A1);
         texture.setWraps(CLAMP_TO_BORDER, CLAMP_TO_BORDER);
         texture.setBorderColor(0, 0, 0, 1);
-        final switch (upscalingMode) {
-            case UpscalingMode.NONE:
+        final switch (filteringMode) {
+            case FilteringMode.NONE:
                 texture.setFilters(NEAREST, NEAREST);
                 break;
-            case UpscalingMode.LINEAR:
+            case FilteringMode.LINEAR:
                 texture.setFilters(LINEAR, LINEAR);
                 break;
         }
@@ -1293,7 +1293,7 @@ public class Display {
     }
 }
 
-public enum UpscalingMode {
+public enum FilteringMode {
     NONE,
     LINEAR
 }
