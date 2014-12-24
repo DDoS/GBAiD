@@ -81,6 +81,10 @@ the same path as the ROM is used, but with the .sav extension instead of whateve
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the --nosave argument is used.
 
+## License ##
+
+GBAiD is licensed under [MIT](LICENSE.txt)
+
 ## Useful information ##
 
 [This](http://problemkaputt.de/gbatek.htm) page for a whole lot of detailed information on the hardware.
