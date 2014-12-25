@@ -60,7 +60,7 @@ public int mirror(byte b) {
 }
 
 public int mirror(short s) {
-    return s << 16 | (s & 0xFF);
+    return s << 16 | (s & 0xFFFF);
 }
 
 template getSafe(T) {

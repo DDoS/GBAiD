@@ -918,7 +918,7 @@ public class ARM7TDMI {
         }
 
         protected override int fetch() {
-            return memory.getShort(getRegister(Register.PC));
+            return mirror(memory.getShort(getRegister(Register.PC)));
         }
 
         protected override int decode(int instruction) {
