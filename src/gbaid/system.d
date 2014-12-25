@@ -148,7 +148,7 @@ public class MainMemory : MappedMemory {
     private RAM oam;
     private RAM palette;
     private Memory gamePak;
-    private ulong capacity;
+    private size_t capacity;
 
     private this(string biosFile) {
         unusedMemory = new DelegatedROM(0);
@@ -256,7 +256,7 @@ public class MainMemory : MappedMemory {
         }
     }
 
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return capacity;
     }
 }
@@ -273,7 +273,7 @@ public class GamePak : MappedMemory {
     private Memory eeprom;
     private bool hasEEPROM;
     private uint eepromMask;
-    private ulong capacity;
+    private size_t capacity;
 
     public this(string romFile) {
         this(romFile, null);
@@ -328,7 +328,7 @@ public class GamePak : MappedMemory {
         int saveSize = SaveMemory.SRAM[1];
         char[] romChars = cast(char[]) rom.getArray(0);
         auto saveTypes = EnumMembers!SaveMemory;
-        for (ulong i = 0; i < romChars.length; i += 4) {
+        for (size_t i = 0; i < romChars.length; i += 4) {
             foreach (saveType; saveTypes) {
                 string saveID = saveType[0];
                 if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
@@ -382,7 +382,7 @@ public class GamePak : MappedMemory {
         }
     }
 
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return capacity;
     }
 

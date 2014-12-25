@@ -89,7 +89,7 @@ template removeAll(K, V) {
 }
 
 public string toString(char[] cs) {
-    ulong end;
+    size_t end;
     foreach (i; 0 .. cs.length) {
         if (cs[i] == '\0') {
             end = i;

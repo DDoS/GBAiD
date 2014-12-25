@@ -339,128 +339,253 @@ public class Display {
 
         int lineMapOffset = mapLine << 5;
 
-        size_t bufferAddress = cast(size_t) buffer.ptr;
-        size_t vramAddress = cast(size_t) vram.getPointer(0x0);
-        size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
-
-        asm {
-                push bufferAddress;
-                mov EAX, 0;
-                push RAX;
-            loop:
-                // calculate x for entire bg
-                add EAX, xOffset;
-                and EAX, totalWidth;
-                // start calculating tile address
-                mov EDX, mapBase;
-                // calculate x for section
-                test EAX, ~255;
-                jz skip_overflow;
-                and EAX, 255;
-                add EDX, 2048;
-            skip_overflow:
-                test mosaic, 1;
-                jz skip_mosaic;
-                // apply horizontal mosaic
-                push RDX;
-                xor EDX, EDX;
-                mov EBX, EAX;
-                mov ECX, mosaicSizeX;
-                div ECX;
-                sub EBX, EDX;
-                mov EAX, EBX;
-                pop RDX;
-            skip_mosaic:
-                // EAX = x, RDX = map
-                mov EBX, EAX;
-                // calculate tile map and column
-                shr EBX, 3;
-                and EAX, 7;
-                // calculate map address
-                add EBX, lineMapOffset;
-                shl EBX, 1;
-                add EDX, EBX;
-                add RDX, vramAddress;
-                // get tile
-                xor EBX, EBX;
-                mov BX, [RDX];
-                // EAX = tileColumn, EBX = tile
-                mov ECX, EAX;
-                // calculate sample column and line
-                test EBX, 0x400;
-                jz skip_hor_flip;
-                not ECX;
-                and ECX, 7;
-            skip_hor_flip:
-                mov EDX, tileLine;
-                test EBX, 0x800;
-                jz skip_ver_flip;
-                not EDX;
-                and EDX, 7;
-            skip_ver_flip:
-                // EBX = tile, ECX = sampleColumn, EDX = sampleLine
-                push RCX;
-                // calculate tile address
-                shl EDX, 3;
-                add EDX, ECX;
-                mov ECX, tile4Bit;
-                shr EDX, CL;
-                mov EAX, EBX;
-                and EAX, 0x3FF;
-                mov ECX, tileSizeShift;
-                shl EAX, CL;
-                add EAX, EDX;
-                add EAX, tileBase;
-                add RAX, vramAddress;
-                pop RCX;
-                // EAX = tileAddress, EBX = tile, ECX = sampleColumn
-                // calculate the palette address
-                mov DL, [RAX];
-                test singlePalette, 1;
-                jz mult_palettes;
-                and EDX, 0xFF;
-                jnz skip_transparent1;
-                mov CX, TRANSPARENT;
-                jmp end_color;
-            skip_transparent1:
-                shl EDX, 1;
-                jmp end_palettes;
-            mult_palettes:
-                and ECX, 1;
-                shl ECX, 2;
-                shr EDX, CL;
-                and EDX, 0xF;
-                jnz skip_transparent2;
-                mov CX, TRANSPARENT;
-                jmp end_color;
-            skip_transparent2:
-                shr EBX, 8;
-                and EBX, 0xF0;
-                add EDX, EBX;
-                shl EDX, 1;
-            end_palettes:
-                // EDX = paletteAddress
-                // get color from palette
-                add RDX, paletteAddress;
-                mov CX, [RDX];
-                and ECX, 0x7FFF;
-            end_color:
-                // ECX = color
-                pop RAX;
-                pop RBX;
-                // write color to line buffer
-                mov [RBX], CX;
-                // check loop condition
-                cmp EAX, 239;
-                jge end;
-                // increment address and counter
-                add RBX, 2;
-                push RBX;
-                add EAX, 1;
-                push RAX;
-                jmp loop;
-            end:
-                nop;
+        version (D_InlineAsm_X86) {
+            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            asm {
+                    push bufferAddress;
+                    mov EAX, 0;
+                    push EAX;
+                loop:
+                    // calculate x for entire bg
+                    add EAX, xOffset;
+                    and EAX, totalWidth;
+                    // start calculating tile address
+                    mov EDX, mapBase;
+                    // calculate x for section
+                    test EAX, ~255;
+                    jz skip_overflow;
+                    and EAX, 255;
+                    add EDX, 2048;
+                skip_overflow:
+                    test mosaic, 1;
+                    jz skip_mosaic;
+                    // apply horizontal mosaic
+                    push EDX;
+                    xor EDX, EDX;
+                    mov EBX, EAX;
+                    mov ECX, mosaicSizeX;
+                    div ECX;
+                    sub EBX, EDX;
+                    mov EAX, EBX;
+                    pop EDX;
+                skip_mosaic:
+                    // EAX = x, RDX = map
+                    mov EBX, EAX;
+                    // calculate tile map and column
+                    shr EBX, 3;
+                    and EAX, 7;
+                    // calculate map address
+                    add EBX, lineMapOffset;
+                    shl EBX, 1;
+                    add EDX, EBX;
+                    add EDX, vramAddress;
+                    // get tile
+                    xor EBX, EBX;
+                    mov BX, [EDX];
+                    // EAX = tileColumn, EBX = tile
+                    mov ECX, EAX;
+                    // calculate sample column and line
+                    test EBX, 0x400;
+                    jz skip_hor_flip;
+                    not ECX;
+                    and ECX, 7;
+                skip_hor_flip:
+                    mov EDX, tileLine;
+                    test EBX, 0x800;
+                    jz skip_ver_flip;
+                    not EDX;
+                    and EDX, 7;
+                skip_ver_flip:
+                    // EBX = tile, ECX = sampleColumn, EDX = sampleLine
+                    push ECX;
+                    // calculate tile address
+                    shl EDX, 3;
+                    add EDX, ECX;
+                    mov ECX, tile4Bit;
+                    shr EDX, CL;
+                    mov EAX, EBX;
+                    and EAX, 0x3FF;
+                    mov ECX, tileSizeShift;
+                    shl EAX, CL;
+                    add EAX, EDX;
+                    add EAX, tileBase;
+                    add EAX, vramAddress;
+                    pop ECX;
+                    // EAX = tileAddress, EBX = tile, ECX = sampleColumn
+                    // calculate the palette address
+                    mov DL, [EAX];
+                    test singlePalette, 1;
+                    jz mult_palettes;
+                    and EDX, 0xFF;
+                    jnz skip_transparent1;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent1:
+                    shl EDX, 1;
+                    jmp end_palettes;
+                mult_palettes:
+                    and ECX, 1;
+                    shl ECX, 2;
+                    shr EDX, CL;
+                    and EDX, 0xF;
+                    jnz skip_transparent2;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent2:
+                    shr EBX, 8;
+                    and EBX, 0xF0;
+                    add EDX, EBX;
+                    shl EDX, 1;
+                end_palettes:
+                    // EDX = paletteAddress
+                    // get color from palette
+                    add EDX, paletteAddress;
+                    mov CX, [EDX];
+                    and ECX, 0x7FFF;
+                end_color:
+                    // ECX = color
+                    pop EAX;
+                    pop EBX;
+                    // write color to line buffer
+                    mov [EBX], CX;
+                    // check loop condition
+                    cmp EAX, 239;
+                    jge end;
+                    // increment address and counter
+                    add EBX, 2;
+                    push EBX;
+                    add EAX, 1;
+                    push EAX;
+                    jmp loop;
+                end:
+                    nop;
+            }
+        }
+        version (D_InlineAsm_X86_64) {
+            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            asm {
+                    push bufferAddress;
+                    mov EAX, 0;
+                    push RAX;
+                loop:
+                    // calculate x for entire bg
+                    add EAX, xOffset;
+                    and EAX, totalWidth;
+                    // start calculating tile address
+                    mov EDX, mapBase;
+                    // calculate x for section
+                    test EAX, ~255;
+                    jz skip_overflow;
+                    and EAX, 255;
+                    add EDX, 2048;
+                skip_overflow:
+                    test mosaic, 1;
+                    jz skip_mosaic;
+                    // apply horizontal mosaic
+                    push RDX;
+                    xor EDX, EDX;
+                    mov EBX, EAX;
+                    mov ECX, mosaicSizeX;
+                    div ECX;
+                    sub EBX, EDX;
+                    mov EAX, EBX;
+                    pop RDX;
+                skip_mosaic:
+                    // EAX = x, RDX = map
+                    mov EBX, EAX;
+                    // calculate tile map and column
+                    shr EBX, 3;
+                    and EAX, 7;
+                    // calculate map address
+                    add EBX, lineMapOffset;
+                    shl EBX, 1;
+                    add EDX, EBX;
+                    add RDX, vramAddress;
+                    // get tile
+                    xor EBX, EBX;
+                    mov BX, [RDX];
+                    // EAX = tileColumn, EBX = tile
+                    mov ECX, EAX;
+                    // calculate sample column and line
+                    test EBX, 0x400;
+                    jz skip_hor_flip;
+                    not ECX;
+                    and ECX, 7;
+                skip_hor_flip:
+                    mov EDX, tileLine;
+                    test EBX, 0x800;
+                    jz skip_ver_flip;
+                    not EDX;
+                    and EDX, 7;
+                skip_ver_flip:
+                    // EBX = tile, ECX = sampleColumn, EDX = sampleLine
+                    push RCX;
+                    // calculate tile address
+                    shl EDX, 3;
+                    add EDX, ECX;
+                    mov ECX, tile4Bit;
+                    shr EDX, CL;
+                    mov EAX, EBX;
+                    and EAX, 0x3FF;
+                    mov ECX, tileSizeShift;
+                    shl EAX, CL;
+                    add EAX, EDX;
+                    add EAX, tileBase;
+                    add RAX, vramAddress;
+                    pop RCX;
+                    // EAX = tileAddress, EBX = tile, ECX = sampleColumn
+                    // calculate the palette address
+                    mov DL, [RAX];
+                    test singlePalette, 1;
+                    jz mult_palettes;
+                    and EDX, 0xFF;
+                    jnz skip_transparent1;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent1:
+                    shl EDX, 1;
+                    jmp end_palettes;
+                mult_palettes:
+                    and ECX, 1;
+                    shl ECX, 2;
+                    shr EDX, CL;
+                    and EDX, 0xF;
+                    jnz skip_transparent2;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent2:
+                    shr EBX, 8;
+                    and EBX, 0xF0;
+                    add EDX, EBX;
+                    shl EDX, 1;
+                end_palettes:
+                    // EDX = paletteAddress
+                    // get color from palette
+                    add RDX, paletteAddress;
+                    mov CX, [RDX];
+                    and ECX, 0x7FFF;
+                end_color:
+                    // ECX = color
+                    pop RAX;
+                    pop RBX;
+                    // write color to line buffer
+                    mov [RBX], CX;
+                    // check loop condition
+                    cmp EAX, 239;
+                    jge end;
+                    // increment address and counter
+                    add RBX, 2;
+                    push RBX;
+                    add EAX, 1;
+                    push RAX;
+                    jmp loop;
+                end:
+                    nop;
+            }
         }
     }
 
@@ -510,129 +635,255 @@ public class Display {
         internalAffineReferenceX[affineLayer] += pb;
         internalAffineReferenceY[affineLayer] += pd;
 
-        size_t bufferAddress = cast(size_t) buffer.ptr;
-        size_t vramAddress = cast(size_t) vram.getPointer(0x0);
-        size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
-
-        asm {
-                mov EAX, dx;
-                push RAX;
-                mov EBX, dy;
-                push RBX;
-                push bufferAddress;
-                push 0;
-            loop:
-                // calculate x
-                add EAX, 128;
-                sar EAX, 8;
-                // calculate y
-                add EBX, 128;
-                sar EBX, 8;
-                // EAX = x, EBX = y
-                // check and handle overflow
-                test EAX, bgSizeInv;
-                jz skip_x_overflow;
-                test displayOverflow, 1;
-                jnz skip_transparent1;
-                mov CX, TRANSPARENT;
-                jmp end_color;
-            skip_transparent1:
-                and EAX, bgSize;
-            skip_x_overflow:
-                test EBX, bgSizeInv;
-                jz skip_y_overflow;
-                test displayOverflow, 1;
-                jnz skip_transparent2;
-                mov CX, TRANSPARENT;
-                jmp end_color;
-            skip_transparent2:
-                and EBX, bgSize;
-            skip_y_overflow:
-                // check and apply mosaic
-                test mosaic, 1;
-                jz skip_mosaic;
-                push RBX;
-                mov EBX, EAX;
-                xor EDX, EDX;
-                mov ECX, mosaicSizeX;
-                div ECX;
-                sub EBX, EDX;
-                pop RAX;
-                push RBX;
-                mov EBX, EAX;
-                xor EDX, EDX;
-                mov ECX, mosaicSizeY;
-                div ECX;
-                sub EBX, EDX;
-                pop RAX;
-            skip_mosaic:
-                // calculate the map address
-                push RAX;
-                push RBX;
-                shr EAX, 3;
-                shr EBX, 3;
-                mov ECX, mapLineShift;
-                shl EBX, CL;
-                add EAX, EBX;
-                add EAX, mapBase;
-                add RAX, vramAddress;
-                // get the tile number
-                xor ECX, ECX;
-                mov CL, [RAX];
-                // calculate the tile address
-                pop RBX;
-                pop RAX;
-                and EAX, 7;
-                and EBX, 7;
-                shl EBX, 3;
-                add EAX, EBX;
-                shl ECX, 6;
-                add EAX, ECX;
-                add EAX, tileBase;
-                add RAX, vramAddress;
-                // get the palette index
-                xor EDX, EDX;
-                mov DL, [RAX];
-                // calculate the palette address
-                shl EDX, 1;
-                jnz end_palettes;
-                mov CX, TRANSPARENT;
-                jmp end_color;
-            end_palettes:
-                // ECX = paletteAddress
-                // get color from palette
-                add RDX, paletteAddress;
-                mov CX, [RDX];
-                and ECX, 0x7FFF;
-            end_color:
-                // ECX = color
-                pop RAX;
-                pop RBX;
-                // EAX = index, EBX = buffer address
-                // write color to line buffer
-                mov [RBX], CX;
-                pop RDX;
-                pop RCX;
-                // ECX = dx, EDX = dy
-                // check loop condition
-                cmp EAX, 239;
-                jge end;
-                // increment dx and dy
-                add ECX, pa;
-                push RCX;
-                add EDX, pc;
-                push RDX;
-                // increment address and counter
-                add RBX, 2;
-                push RBX;
-                add EAX, 1;
-                push RAX;
-                // prepare for next iteration
-                mov EAX, ECX;
-                mov EBX, EDX;
-                jmp loop;
-            end:
-                nop;
+        version (D_InlineAsm_X86) {
+            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            asm {
+                    mov EAX, dx;
+                    push EAX;
+                    mov EBX, dy;
+                    push EBX;
+                    push bufferAddress;
+                    push 0;
+                loop:
+                    // calculate x
+                    add EAX, 128;
+                    sar EAX, 8;
+                    // calculate y
+                    add EBX, 128;
+                    sar EBX, 8;
+                    // EAX = x, EBX = y
+                    // check and handle overflow
+                    test EAX, bgSizeInv;
+                    jz skip_x_overflow;
+                    test displayOverflow, 1;
+                    jnz skip_transparent1;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent1:
+                    and EAX, bgSize;
+                skip_x_overflow:
+                    test EBX, bgSizeInv;
+                    jz skip_y_overflow;
+                    test displayOverflow, 1;
+                    jnz skip_transparent2;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent2:
+                    and EBX, bgSize;
+                skip_y_overflow:
+                    // check and apply mosaic
+                    test mosaic, 1;
+                    jz skip_mosaic;
+                    push EBX;
+                    mov EBX, EAX;
+                    xor EDX, EDX;
+                    mov ECX, mosaicSizeX;
+                    div ECX;
+                    sub EBX, EDX;
+                    pop EAX;
+                    push EBX;
+                    mov EBX, EAX;
+                    xor EDX, EDX;
+                    mov ECX, mosaicSizeY;
+                    div ECX;
+                    sub EBX, EDX;
+                    pop EAX;
+                skip_mosaic:
+                    // calculate the map address
+                    push EAX;
+                    push EBX;
+                    shr EAX, 3;
+                    shr EBX, 3;
+                    mov ECX, mapLineShift;
+                    shl EBX, CL;
+                    add EAX, EBX;
+                    add EAX, mapBase;
+                    add EAX, vramAddress;
+                    // get the tile number
+                    xor ECX, ECX;
+                    mov CL, [EAX];
+                    // calculate the tile address
+                    pop EBX;
+                    pop EAX;
+                    and EAX, 7;
+                    and EBX, 7;
+                    shl EBX, 3;
+                    add EAX, EBX;
+                    shl ECX, 6;
+                    add EAX, ECX;
+                    add EAX, tileBase;
+                    add EAX, vramAddress;
+                    // get the palette index
+                    xor EDX, EDX;
+                    mov DL, [EAX];
+                    // calculate the palette address
+                    shl EDX, 1;
+                    jnz end_palettes;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                end_palettes:
+                    // ECX = paletteAddress
+                    // get color from palette
+                    add EDX, paletteAddress;
+                    mov CX, [EDX];
+                    and ECX, 0x7FFF;
+                end_color:
+                    // ECX = color
+                    pop EAX;
+                    pop EBX;
+                    // EAX = index, EBX = buffer address
+                    // write color to line buffer
+                    mov [EBX], CX;
+                    pop EDX;
+                    pop ECX;
+                    // ECX = dx, EDX = dy
+                    // check loop condition
+                    cmp EAX, 239;
+                    jge end;
+                    // increment dx and dy
+                    add ECX, pa;
+                    push ECX;
+                    add EDX, pc;
+                    push EDX;
+                    // increment address and counter
+                    add EBX, 2;
+                    push EBX;
+                    add EAX, 1;
+                    push EAX;
+                    // prepare for next iteration
+                    mov EAX, ECX;
+                    mov EBX, EDX;
+                    jmp loop;
+                end:
+                    nop;
+            }
+        }
+        version (D_InlineAsm_X86_64) {
+            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            asm {
+                    mov EAX, dx;
+                    push RAX;
+                    mov EBX, dy;
+                    push RBX;
+                    push bufferAddress;
+                    push 0;
+                loop:
+                    // calculate x
+                    add EAX, 128;
+                    sar EAX, 8;
+                    // calculate y
+                    add EBX, 128;
+                    sar EBX, 8;
+                    // EAX = x, EBX = y
+                    // check and handle overflow
+                    test EAX, bgSizeInv;
+                    jz skip_x_overflow;
+                    test displayOverflow, 1;
+                    jnz skip_transparent1;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent1:
+                    and EAX, bgSize;
+                skip_x_overflow:
+                    test EBX, bgSizeInv;
+                    jz skip_y_overflow;
+                    test displayOverflow, 1;
+                    jnz skip_transparent2;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                skip_transparent2:
+                    and EBX, bgSize;
+                skip_y_overflow:
+                    // check and apply mosaic
+                    test mosaic, 1;
+                    jz skip_mosaic;
+                    push RBX;
+                    mov EBX, EAX;
+                    xor EDX, EDX;
+                    mov ECX, mosaicSizeX;
+                    div ECX;
+                    sub EBX, EDX;
+                    pop RAX;
+                    push RBX;
+                    mov EBX, EAX;
+                    xor EDX, EDX;
+                    mov ECX, mosaicSizeY;
+                    div ECX;
+                    sub EBX, EDX;
+                    pop RAX;
+                skip_mosaic:
+                    // calculate the map address
+                    push RAX;
+                    push RBX;
+                    shr EAX, 3;
+                    shr EBX, 3;
+                    mov ECX, mapLineShift;
+                    shl EBX, CL;
+                    add EAX, EBX;
+                    add EAX, mapBase;
+                    add RAX, vramAddress;
+                    // get the tile number
+                    xor ECX, ECX;
+                    mov CL, [RAX];
+                    // calculate the tile address
+                    pop RBX;
+                    pop RAX;
+                    and EAX, 7;
+                    and EBX, 7;
+                    shl EBX, 3;
+                    add EAX, EBX;
+                    shl ECX, 6;
+                    add EAX, ECX;
+                    add EAX, tileBase;
+                    add RAX, vramAddress;
+                    // get the palette index
+                    xor EDX, EDX;
+                    mov DL, [RAX];
+                    // calculate the palette address
+                    shl EDX, 1;
+                    jnz end_palettes;
+                    mov CX, TRANSPARENT;
+                    jmp end_color;
+                end_palettes:
+                    // ECX = paletteAddress
+                    // get color from palette
+                    add RDX, paletteAddress;
+                    mov CX, [RDX];
+                    and ECX, 0x7FFF;
+                end_color:
+                    // ECX = color
+                    pop RAX;
+                    pop RBX;
+                    // EAX = index, EBX = buffer address
+                    // write color to line buffer
+                    mov [RBX], CX;
+                    pop RDX;
+                    pop RCX;
+                    // ECX = dx, EDX = dy
+                    // check loop condition
+                    cmp EAX, 239;
+                    jge end;
+                    // increment dx and dy
+                    add ECX, pa;
+                    push RCX;
+                    add EDX, pc;
+                    push RDX;
+                    // increment address and counter
+                    add RBX, 2;
+                    push RBX;
+                    add EAX, 1;
+                    push RAX;
+                    // prepare for next iteration
+                    mov EAX, ECX;
+                    mov EBX, EDX;
+                    jmp loop;
+                end:
+                    nop;
+            }
         }
     }
 

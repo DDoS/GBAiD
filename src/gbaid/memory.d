@@ -14,7 +14,7 @@ public enum uint BYTES_PER_KIB = 1024;
 public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
 public abstract class Memory {
-    public abstract ulong getCapacity();
+    public abstract size_t getCapacity();
 
     public abstract void[] getArray(uint address);
 
@@ -38,7 +38,7 @@ public abstract class Memory {
 public class ROM : Memory {
     protected shared void[] memory;
 
-    protected this(ulong capacity) {
+    protected this(size_t capacity) {
         this.memory = new shared byte[capacity];
     }
 
@@ -55,7 +55,7 @@ public class ROM : Memory {
         }
     }
 
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return memory.length;
     }
 
@@ -94,7 +94,7 @@ public class ROM : Memory {
 }
 
 public class RAM : ROM {
-    public this(ulong capacity) {
+    public this(size_t capacity) {
         super(capacity);
     }
 
@@ -156,7 +156,7 @@ public class Flash : RAM {
         ERASE_ALL_TIMEOUT = TickDuration.from!"msecs"(500);
     }
 
-    public this(ulong capacity) {
+    public this(size_t capacity) {
         super(capacity);
         erase(0, cast(uint) capacity);
         idChip();
@@ -315,7 +315,7 @@ public class EEPROM : RAM {
     private int currentAddressBit = 0, currentReadBit = 0;
     private int[3] writeBuffer = new int[3];
 
-    public this(ulong capacity) {
+    public this(size_t capacity) {
         super(capacity);
     }
 
@@ -529,7 +529,7 @@ public class MonitoredMemory(M : Memory) : Memory {
         return memory;
     }
 
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return memory.getCapacity();
     }
 
@@ -655,7 +655,7 @@ public class MonitoredMemory(M : Memory) : Memory {
         return monitors[address >> 2];
     }
 
-    private static int divFourRoundUp(ulong i) {
+    private static int divFourRoundUp(size_t i) {
         return cast(int) ((i >> 2) + ((i & 0b11) ? 1 : 0));
     }
 
@@ -764,9 +764,9 @@ public class ProtectedROM : ROM {
 
 public class DelegatedROM : Memory {
     private int delegate(uint) memory;
-    private ulong apparentCapacity;
+    private size_t apparentCapacity;
 
-    public this(ulong apparentCapacity) {
+    public this(size_t apparentCapacity) {
         this.apparentCapacity = apparentCapacity;
         memory = &nullDelegate;
     }
@@ -775,7 +775,7 @@ public class DelegatedROM : Memory {
         this.memory = memory;
     }
 
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return apparentCapacity;
     }
 
@@ -818,7 +818,7 @@ public class DelegatedROM : Memory {
 }
 
 public class NullMemory : Memory {
-    public override ulong getCapacity() {
+    public override size_t getCapacity() {
         return 0;
     }
 
