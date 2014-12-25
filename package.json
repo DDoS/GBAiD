@@ -5,6 +5,7 @@
 	"authors": ["Aleksi \"DDoS\" Sapon"],
 	"license": "MIT",
 	"targetPath": "bin",
+	"dflags": ["-m64"],
 	"dependencies": {
 		"derelict-sdl2":"1.2.9",
 		"derelict-gl3":"1.0.10"
