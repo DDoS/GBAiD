@@ -1240,7 +1240,7 @@ public class GL20VertexArray : VertexArray {
         uint attributeCount = vertexData.getAttributeCount();
         uint[] newAttributeBufferIDs = new uint[attributeCount];
         // Copy all the old buffer IDs that will fit in the new array so we can reuse them
-        ulong length = cast(uint) min(attributeBufferIDs.length, newAttributeBufferIDs.length);
+        size_t length = min(attributeBufferIDs.length, newAttributeBufferIDs.length);
         newAttributeBufferIDs[0 .. length] = attributeBufferIDs[0 .. length];
         // Delete any buffers that we don't need (new array is smaller than the previous one)
         int difference = cast(uint) (attributeBufferIDs.length - newAttributeBufferIDs.length);
@@ -1251,7 +1251,7 @@ public class GL20VertexArray : VertexArray {
         }
         // Copy the old valid attribute buffer sizes
         uint[] newAttributeBufferSizes = new uint[attributeCount];
-        length = cast(uint) min(attributeBufferSizes.length, newAttributeBufferSizes.length);
+        length = min(attributeBufferSizes.length, newAttributeBufferSizes.length);
         newAttributeBufferSizes[0 .. length] = attributeBufferSizes[0 .. length];
         // If we don't have a vao, we have to save the properties manually
         if (!extension.has()) {
