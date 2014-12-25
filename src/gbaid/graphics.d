@@ -655,7 +655,8 @@ public class Display {
                     sar EBX, 8;
                     // EAX = x, EBX = y
                     // check and handle overflow
-                    test EAX, bgSizeInv;
+                    mov ECX, bgSizeInv;
+                    test EAX, ECX;
                     jz skip_x_overflow;
                     test displayOverflow, 1;
                     jnz skip_transparent1;
@@ -664,7 +665,7 @@ public class Display {
                 skip_transparent1:
                     and EAX, bgSize;
                 skip_x_overflow:
-                    test EBX, bgSizeInv;
+                    test EBX, ECX;
                     jz skip_y_overflow;
                     test displayOverflow, 1;
                     jnz skip_transparent2;
@@ -780,7 +781,8 @@ public class Display {
                     sar EBX, 8;
                     // EAX = x, EBX = y
                     // check and handle overflow
-                    test EAX, bgSizeInv;
+                    mov ECX, bgSizeInv;
+                    test EAX, ECX;
                     jz skip_x_overflow;
                     test displayOverflow, 1;
                     jnz skip_transparent1;
@@ -789,7 +791,7 @@ public class Display {
                 skip_transparent1:
                     and EAX, bgSize;
                 skip_x_overflow:
-                    test EBX, bgSizeInv;
+                    test EBX, ECX;
                     jz skip_y_overflow;
                     test displayOverflow, 1;
                     jnz skip_transparent2;
