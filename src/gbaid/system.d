@@ -418,7 +418,7 @@ public class DMAs {
     private int[4] controls = new int[4];
     private Timing[4] timings = new Timing[4];
     private bool[4] incomplete = new bool[4];
-    private Timing currentTiming = Timing.DISABLED;
+    private shared Timing currentTiming = Timing.DISABLED;
 
     private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
@@ -478,13 +478,13 @@ public class DMAs {
         if (!hasPendingDMA(timing)) {
             return;
         }
-        currentTiming = timing;
+        if (timing == Timing.IMMEDIATE) {
+            haltHandler.halt(HaltSource.DMA);
+        }
+        atomicStore(currentTiming, timing);
         interruptDMA = true;
         synchronized (dmaWait.mutex) {
             dmaWait.notify();
-        }
-        if (timing == Timing.IMMEDIATE) {
-            haltHandler.halt(HaltSource.DMA);
         }
     }
 
@@ -499,18 +499,22 @@ public class DMAs {
 
     private void run() {
         while (true) {
-            while (currentTiming == Timing.DISABLED) {
-                haltHandler.resume(HaltSource.DMA);
+            while (atomicLoad(currentTiming) == Timing.DISABLED) {
                 synchronized (dmaWait.mutex) {
-                    dmaWait.wait();
+                    if (atomicLoad(currentTiming) == Timing.DISABLED) {
+                        haltHandler.resume(HaltSource.DMA);
+                        dmaWait.wait();
+                    }
                 }
                 if (!running) {
                     return;
                 }
             }
 
-            Timing timing = currentTiming;
-            currentTiming = Timing.DISABLED;
+            Timing timing = void;
+            do {
+                timing = atomicLoad(currentTiming);
+            } while (!cas(&currentTiming, timing, Timing.DISABLED));
 
             foreach (int channel; 0 .. 4) {
                 if (timings[channel] == timing || incomplete[channel]) {
