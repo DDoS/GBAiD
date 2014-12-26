@@ -544,7 +544,7 @@ public class MonitoredMemory(M : Memory) : Memory {
     public override byte getByte(uint address) {
         byte b = memory.getByte(address);
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address & ~3;
             int shift = ((address & 3) << 3);
             int mask = 0xFF << shift;
@@ -557,7 +557,7 @@ public class MonitoredMemory(M : Memory) : Memory {
 
     public override void setByte(uint address, byte b) {
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address & ~3;
             int shift = ((address & 3) << 3);
             int mask = 0xFF << shift;
@@ -579,7 +579,7 @@ public class MonitoredMemory(M : Memory) : Memory {
         address &= ~1;
         short s = memory.getShort(address);
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address & ~3;
             int shift = ((address & 2) << 3);
             int mask = 0xFFFF << shift;
@@ -593,7 +593,7 @@ public class MonitoredMemory(M : Memory) : Memory {
     public override void setShort(uint address, short s) {
         address &= ~1;
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address & ~3;
             int shift = ((address & 2) << 3);
             int mask = 0xFFFF << shift;
@@ -615,7 +615,7 @@ public class MonitoredMemory(M : Memory) : Memory {
         address &= ~3;
         int i = memory.getInt(address);
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address;
             int shift = 0;
             int mask = 0xFFFFFFFF;
@@ -629,7 +629,7 @@ public class MonitoredMemory(M : Memory) : Memory {
     public override void setInt(uint address, int i) {
         address &= ~3;
         MemoryMonitor monitor = getMonitor(address);
-        if (monitor) {
+        if (monitor !is null) {
             int alignedAddress = address;
             int shift = 0;
             int mask = 0xFFFFFFFF;

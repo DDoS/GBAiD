@@ -478,11 +478,11 @@ public class DMAs {
         if (!hasPendingDMA(timing)) {
             return;
         }
+        atomicStore(currentTiming, timing);
+        interruptDMA = true;
         if (timing == Timing.IMMEDIATE) {
             haltHandler.halt(HaltSource.DMA);
         }
-        atomicStore(currentTiming, timing);
-        interruptDMA = true;
         synchronized (dmaWait.mutex) {
             dmaWait.notify();
         }
