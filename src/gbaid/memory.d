@@ -924,7 +924,7 @@ public Memory[] loadFromFile(string filePath) {
     file.rawRead(header);
     // read memory objects
     Memory[] memories = new Memory[length];
-    for (int i = 0; i < length; i++) {
+    foreach (i; 0 .. length) {
         int pair = i * 2;
         int type = header[pair];
         int capacity = header[pair + 1];

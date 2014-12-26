@@ -173,7 +173,7 @@ public class Display {
 
     private void drawRun() {
         while (drawRunning) {
-            for (int line = 0; line < VERTICAL_TIMING_RESOLUTION; line++) {
+            foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
                 timer.start();
                 if (line == VERTICAL_RESOLUTION + 1) {
                     signalVBLANK();
@@ -276,21 +276,21 @@ public class Display {
 
     private void lineBlank(int line) {
         uint p = line * HORIZONTAL_RESOLUTION;
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
             frame[p] = cast(short) 0xFFFF;
             p++;
         }
     }
 
     private void lineTransparent(short[] buffer) {
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
             buffer[column] = TRANSPARENT;
         }
     }
 
     private void lineBackgroundText(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
             }
             return;
@@ -591,7 +591,7 @@ public class Display {
 
     private void lineBackgroundAffine(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -891,7 +891,7 @@ public class Display {
 
     private void lineBackgroundBitmap16Single(int line, short[] buffer, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -944,7 +944,7 @@ public class Display {
 
     private void lineBackgroundBitmap8Double(int line, short[] buffer, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -1006,7 +1006,7 @@ public class Display {
 
     private void lineBackgroundBitmap16Double(int line, short[] buffer, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -1061,7 +1061,7 @@ public class Display {
     }
 
     private void lineObjects(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++) {
+        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
             colorBuffer[column] = TRANSPARENT;
             infoBuffer[column] = 3;
         }
@@ -1079,7 +1079,7 @@ public class Display {
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
-        for (int i = 127; i >= 0; i--) {
+        foreach_reverse (i; 0 .. 128) {
             int attributeAddress = i << 3;
 
             int attribute0 = oam.getShort(attributeAddress);
@@ -1187,7 +1187,7 @@ public class Display {
                 continue;
             }
 
-            for (int objectX = 0; objectX < horizontalSize; objectX++) {
+            foreach (objectX; 0 .. horizontalSize) {
 
                 int column = objectX + x;
 

@@ -817,7 +817,7 @@ public class ARM7TDMI {
                 }
             }
             if (upIncr) {
-                for (int i = 0; i <= 15; i++) {
+                foreach (i; 0 .. 16) {
                     if (checkBit(registerList, i)) {
                         if (preIncr) {
                             address += 4;
@@ -837,7 +837,7 @@ public class ARM7TDMI {
                     }
                 }
             } else {
-                for (int i = 15; i >= 0; i--) {
+                foreach_reverse (i; 0 .. 16) {
                     if (checkBit(registerList, i)) {
                         if (preIncr) {
                             address -= 4;
@@ -1403,7 +1403,7 @@ public class ARM7TDMI {
             int sp = getRegister(Register.SP);
             if (opCode) {
                 debug (outputInstructions) logInstruction(instruction, "POP");
-                for (int i = 0; i <= 7; i++) {
+                foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
                         setRegister(i, memory.getInt(sp));
                         sp += 4;
@@ -1419,7 +1419,7 @@ public class ARM7TDMI {
                     sp -= 4;
                     memory.setInt(sp, getRegister(Register.LR));
                 }
-                for (int i = 7; i >= 0; i--) {
+                foreach_reverse (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
                         sp -= 4;
                         memory.setInt(sp, getRegister(i));
@@ -1436,7 +1436,7 @@ public class ARM7TDMI {
             int address = getRegister(rb);
             if (opCode) {
                 debug (outputInstructions) logInstruction(instruction, "LDMIA");
-                for (int i = 0; i <= 7; i++) {
+                foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
                         setRegister(i, memory.getInt(address));
                         address += 4;
@@ -1444,7 +1444,7 @@ public class ARM7TDMI {
                 }
             } else {
                 debug (outputInstructions) logInstruction(instruction, "STMIA");
-                for (int i = 0; i <= 7; i++) {
+                foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
                         memory.setInt(address, getRegister(i));
                         address += 4;
@@ -1700,7 +1700,7 @@ public class ARM7TDMI {
             if (amount > 1) {
                 writefln("Dumping last %s instructions executed:", amount);
             }
-            for (uint i = 0; i < amount; i++) {
+            foreach (uint i; 0 .. amount) {
                 uint j = (i + start) % queueMaxSize;
                 final switch (lastInstructions[j].set) {
                     case Set.ARM:
@@ -1715,7 +1715,7 @@ public class ARM7TDMI {
 
         public void dumpRegisters() {
             writefln("Dumping last known register states:");
-            for (int i = 0; i < 18; i++) {
+            foreach (i; 0 .. 18) {
                 writefln("%-4s: %08x", cast(Register) i, getRegister(i));
             }
         }
