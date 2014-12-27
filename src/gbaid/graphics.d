@@ -1434,9 +1434,9 @@ public class Display {
         int firstBlue = getBits(first, 10, 14);
 
         int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
-        firstRed += ((31 - firstRed << 4) * evy >> 4) + 8 >> 4;
-        firstGreen += ((31 - firstGreen << 4) * evy >> 4) + 8 >> 4;
-        firstBlue += ((31 - firstBlue << 4) * evy >> 4) + 8 >> 4;
+        firstRed += (31 - firstRed) * evy + 8 >> 4;
+        firstGreen += (31 - firstGreen) * evy + 8 >> 4;
+        firstBlue += (31 - firstBlue) * evy + 8 >> 4;
 
         first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
     }
@@ -1447,9 +1447,9 @@ public class Display {
         int firstBlue = getBits(first, 10, 14);
 
         int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
-        firstRed -= ((firstRed << 4) * evy >> 4) + 8 >> 4;
-        firstGreen -= ((firstGreen << 4) * evy >> 4) + 8 >> 4;
-        firstBlue -= ((firstBlue << 4) * evy >> 4) + 8 >> 4;
+        firstRed -= firstRed * evy + 8 >> 4;
+        firstGreen -= firstGreen * evy + 8 >> 4;
+        firstBlue -= firstBlue * evy + 8 >> 4;
 
         first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
     }
@@ -1466,14 +1466,14 @@ public class Display {
         int blendAlpha = ioRegisters.getShort(0x52);
 
         int eva = min(blendAlpha & 0b11111, 16);
-        firstRed = ((firstRed << 4) * eva >> 4) + 8 >> 4;
-        firstGreen = ((firstGreen << 4) * eva >> 4) + 8 >> 4;
-        firstBlue = ((firstBlue << 4) * eva >> 4) + 8 >> 4;
+        firstRed = firstRed * eva + 8 >> 4;
+        firstGreen = firstGreen * eva + 8 >> 4;
+        firstBlue = firstBlue * eva + 8 >> 4;
 
         int evb = min(getBits(blendAlpha, 8, 12), 16);
-        secondRed = ((secondRed << 4) * evb >> 4) + 8 >> 4;
-        secondGreen = ((secondGreen << 4) * evb >> 4) + 8 >> 4;
-        secondBlue = ((secondBlue << 4) * evb >> 4) + 8 >> 4;
+        secondRed = secondRed * evb + 8 >> 4;
+        secondGreen = secondGreen * evb + 8 >> 4;
+        secondBlue = secondBlue * evb + 8 >> 4;
 
         int blendRed = min(31, firstRed + secondRed);
         int blendGreen = min(31, firstGreen + secondGreen);
