@@ -90,7 +90,6 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       figure out why PKMN says the save file is corrupt when it isn't
     //       rewrite more of the graphics in x64
     //       implement optional RTC
 }

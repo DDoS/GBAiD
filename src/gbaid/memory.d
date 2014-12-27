@@ -209,6 +209,10 @@ public class Flash : RAM {
                 super.setByte(address + sectorOffset, b);
                 endCMD();
                 break;
+            case Mode.SWITCH_BANK:
+                sectorOffset = (b & 0b1) << 16;
+                endCMD();
+                break;
             default:
         }
         // Handle command initialization and execution
@@ -247,7 +251,7 @@ public class Flash : RAM {
                         break;
                     case SWITCH_BANK_CMD_BYTE:
                         if (deviceID == SANYO_128K_ID) {
-                            sectorOffset = (b & 0b1) << 16;
+                            mode = Mode.SWITCH_BANK;
                         }
                         break;
                     default:
@@ -305,6 +309,7 @@ public class Flash : RAM {
         ERASE_ALL,
         ERASE_SECTOR,
         WRITE_BYTE,
+        SWITCH_BANK
     }
 }
 
