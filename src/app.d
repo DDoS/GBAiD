@@ -90,6 +90,5 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       rewrite more of the graphics in x64
     //       implement optional RTC
 }

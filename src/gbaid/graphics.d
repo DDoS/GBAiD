@@ -36,7 +36,6 @@ public class Display {
     private Condition frameSync;
     private bool drawRunning = false;
     private LineType[7] lineTypes;
-    private Timer timer = new Timer();
 
     static this() {
         H_VISIBLE_DURATION = TickDuration.from!"nsecs"(57221);
@@ -129,9 +128,7 @@ public class Display {
         drawRunning = true;
         drawThread.start();
 
-        //Timer fpsTimer = new Timer();
         while (!context.isWindowCloseRequested()) {
-            //fpsTimer.start();
             synchronized (frameSync.mutex) {
                 frameSync.wait();
             }
@@ -143,7 +140,6 @@ public class Display {
             program.setUniform("size", width, height);
             vertexArray.draw();
             context.updateDisplay();
-            //writefln("FPS: %.1f", 1 / (fpsTimer.getTime().msecs() / 1000f));
         }
 
         drawRunning = false;
@@ -172,6 +168,7 @@ public class Display {
     }
 
     private void drawRun() {
+        Timer timer = new Timer();
         while (drawRunning) {
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
                 timer.start();
@@ -1083,59 +1080,26 @@ public class Display {
             int attributeAddress = i << 3;
 
             int attribute0 = oam.getShort(attributeAddress);
-
             int rotAndScale = getBit(attribute0, 8);
             int doubleSize = getBit(attribute0, 9);
+
             if (!rotAndScale) {
                 if (doubleSize) {
                     continue;
                 }
             }
-            int y = attribute0 & 0xFF;
-            int mode = getBits(attribute0, 10, 11);
-            int mosaic = getBit(attribute0, 12);
-            int singlePalette = getBit(attribute0, 13);
+
             int shape = getBits(attribute0, 14, 15);
 
             int attribute1 = oam.getShort(attributeAddress + 2);
-
-            int x = attribute1 & 0x1FF;
-            int horizontalFlip = void, verticalFlip = void;
-            int pa = void, pb = void, pc = void, pd = void;
-            if (rotAndScale) {
-                horizontalFlip = 0;
-                verticalFlip = 0;
-                int rotAndScaleParameters = getBits(attribute1, 9, 13);
-                int parametersAddress = (rotAndScaleParameters << 5) + 0x6;
-                pa = oam.getShort(parametersAddress);
-                pb = oam.getShort(parametersAddress + 8);
-                pc = oam.getShort(parametersAddress + 16);
-                pd = oam.getShort(parametersAddress + 24);
-            } else {
-                horizontalFlip = getBit(attribute1, 12);
-                verticalFlip = getBit(attribute1, 13);
-                pa = 0;
-                pb = 0;
-                pc = 0;
-                pd = 0;
-            }
             int size = getBits(attribute1, 14, 15);
 
-            int attribute2 = oam.getShort(attributeAddress + 4);
-
-            int tileNumber = attribute2 & 0x3FF;
-            int priority = getBits(attribute2, 10, 11);
-            int paletteNumber = getBits(attribute2, 12, 15);
-
-            if (x >= HORIZONTAL_RESOLUTION) {
-                x -= 512;
-            }
+            int y = attribute0 & 0xFF;
             if (y >= VERTICAL_RESOLUTION) {
                 y -= 256;
             }
 
             int horizontalSize = void, verticalSize = void, mapYShift = void;
-
             if (shape == 0) {
                 horizontalSize = 8 << size;
                 verticalSize = horizontalSize;
@@ -1182,10 +1146,53 @@ public class Display {
             }
 
             int objectY = line - y;
-
             if (objectY < 0 || objectY >= verticalSize) {
                 continue;
             }
+
+            int horizontalSizeMask = void;
+            int verticalSizeMask = void;
+            if (rotAndScale) {
+                horizontalSizeMask = ~(sampleHorizontalSize - 1);
+                verticalSizeMask = ~(sampleVerticalSize - 1);
+            } else {
+                horizontalSizeMask = horizontalSize - 1;
+                verticalSizeMask = verticalSize - 1;
+            }
+
+            int x = attribute1 & 0x1FF;
+            if (x >= HORIZONTAL_RESOLUTION) {
+                x -= 512;
+            }
+
+            int mode = getBits(attribute0, 10, 11);
+            int mosaic = getBit(attribute0, 12);
+            int singlePalette = getBit(attribute0, 13);
+
+            int horizontalFlip = void, verticalFlip = void;
+            int pa = void, pb = void, pc = void, pd = void;
+            if (rotAndScale) {
+                horizontalFlip = 0;
+                verticalFlip = 0;
+                int rotAndScaleParameters = getBits(attribute1, 9, 13);
+                int parametersAddress = (rotAndScaleParameters << 5) + 0x6;
+                pa = oam.getShort(parametersAddress);
+                pb = oam.getShort(parametersAddress + 8);
+                pc = oam.getShort(parametersAddress + 16);
+                pd = oam.getShort(parametersAddress + 24);
+            } else {
+                horizontalFlip = getBit(attribute1, 12);
+                verticalFlip = getBit(attribute1, 13);
+                pa = 0;
+                pb = 0;
+                pc = 0;
+                pd = 0;
+            }
+
+            int attribute2 = oam.getShort(attributeAddress + 4);
+            int tileNumber = attribute2 & 0x3FF;
+            int priority = getBits(attribute2, 10, 11);
+            int paletteNumber = getBits(attribute2, 12, 15);
 
             foreach (objectX; 0 .. horizontalSize) {
 
@@ -1211,15 +1218,16 @@ public class Display {
                     sampleY = pc * tmpX + pd * tmpY + 128 >> 8;
                     sampleX += sampleHorizontalSize >> 1;
                     sampleY += sampleVerticalSize >> 1;
-                    if (sampleX < 0 || sampleX >= sampleHorizontalSize || sampleY < 0 || sampleY >= sampleVerticalSize) {
+                    // this mask is inverted
+                    if ((sampleX & horizontalSizeMask) || (sampleY & verticalSizeMask)) {
                         continue;
                     }
                 } else {
-                    if (verticalFlip) {
-                        sampleY = verticalSize - sampleY - 1;
-                    }
                     if (horizontalFlip) {
-                        sampleX = horizontalSize - sampleX - 1;
+                        sampleX = ~sampleX & horizontalSizeMask;
+                    }
+                    if (verticalFlip) {
+                        sampleY = ~sampleY & verticalSizeMask;
                     }
                 }
 
