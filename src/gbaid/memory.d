@@ -145,7 +145,6 @@ public class Flash : RAM {
     private Mode mode = Mode.NORMAL;
     private uint cmdStage = 0;
     private bool timedCMD = false;
-    private TickDuration cmdStartTime;
     private TickDuration cmdTimeOut;
     private uint eraseSectorTarget;
     private uint sectorOffset = 0;
@@ -190,7 +189,7 @@ public class Flash : RAM {
     public override void setByte(uint address, byte b) {
         uint value = b & 0xFF;
         // Handle command time-outs
-        if (timedCMD && TickDuration.currSystemTick >= cmdTimeOut) {
+        if (timedCMD && TickDuration.currSystemTick() >= cmdTimeOut) {
             endCMD();
         }
         // Handle commands completions
@@ -260,14 +259,13 @@ public class Flash : RAM {
                 mode = Mode.ERASE_SECTOR;
                 eraseSectorTarget = address;
                 startTimedCMD(ERASE_SECTOR_TIMEOUT);
-                erase(address, 4 * BYTES_PER_KIB);
+                erase(address + sectorOffset, 4 * BYTES_PER_KIB);
             }
         }
     }
 
     private void startTimedCMD(TickDuration timeOut) {
-        cmdStartTime = TickDuration.currSystemTick();
-        cmdTimeOut = cmdStartTime + timeOut;
+        cmdTimeOut = TickDuration.currSystemTick() + timeOut;
         timedCMD = true;
     }
 

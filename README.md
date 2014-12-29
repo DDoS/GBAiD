@@ -27,8 +27,6 @@ Mario Kart exhibits some light graphical glitches due problems with timings in t
 Optimization isn't complete, but the emulator works fine at 60FPS on my 2.66GHz dual core i7 (4GB RAM), using
 just under 50% CPU. Most of this usage comes from the graphics, which still need optimization.
 
-Pokemon Emerald complains that the save file is corrupted, but that's a lie, it works just fine.
-
 ## Building ##
 
 ### Dependencies ###
