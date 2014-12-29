@@ -177,7 +177,6 @@ public class Display {
                     signalVBLANK();
                 }
                 setVCOUNT(line);
-                checkVCOUNTER(line);
                 if (line < VERTICAL_RESOLUTION) {
                     lineTypes[getMode()](line);
                 } else if (line == VERTICAL_RESOLUTION) {
@@ -190,7 +189,6 @@ public class Display {
                 timer.waitUntil(H_VISIBLE_DURATION);
                 timer.restart();
                 setHBLANK(line, true);
-                signalHBLANK(line);
                 timer.waitUntil(H_BLANK_DURATION);
                 setHBLANK(line, false);
             }
@@ -1506,6 +1504,14 @@ public class Display {
             newDisplayStatus = oldDisplayStatus;
             setBit(newDisplayStatus, 1, state);
         } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
+        if (state) {
+            if (line < VERTICAL_RESOLUTION) {
+                dmas.signalHBLANK();
+            }
+            if (checkBit(oldDisplayStatus, 4)) {
+                interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
+            }
+        }
     }
 
     private void setVCOUNT(int line) {
@@ -1517,30 +1523,16 @@ public class Display {
             setBit(newDisplayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
             setBit(newDisplayStatus, 2, getBits(oldDisplayStatus, 8, 15) == line);
         } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
-    }
-
-    private void signalHBLANK(int line) {
-        int displayStatus = ioRegisters.getInt(0x4);
-        if (line < VERTICAL_RESOLUTION) {
-            dmas.signalHBLANK();
-            if (checkBit(displayStatus, 4)) {
-                interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
-            }
+        if (getBits(oldDisplayStatus, 8, 15) == line && checkBit(oldDisplayStatus, 5)) {
+            interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
     }
 
     private void signalVBLANK() {
-        int displayStatus = ioRegisters.getInt(0x4);
         dmas.signalVBLANK();
+        int displayStatus = ioRegisters.getInt(0x4);
         if (checkBit(displayStatus, 3)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
-        }
-    }
-
-    private void checkVCOUNTER(int line) {
-        int displayStatus = ioRegisters.getInt(0x4);
-        if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
-            interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
     }
 
