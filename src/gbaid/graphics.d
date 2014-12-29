@@ -127,6 +127,7 @@ public class Display {
         drawThread.name = "Draw";
         drawRunning = true;
         drawThread.start();
+        drawThread.priority = Thread.PRIORITY_MAX;
 
         while (!context.isWindowCloseRequested()) {
             synchronized (frameSync.mutex) {
