@@ -10,6 +10,7 @@ import std.algorithm;
 import gbaid.system;
 import gbaid.memory;
 import gbaid.gl, gbaid.gl20;
+import gbaid.shader;
 import gbaid.util;
 
 public class Display {
@@ -29,6 +30,7 @@ public class Display {
     private Context context;
     private int width = HORIZONTAL_RESOLUTION, height = VERTICAL_RESOLUTION;
     private FilteringMode filteringMode = FilteringMode.NONE;
+    private UpscalingMode upscalingMode = UpscalingMode.NONE;
     private short[FRAME_SIZE] frame = new short[FRAME_SIZE];
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines = new short[HORIZONTAL_RESOLUTION][LAYER_COUNT];
     private int[2] internalAffineReferenceX = new int[2];
@@ -82,6 +84,10 @@ public class Display {
         filteringMode = mode;
     }
 
+    public void setUpscalingMode(UpscalingMode mode) {
+        upscalingMode = mode;
+    }
+
     public void run() {
         Thread.getThis().name = "Display";
 
@@ -89,33 +95,43 @@ public class Display {
         context.create();
         context.enableCapability(CULL_FACE);
 
-        Shader vertexShader = context.newShader();
-        vertexShader.create();
-        vertexShader.setSource(new ShaderSource(vertexShaderSource, true));
-        vertexShader.compile();
-        Shader fragmentShader = context.newShader();
-        fragmentShader.create();
-        fragmentShader.setSource(new ShaderSource(fragmentShaderSource, true));
-        fragmentShader.compile();
-        Program program = context.newProgram();
-        program.create();
-        program.attachShader(vertexShader);
-        program.attachShader(fragmentShader);
-        program.link();
+        Program program = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, WINDOW_OUTPUT_FRAGMENT_SHADER_SOURCE);
         program.use();
         program.bindSampler(0);
 
-        Texture texture = context.newTexture();
-        texture.create();
-        texture.setFormat(RGBA, RGB5_A1);
-        texture.setWraps(CLAMP_TO_BORDER, CLAMP_TO_BORDER);
-        texture.setBorderColor(0, 0, 0, 1);
+        Texture texture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+
+        Program upscaleProgram = void;
+        Texture upscaledTexture = void;
+        FrameBuffer upscaleFrameBuffer = void;
+        final switch (upscalingMode) {
+            case UpscalingMode.NONE:
+                upscaleProgram = null;
+                upscaledTexture = null;
+                upscaleFrameBuffer = null;
+                break;
+            case UpscalingMode.EPX:
+                upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, EPX_UPSCALE_FRAGMENT_SHADER_SOURCE);
+                upscaledTexture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
+                break;
+        }
+        if (upscaleProgram !is null) {
+            upscaleFrameBuffer = context.newFrameBuffer();
+            upscaleFrameBuffer.create();
+            upscaleFrameBuffer.attach(COLOR_ATTACHMENT0, upscaledTexture);
+
+            upscaleProgram.use();
+            upscaleProgram.bindSampler(0);
+            upscaleProgram.setUniform("size", HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
+        }
+
+        Texture outputTexture = upscaleProgram !is null ? upscaledTexture : texture;
         final switch (filteringMode) {
             case FilteringMode.NONE:
-                texture.setFilters(NEAREST, NEAREST);
+                outputTexture.setFilters(NEAREST, NEAREST);
                 break;
             case FilteringMode.LINEAR:
-                texture.setFilters(LINEAR, LINEAR);
+                outputTexture.setFilters(LINEAR, LINEAR);
                 break;
         }
 
@@ -133,12 +149,20 @@ public class Display {
             synchronized (frameSync.mutex) {
                 frameSync.wait();
             }
-            context.setMaxViewPort();
             context.getWindowSize(&width, &height);
             texture.setImageData(cast(ubyte[]) frame, HORIZONTAL_RESOLUTION, VERTICAL_RESOLUTION);
             texture.bind(0);
+            if (upscaleProgram !is null) {
+                upscaleProgram.use();
+                upscaleFrameBuffer.bind();
+                context.setViewPort(0, 0, upscaledTexture.getWidth(), upscaledTexture.getHeight());
+                vertexArray.draw();
+                upscaleFrameBuffer.unbind();
+                upscaledTexture.bind(0);
+            }
             program.use();
             program.setUniform("size", width, height);
+            context.setViewPort(0, 0, width, height);
             vertexArray.draw();
             context.updateDisplay();
         }
@@ -146,6 +170,34 @@ public class Display {
         drawRunning = false;
 
         context.destroy();
+    }
+
+    private Program makeProgram(string vertexShaderSource, string fragmentShaderSource) {
+        Shader vertexShader = context.newShader();
+        vertexShader.create();
+        vertexShader.setSource(new ShaderSource(vertexShaderSource, true));
+        vertexShader.compile();
+        Shader fragmentShader = context.newShader();
+        fragmentShader.create();
+        fragmentShader.setSource(new ShaderSource(fragmentShaderSource, true));
+        fragmentShader.compile();
+        Program program = context.newProgram();
+        program.create();
+        program.attachShader(vertexShader);
+        program.attachShader(fragmentShader);
+        program.link();
+        return program;
+    }
+
+    private Texture makeTexture(Format format, InternalFormat internalFormat, int width, int height) {
+        Texture texture = context.newTexture();
+        texture.create();
+        texture.setFormat(format, internalFormat);
+        texture.setWraps(CLAMP_TO_BORDER, CLAMP_TO_BORDER);
+        texture.setBorderColor(0, 0, 0, 1);
+        texture.setFilters(NEAREST, NEAREST);
+        texture.setImageData(null, width, height);
+        return texture;
     }
 
     private void reloadInternalAffineReferencePoint(int layer) {
@@ -1552,6 +1604,11 @@ public enum FilteringMode {
     LINEAR
 }
 
+public enum UpscalingMode {
+    NONE,
+    EPX
+}
+
 private VertexData generatePlane(float width, float height) {
     width /= 2;
     height /= 2;
@@ -1569,51 +1626,3 @@ private VertexData generatePlane(float width, float height) {
     vertexData.setIndices(indices);
     return vertexData;
 }
-
-private enum string vertexShaderSource =
-`
-// $shader_type: vertex
-
-// $attrib_layout: position = 0
-
-#version 120
-
-attribute vec3 position;
-
-varying vec2 textureCoords;
-
-void main() {
-    textureCoords = vec2(position.x + 1, 1 - position.y) / 2;
-    gl_Position = vec4(position, 1);
-}
-`;
-private enum string fragmentShaderSource =
-`
-// $shader_type: fragment
-
-// $texture_layout: color = 0
-
-#version 120
-
-const vec2 RES = vec2(240, 160);
-
-varying vec2 textureCoords;
-
-uniform sampler2D color;
-uniform vec2 size;
-
-void main() {
-    vec2 m = size / RES;
-    vec2 sampleCoords = textureCoords;
-
-    if (m.x > m.y) {
-        float margin = (size.x / size.y - RES.x / RES.y) / 2;
-        sampleCoords.x = mix(-margin, 1 + margin, sampleCoords.x);
-    } else {
-        float margin = (size.y / size.x - RES.y / RES.x) / 2;
-        sampleCoords.y = mix(-margin, 1 + margin, sampleCoords.y);
-    }
-
-    gl_FragColor = vec4(texture2D(color, sampleCoords).rgb, 1);
-}
-`;

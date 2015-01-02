@@ -217,17 +217,6 @@ public class GL20Context : Context {
         checkForGLError();
     }
 
-    public override void setMaxViewPort() {
-        checkCreated();
-        // get max drawable size
-        int w, h;
-        SDL_GL_GetDrawableSize(window, &w, &h);
-        // update view port
-        glViewport(0, 0, w, h);
-        // Check for errors
-        checkForGLError();
-    }
-
     public override ubyte[] readFrame(uint x, uint y, uint width, uint height, InternalFormat format) {
         checkCreated();
         // Create the image buffer

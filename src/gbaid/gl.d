@@ -360,11 +360,6 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setViewPort(uint x, uint y, uint width, uint height);
 
     /**
-     * Sets the render view port, which is the dimensions and position of the frame inside the window, to its maximum value.
-     */
-    public abstract void setMaxViewPort();
-
-    /**
      * Reads the current frame pixels and returns it as a byte buffer of the desired format. The size of the returned image data is the same as the current window dimensions.
      *
      * @param x The x coordinate
