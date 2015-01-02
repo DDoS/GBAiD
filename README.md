@@ -71,7 +71,7 @@ The following arguments are also recognized:
 | --nosave    | -N         | none                   | Don't save the save                                                          |
 | --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                   |
 | --filtering | -f         | LINEAR or NEAREST      | What technique to use to filter the output texture to be drawn to the screen |
-| --upscaling | -u         | EPX or NONE            | What technique to use to increase the resolution of the drawn texture        |
+| --upscaling | -u         | EPX, RBX or NONE       | What technique to use to increase the resolution of the drawn texture        |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
 
@@ -98,6 +98,12 @@ These will be re-mapable soon.
 | L       | Q        |
 | Start   | Enter    |
 | Select  | Tab      |
+
+### Upscaling ###
+
+All upscaling is implemented as OpenGL shaders. EPX is a simple but fast 2x upscaler. RBX is the 5x implementation,
+it gives better results, but is slower. When you use the --upscaling switch you should also use the --scale switch
+with the appropriate factor for the selected algorithm.
 
 ## License ##
 
