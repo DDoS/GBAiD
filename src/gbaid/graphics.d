@@ -89,6 +89,14 @@ public class Display {
     }
 
     public void run() {
+        scope (exit) {
+            drawRunning = false;
+
+            if (context.isCreated()) {
+                context.destroy();
+            }
+        }
+
         Thread.getThis().name = "Display";
 
         context.setWindowSize(width, height);
@@ -114,11 +122,18 @@ public class Display {
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, EPX_UPSCALE_FRAGMENT_SHADER_SOURCE);
                 upscaledTexture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
                 break;
+            case UpscalingMode.XBR:
+                upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, XBR_UPSCALE_FRAGMENT_SHADER_SOURCE);
+                upscaledTexture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION * 5, VERTICAL_RESOLUTION * 5);
+                break;
         }
         if (upscaleProgram !is null) {
             upscaleFrameBuffer = context.newFrameBuffer();
             upscaleFrameBuffer.create();
             upscaleFrameBuffer.attach(COLOR_ATTACHMENT0, upscaledTexture);
+            if (!upscaleFrameBuffer.isComplete()) {
+                throw new GLException("Upscale framebuffer is incomplete");
+            }
 
             upscaleProgram.use();
             upscaleProgram.bindSampler(0);
@@ -166,10 +181,6 @@ public class Display {
             vertexArray.draw();
             context.updateDisplay();
         }
-
-        drawRunning = false;
-
-        context.destroy();
     }
 
     private Program makeProgram(string vertexShaderSource, string fragmentShaderSource) {
@@ -1606,7 +1617,8 @@ public enum FilteringMode {
 
 public enum UpscalingMode {
     NONE,
-    EPX
+    EPX,
+    XBR
 }
 
 private VertexData generatePlane(float width, float height) {

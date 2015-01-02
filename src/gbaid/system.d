@@ -83,21 +83,27 @@ public class GameBoyAdvance {
     }
 
     public void run() {
-        checkNotRunning();
-        if (!DerelictSDL2.isLoaded) {
-            DerelictSDL2.load();
+        try {
+            checkNotRunning();
+            if (!DerelictSDL2.isLoaded) {
+                DerelictSDL2.load();
+            }
+            SDL_Init(0);
+            keypad.start();
+            dmas.start();
+            timers.start();
+            processor.start();
+            display.run();
+        } catch (Exception ex) {
+            writeln("Emulator encountered an exception, system stopping...");
+            writeln("Exception: " ~ ex.msg);
+        } finally {
+            processor.stop();
+            timers.stop();
+            dmas.stop();
+            keypad.stop();
+            SDL_Quit();
         }
-        SDL_Init(0);
-        keypad.start();
-        dmas.start();
-        timers.start();
-        processor.start();
-        display.run();
-        processor.stop();
-        timers.stop();
-        dmas.stop();
-        keypad.stop();
-        SDL_Quit();
     }
 
     private void checkNotRunning() {
