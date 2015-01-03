@@ -61,10 +61,21 @@ public enum string EPX_UPSCALE_FRAGMENT_SHADER_SOURCE =
 
 #version 120
 
+const float EPS = 0.05;
+
 varying vec2 textureCoords;
 
 uniform sampler2D color;
 uniform vec2 size;
+
+bool eq(vec3 a, vec3 b) {
+    vec3 d = a - b;
+    return dot(d, d) < EPS;
+}
+
+bool neq(vec3 a, vec3 b) {
+    return !eq(a, b);
+}
 
 void main() {
     float px = 1 / size.x;
@@ -84,22 +95,22 @@ void main() {
     if (textureCoords.x > pos.x) {
         if (textureCoords.y > pos.y) {
             vec3 corner = texture2D(color, pos + dx + dy).rgb;
-            if (p == corner) {
+            if (eq(p, corner)) {
                 gl_FragColor.rgb = p;
                 return;
             }
-            if (a == b && a != c && b != d) {
+            if (eq(a, b) && neq(a, c) && neq(b, d)) {
                 gl_FragColor.rgb = b;
             } else {
                 gl_FragColor.rgb = p;
             }
         } else {
             vec3 corner = texture2D(color, pos + dx - dy).rgb;
-            if (p == corner) {
+            if (eq(p, corner)) {
                 gl_FragColor.rgb = p;
                 return;
             }
-            if (b == d && b != a && d != c) {
+            if (eq(b, d) && neq(b, a) && neq(d, c)) {
                 gl_FragColor.rgb = d;
             } else {
                 gl_FragColor.rgb = p;
@@ -108,22 +119,22 @@ void main() {
     } else {
         if (textureCoords.y > pos.y) {
             vec3 corner = texture2D(color, pos - dx + dy).rgb;
-            if (p == corner) {
+            if (eq(p, corner)) {
                 gl_FragColor.rgb = p;
                 return;
             }
-            if (c == a && c != d && a != b) {
+            if (eq(c, a) && neq(c, d) && neq(a, b)) {
                 gl_FragColor.rgb = a;
             } else {
                 gl_FragColor.rgb = p;
             }
         } else {
             vec3 corner = texture2D(color, pos - dx - dy).rgb;
-            if (p == corner) {
+            if (eq(p, corner)) {
                 gl_FragColor.rgb = p;
                 return;
             }
-            if (d == c && d != b && c != a) {
+            if (eq(d, c) && neq(d, b) && neq(c, a)) {
                 gl_FragColor.rgb = c;
             } else {
                 gl_FragColor.rgb = p;
