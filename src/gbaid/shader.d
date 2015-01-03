@@ -75,58 +75,58 @@ void main() {
     vec2 dx = vec2(px, 0);
     vec2 dy = vec2(0, py);
 
-    vec4 p = texture2D(color, pos);
-    vec4 a = texture2D(color, pos + dy);
-    vec4 b = texture2D(color, pos + dx);
-    vec4 c = texture2D(color, pos - dx);
-    vec4 d = texture2D(color, pos - dy);
+    vec3 p = texture2D(color, pos).rgb;
+    vec3 a = texture2D(color, pos + dy).rgb;
+    vec3 b = texture2D(color, pos + dx).rgb;
+    vec3 c = texture2D(color, pos - dx).rgb;
+    vec3 d = texture2D(color, pos - dy).rgb;
 
     if (textureCoords.x > pos.x) {
         if (textureCoords.y > pos.y) {
-            vec4 corner = texture2D(color, pos + dx + dy);
+            vec3 corner = texture2D(color, pos + dx + dy).rgb;
             if (p == corner) {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
                 return;
             }
             if (a == b && a != c && b != d) {
-                gl_FragColor = b;
+                gl_FragColor.rgb = b;
             } else {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
             }
         } else {
-            vec4 corner = texture2D(color, pos + dx - dy);
+            vec3 corner = texture2D(color, pos + dx - dy).rgb;
             if (p == corner) {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
                 return;
             }
             if (b == d && b != a && d != c) {
-                gl_FragColor = d;
+                gl_FragColor.rgb = d;
             } else {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
             }
         }
     } else {
         if (textureCoords.y > pos.y) {
-            vec4 corner = texture2D(color, pos - dx + dy);
+            vec3 corner = texture2D(color, pos - dx + dy).rgb;
             if (p == corner) {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
                 return;
             }
             if (c == a && c != d && a != b) {
-                gl_FragColor = a;
+                gl_FragColor.rgb = a;
             } else {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
             }
         } else {
-            vec4 corner = texture2D(color, pos - dx - dy);
+            vec3 corner = texture2D(color, pos - dx - dy).rgb;
             if (p == corner) {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
                 return;
             }
             if (d == c && d != b && c != a) {
-                gl_FragColor = c;
+                gl_FragColor.rgb = c;
             } else {
-                gl_FragColor = p;
+                gl_FragColor.rgb = p;
             }
         }
     }
@@ -192,40 +192,38 @@ void main() {
     float sx = 1 / size.x;
     float sy = 1 / size.y;
 
-    vec2 pos = floor(textureCoords * size) / size + vec2(sx, sy) / 2;
-
-    vec2 fp = fract(textureCoords * size);
-
     vec2 dx = vec2(sx, 0);
     vec2 dy = vec2(0, sy);
 
-    vec3 A1 = texture2D(color, pos - dx - 2 * dy).rgb;
-    vec3 B1 = texture2D(color, pos - 2 * dy).rgb;
-    vec3 C1 = texture2D(color, pos + dx - 2 * dy).rgb;
+    vec2 fp = fract(textureCoords * size);
 
-    vec3 A  = texture2D(color, pos - dx - dy).rgb;
-    vec3 B  = texture2D(color, pos - dy).rgb;
-    vec3 C  = texture2D(color, pos + dx - dy).rgb;
+    vec3 A1 = texture2D(color, textureCoords - dx - 2 * dy).rgb;
+    vec3 B1 = texture2D(color, textureCoords - 2 * dy).rgb;
+    vec3 C1 = texture2D(color, textureCoords + dx - 2 * dy).rgb;
 
-    vec3 D  = texture2D(color, pos - dx).rgb;
-    vec3 E  = texture2D(color, pos).rgb;
-    vec3 F  = texture2D(color, pos + dx).rgb;
+    vec3 A  = texture2D(color, textureCoords - dx - dy).rgb;
+    vec3 B  = texture2D(color, textureCoords - dy).rgb;
+    vec3 C  = texture2D(color, textureCoords + dx - dy).rgb;
 
-    vec3 G  = texture2D(color, pos - dx + dy).rgb;
-    vec3 H  = texture2D(color, pos + dy).rgb;
-    vec3 I  = texture2D(color, pos + dx + dy).rgb;
+    vec3 D  = texture2D(color, textureCoords - dx).rgb;
+    vec3 E  = texture2D(color, textureCoords).rgb;
+    vec3 F  = texture2D(color, textureCoords + dx).rgb;
 
-    vec3 G5 = texture2D(color, pos - dx + 2 * dy).rgb;
-    vec3 H5 = texture2D(color, pos + 2 * dy).rgb;
-    vec3 I5 = texture2D(color, pos + dx + 2 * dy).rgb;
+    vec3 G  = texture2D(color, textureCoords - dx + dy).rgb;
+    vec3 H  = texture2D(color, textureCoords + dy).rgb;
+    vec3 I  = texture2D(color, textureCoords + dx + dy).rgb;
 
-    vec3 A0 = texture2D(color, pos - 2 * dx - dy).rgb;
-    vec3 D0 = texture2D(color, pos - 2 * dx).rgb;
-    vec3 G0 = texture2D(color, pos - 2 * dx + dy).rgb;
+    vec3 G5 = texture2D(color, textureCoords - dx + 2 * dy).rgb;
+    vec3 H5 = texture2D(color, textureCoords + 2 * dy).rgb;
+    vec3 I5 = texture2D(color, textureCoords + dx + 2 * dy).rgb;
 
-    vec3 C4 = texture2D(color, pos + 2 * dx - dy).rgb;
-    vec3 F4 = texture2D(color, pos + 2 * dx).rgb;
-    vec3 I4 = texture2D(color, pos + 2 * dx + dy).rgb;
+    vec3 A0 = texture2D(color, textureCoords - 2 * dx - dy).rgb;
+    vec3 D0 = texture2D(color, textureCoords - 2 * dx).rgb;
+    vec3 G0 = texture2D(color, textureCoords - 2 * dx + dy).rgb;
+
+    vec3 C4 = texture2D(color, textureCoords + 2 * dx - dy).rgb;
+    vec3 F4 = texture2D(color, textureCoords + 2 * dx).rgb;
+    vec3 I4 = texture2D(color, textureCoords + 2 * dx + dy).rgb;
 
     vec4 b = weightedBlend(B, D, H, F);
     vec4 c = weightedBlend(C, A, G, I);

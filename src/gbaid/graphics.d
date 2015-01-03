@@ -120,11 +120,11 @@ public class Display {
                 break;
             case UpscalingMode.EPX:
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, EPX_UPSCALE_FRAGMENT_SHADER_SOURCE);
-                upscaledTexture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
+                upscaledTexture = makeTexture(RGBA, RGBA8, HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
                 break;
             case UpscalingMode.XBR:
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, XBR_UPSCALE_FRAGMENT_SHADER_SOURCE);
-                upscaledTexture = makeTexture(RGBA, RGB5_A1, HORIZONTAL_RESOLUTION * 5, VERTICAL_RESOLUTION * 5);
+                upscaledTexture = makeTexture(RGBA, RGBA8, HORIZONTAL_RESOLUTION * 5, VERTICAL_RESOLUTION * 5);
                 break;
         }
         if (upscaleProgram !is null) {

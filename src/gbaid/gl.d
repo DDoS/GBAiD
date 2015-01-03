@@ -1284,7 +1284,8 @@ public final class Format {
 
 public enum : InternalFormat {
     RGB8 = new InternalFormat(0x8051, RGB, UNSIGNED_BYTE), // GL11.GL_RGB8
-    RGBA8 = new InternalFormat(0x8058, RGBA, UNSIGNED_BYTE), // GL11.GL_RGBA8
+    // TODO: should be UNSIGNED_BYTE, but for some reason LDC crashes, but BYTE works (it won't affect OpenGL)
+    RGBA8 = new InternalFormat(0x8058, RGBA, BYTE), // GL11.GL_RGBA8
     RGB16 = new InternalFormat(32852, RGB, UNSIGNED_SHORT), // GL11.GL_RGB16
     RGBA16 = new InternalFormat(0x805B, RGBA, UNSIGNED_SHORT), // GL11.GL_RGBA16
     DEPTH_COMPONENT16 = new InternalFormat(0x81A5, DEPTH, UNSIGNED_SHORT), // GL14.GL_DEPTH_COMPONENT16
