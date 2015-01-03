@@ -838,22 +838,25 @@ public class ARM7TDMI {
                     }
                 }
             } else {
-                foreach_reverse (i; 0 .. 16) {
+                int size = 4 * bitCount(registerList);
+                address -= size;
+                int currentAddress = address;
+                foreach (i; 0 .. 16) {
                     if (checkBit(registerList, i)) {
                         if (preIncr) {
-                            address -= 4;
                             if (load) {
-                                setRegister(mode, i, memory.getInt(address));
+                                setRegister(mode, i, memory.getInt(currentAddress));
                             } else {
-                                memory.setInt(address, getRegister(mode, i));
+                                memory.setInt(currentAddress, getRegister(mode, i));
                             }
+                            currentAddress += 4;
                         } else {
+                            currentAddress += 4;
                             if (load) {
-                                setRegister(mode, i, memory.getInt(address));
+                                setRegister(mode, i, memory.getInt(currentAddress));
                             } else {
-                                memory.setInt(address, getRegister(mode, i));
+                                memory.setInt(currentAddress, getRegister(mode, i));
                             }
-                            address -= 4;
                         }
                     }
                 }
@@ -1416,15 +1419,17 @@ public class ARM7TDMI {
                 }
             } else {
                 debug (outputInstructions) logInstruction(instruction, "PUSH");
-                if (pcAndLR) {
-                    sp -= 4;
-                    memory.setInt(sp, getRegister(Register.LR));
-                }
-                foreach_reverse (i; 0 .. 8) {
+                int size = 4 * (bitCount(registerList) + pcAndLR);
+                sp -= size;
+                int address = sp;
+                foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
-                        sp -= 4;
-                        memory.setInt(sp, getRegister(i));
+                        memory.setInt(address, getRegister(i));
+                        address += 4;
                     }
+                }
+                if (pcAndLR) {
+                    memory.setInt(address, getRegister(Register.LR));
                 }
             }
             setRegister(Register.SP, sp);
