@@ -93,5 +93,8 @@ public void main(string[] args) {
     }
 
     // TODO:
+    //       fix slowness in PKMN Emerald trainer info
+    //       sound
+    //       controller support
     //       implement optional RTC
 }
