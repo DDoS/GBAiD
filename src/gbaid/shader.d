@@ -61,7 +61,7 @@ public enum string EPX_UPSCALE_FRAGMENT_SHADER_SOURCE =
 
 #version 120
 
-const float EPS = 0.05;
+const float EPS = 1e-5;
 
 varying vec2 textureCoords;
 
@@ -78,38 +78,28 @@ bool neq(vec3 a, vec3 b) {
 }
 
 void main() {
-    float px = 1 / size.x;
-    float py = 1 / size.y;
+    float sx = 1 / size.x;
+    float sy = 1 / size.y;
 
-    vec2 pos = floor(textureCoords * size) / size + vec2(px, py) / 2;
+    vec2 dx = vec2(sx, 0);
+    vec2 dy = vec2(0, sy);
 
-    vec2 dx = vec2(px, 0);
-    vec2 dy = vec2(0, py);
+    vec2 fp = fract(textureCoords * size);
 
-    vec3 p = texture2D(color, pos).rgb;
-    vec3 a = texture2D(color, pos + dy).rgb;
-    vec3 b = texture2D(color, pos + dx).rgb;
-    vec3 c = texture2D(color, pos - dx).rgb;
-    vec3 d = texture2D(color, pos - dy).rgb;
+    vec3 p = texture2D(color, textureCoords).rgb;
+    vec3 a = texture2D(color, textureCoords + dy).rgb;
+    vec3 b = texture2D(color, textureCoords + dx).rgb;
+    vec3 c = texture2D(color, textureCoords - dx).rgb;
+    vec3 d = texture2D(color, textureCoords - dy).rgb;
 
-    if (textureCoords.x > pos.x) {
-        if (textureCoords.y > pos.y) {
-            vec3 corner = texture2D(color, pos + dx + dy).rgb;
-            if (eq(p, corner)) {
-                gl_FragColor.rgb = p;
-                return;
-            }
+    if (fp.x >= 0.5) {
+        if (fp.y >= 0.5) {
             if (eq(a, b) && neq(a, c) && neq(b, d)) {
                 gl_FragColor.rgb = b;
             } else {
                 gl_FragColor.rgb = p;
             }
         } else {
-            vec3 corner = texture2D(color, pos + dx - dy).rgb;
-            if (eq(p, corner)) {
-                gl_FragColor.rgb = p;
-                return;
-            }
             if (eq(b, d) && neq(b, a) && neq(d, c)) {
                 gl_FragColor.rgb = d;
             } else {
@@ -117,23 +107,13 @@ void main() {
             }
         }
     } else {
-        if (textureCoords.y > pos.y) {
-            vec3 corner = texture2D(color, pos - dx + dy).rgb;
-            if (eq(p, corner)) {
-                gl_FragColor.rgb = p;
-                return;
-            }
+        if (fp.y >= 0.5) {
             if (eq(c, a) && neq(c, d) && neq(a, b)) {
                 gl_FragColor.rgb = a;
             } else {
                 gl_FragColor.rgb = p;
             }
         } else {
-            vec3 corner = texture2D(color, pos - dx - dy).rgb;
-            if (eq(p, corner)) {
-                gl_FragColor.rgb = p;
-                return;
-            }
             if (eq(d, c) && neq(d, b) && neq(c, a)) {
                 gl_FragColor.rgb = c;
             } else {
