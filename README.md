@@ -33,7 +33,7 @@ just under 50% CPU. Most of this usage comes from the graphics, which still need
 
 GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound (eventually) and controller support (planned).  
 
-- SDL 2.0.4 or greater is required
+- SDL 2.0.3 or greater is required
 - OpenGL 2.0 or greater is required
 
 ### DUB ###
