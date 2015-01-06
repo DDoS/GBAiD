@@ -70,7 +70,7 @@ The following arguments are also recognized:
 | --noload    | -n         | none                   | Don't load the save                                                          |
 | --nosave    | -N         | none                   | Don't save the save                                                          |
 | --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                   |
-| --filtering | -f         | LINEAR or NEAREST      | What technique to use to filter the output texture to be drawn to the screen |
+| --filtering | -f         | LINEAR or NONE         | What technique to use to filter the output texture to be drawn to the screen |
 | --upscaling | -u         | EPX, XBR or NONE       | What technique to use to increase the resolution of the drawn texture        |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
