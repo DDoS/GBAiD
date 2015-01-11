@@ -258,7 +258,7 @@ public class GL20FrameBuffer : FrameBuffer {
      * @throws UnsupportedOperationException If the hardware doesn't support EXT frame buffers
      */
     public this() {
-        if (!isSupported("GL_EXT_framebuffer_object")) {
+        if (!EXT_framebuffer_object) {
             throw new Exception("Frame buffers are not supported by this hardware");
         }
     }
@@ -708,7 +708,7 @@ public class GL20RenderBuffer : RenderBuffer {
      * @throws UnsupportedOperationException If the hardware doesn't support EXT render buffers.
      */
     public this() {
-        if (!isSupported("GL_EXT_framebuffer_object")) {
+        if (!EXT_framebuffer_object) {
             throw new Exception("Render buffers are not supported by this hardware");
         }
     }
@@ -1150,7 +1150,7 @@ public class GL20VertexArray : VertexArray {
     private bool[] attributeNormalizing;
 
     public this() {
-        if (isSupported("GL_ARB_vertex_array_object")) {
+        if (ARB_vertex_array_object) {
             extension = new ARBVertexArrayExtension();
         } else {
             extension = new NoneVertexArrayExtension();
@@ -1395,22 +1395,4 @@ public class GL20VertexArray : VertexArray {
             glDeleteVertexArrays(n, arrays);
         }
     }
-}
-
-private bool[string] supportedExtensions;
-private bool extensionsInit = false;
-
-private bool isSupported(string ext) {
-    if (!extensionsInit) {
-        const(char*) raw = glGetString(GL_EXTENSIONS);
-        if (raw == null) {
-            throw new Exception("Fail to retrieve supported extensions");
-        }
-        string extensions = toDString(raw);
-        foreach (extension; extensions.split(" ")) {
-            supportedExtensions[extension] = true;
-        }
-        extensionsInit = true;
-    }
-    return cast(bool) (ext in supportedExtensions);
 }
