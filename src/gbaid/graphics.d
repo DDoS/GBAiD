@@ -23,7 +23,6 @@ public class Display {
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
     private static TickDuration H_VISIBLE_DURATION;
     private static TickDuration H_BLANK_DURATION;
-    private static TickDuration TOTAL_DURATION;
     private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
@@ -42,7 +41,6 @@ public class Display {
     static this() {
         H_VISIBLE_DURATION = TickDuration.from!"nsecs"(57221);
         H_BLANK_DURATION = TickDuration.from!"nsecs"(16212);
-        TOTAL_DURATION = (H_VISIBLE_DURATION + H_BLANK_DURATION) * VERTICAL_TIMING_RESOLUTION;
     }
 
     public this(IORegisters ioRegisters, RAM palette, RAM vram, RAM oam, InterruptHandler interruptHandler, DMAs dmas) {

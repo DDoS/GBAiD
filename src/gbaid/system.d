@@ -66,6 +66,14 @@ public class GameBoyAdvance {
         memory.setGamePak(gamePak);
     }
 
+    public void useKeyboard() {
+        keypad.changeInput!Keyboard();
+    }
+
+    public void useController() {
+        keypad.changeInput!Controller();
+    }
+
     public void setDisplayScale(float scale) {
         display.setScale(scale);
     }

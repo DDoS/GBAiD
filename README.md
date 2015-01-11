@@ -2,8 +2,7 @@
 
 GBAiD stands for <strong>G</strong>ame<strong>B</strong>oy <strong>A</strong>dvance
 <strong>i</strong>n <strong>D</strong>. I've started this project
-as an effort to learn the D programming language. The goal of this emulator
-is light CPU usage.
+as an effort to learn the D programming language.
 
 This emulator is written mostly in pure D, with some inline x86 (32 and 64 bit) assembly in the graphics
 to help with performance.
@@ -24,14 +23,13 @@ I've tested 4 games so far:
 Mario Kart exhibits some light graphical glitches due problems with timings in the graphics
 (this also affects the world map in LoZ).
 
-Optimization isn't complete, but the emulator works fine at 60FPS on my 2.66GHz dual core i7 (4GB RAM), using
-just under 50% CPU. Most of this usage comes from the graphics, which still need optimization.
+The emulator uses just under 50% CPU on my 2.66GHz dual core i7 (4GB RAM), at 60 FPS.
 
 ## Building ##
 
 ### Dependencies ###
 
-GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound (eventually) and controller support (planned).  
+GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound (eventually) and controller support.  
 
 - SDL 2.0.3 or greater is required
 - OpenGL 2.0 or greater is required
@@ -72,6 +70,7 @@ The following arguments are also recognized:
 | --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                   |
 | --filtering | -f         | LINEAR or NONE         | What technique to use to filter the output texture to be drawn to the screen |
 | --upscaling | -u         | EPX, XBR or NONE       | What technique to use to increase the resolution of the drawn texture        |
+| --controller| -c         | none                   | Disable keyboard input and use a controller instead                          |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
 
@@ -86,18 +85,18 @@ unless the --nosave argument is used.
 
 These will be re-mapable soon.
 
-| Gamepad | Keyboard |
-|---------|----------|
-| A       | P        |
-| B       | O        |
-| Up      | W        |
-| Down    | S        |
-| Right   | D        |
-| Left    | A        |
-| R       | E        |
-| L       | Q        |
-| Start   | Enter    |
-| Select  | Tab      |
+| Gamepad | Keyboard | Controller       |
+|---------|----------|------------------|
+| A       | P        | A                |
+| B       | O        | B                |
+| Up      | W        | D-pad or L-stick |
+| Down    | S        | D-pad or L-stick |
+| Right   | D        | D-pad or L-stick |
+| Left    | A        | D-pad or L-stick |
+| R       | E        | RB or RT         |
+| L       | Q        | LB or LT         |
+| Start   | Enter    | Start            |
+| Select  | Tab      | Select           |
 
 ### Upscaling ###
 

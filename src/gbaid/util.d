@@ -4,7 +4,6 @@ import core.time;
 import core.thread;
 import core.sync.condition;
 
-import std.conv;
 import std.path;
 import std.range;
 import std.algorithm;
@@ -94,15 +93,23 @@ template removeAll(K, V) {
     }
 }
 
-public string toString(char[] cs) {
+public string toDString(inout(char)[] cs) {
+    return toDString(cs.ptr, cs.length);
+}
+
+public string toDString(inout(char)* cs) {
+    return toDString(cs, size_t.max);
+}
+
+public string toDString(inout(char)* cs, size_t length) {
     size_t end;
-    foreach (i; 0 .. cs.length) {
-        if (cs[i] == '\0') {
+    foreach (i; 0 .. length) {
+        if (!cs[i]) {
             end = i;
             break;
         }
     }
-    return to!string(cs[0 .. end]);
+    return cs[0 .. end].idup;
 }
 
 public string expandPath(string relative) {

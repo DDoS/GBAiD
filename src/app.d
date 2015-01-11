@@ -15,6 +15,7 @@ public void main(string[] args) {
     float scale = 2;
     FilteringMode filtering = FilteringMode.NONE;
     UpscalingMode upscaling = UpscalingMode.NONE;
+    bool controller = false;
     getopt(args,
         config.caseSensitive,
         "bios|b", &bios,
@@ -25,7 +26,8 @@ public void main(string[] args) {
         config.noBundling,
         "scale|r", &scale,
         "filtering|f", &filtering,
-        "upscaling|u", &upscaling
+        "upscaling|u", &upscaling,
+        "controller|c", &controller
     );
 
     // Resolve BIOS
@@ -79,6 +81,9 @@ public void main(string[] args) {
     gba.setDisplayScale(scale);
     gba.setDisplayFilteringMode(filtering);
     gba.setDisplayUpscalingMode(upscaling);
+    if (controller) {
+        gba.useController();
+    }
 
     // Run GBA
     gba.run();

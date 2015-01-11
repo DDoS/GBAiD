@@ -39,7 +39,7 @@ public class GL20Context : Context {
         // Initialize SDL video if needed
         if (!SDL_WasInit(SDL_INIT_VIDEO)) {
             if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
-                throw new Exception("Failed to initialize SDL: " ~ to!string(SDL_GetError()));
+                throw new Exception("Failed to initialize the SDL video system: " ~ toDString(SDL_GetError()));
             }
         }
         // Configure the context
@@ -52,12 +52,12 @@ public class GL20Context : Context {
         int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (resizable ? SDL_WINDOW_RESIZABLE : 0);
         window = SDL_CreateWindow(toStringz(title), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
         if (!window) {
-            throw new Exception("Failed to create a SDL window: " ~ to!string(SDL_GetError()));
+            throw new Exception("Failed to create an SDL window: " ~ toDString(SDL_GetError()));
         }
         // Attempt to create the OpenGL context
         glContext = SDL_GL_CreateContext(window);
         if (glContext is null) {
-            throw new Exception("Failed to create OpenGL context: " ~ to!string(SDL_GetError()));
+            throw new Exception("Failed to create OpenGL context: " ~ toDString(SDL_GetError()));
         }
         // Set the swap interval to immediate
         SDL_GL_SetSwapInterval(0);
@@ -507,7 +507,7 @@ public class GL20Program : Program {
         foreach (uint i; 0 .. uniformCount) {
             glGetActiveUniform(id, i, maxLength, &length, &size, &type, name.ptr);
             // Simplify array names
-            string nameString = gbaid.util.toString(name);
+            string nameString = toDString(name);
             replaceFirst(nameString, ATTRIBUTE_ARRAY_NOTATION_PATTERN, "");
             uniforms[nameString] = glGetUniformLocation(id, name.ptr);
             uniformValues[nameString] = UNSET;
@@ -521,7 +521,7 @@ public class GL20Program : Program {
         int length;
         char[maxLength] log = new char[maxLength];
         glGetProgramInfoLog(id, cast(uint) maxLength, &length, log.ptr);
-        return gbaid.util.toString(log);
+        return gbaid.util.toDString(log);
     }
 
     public override void use() {
@@ -863,7 +863,7 @@ public class GL20Shader : Shader {
         int length;
         char[maxLength] log = new char[maxLength];
         glGetShaderInfoLog(id, cast(uint) maxLength, &length, log.ptr);
-        return gbaid.util.toString(log);
+        return toDString(log);
     }
 
     public override ShaderType getType() {
@@ -1406,7 +1406,7 @@ private bool isSupported(string ext) {
         if (raw == null) {
             throw new Exception("Fail to retrieve supported extensions");
         }
-        string extensions = to!string(raw);
+        string extensions = toDString(raw);
         foreach (extension; extensions.split(" ")) {
             supportedExtensions[extension] = true;
         }
