@@ -688,7 +688,7 @@ public class DMAs {
         }
     }
 
-    public static enum Timing {
+    private static enum Timing {
         DISABLED,
         IMMEDIATE,
         VBLANK,

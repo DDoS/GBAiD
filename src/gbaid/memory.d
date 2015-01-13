@@ -448,7 +448,7 @@ public class EEPROM : RAM {
 }
 
 public abstract class MappedMemory : Memory {
-    protected Memory map(ref uint address);
+    protected abstract Memory map(ref uint address);
 
     public override void[] getArray(uint address) {
         Memory memory = map(address);

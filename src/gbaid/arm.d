@@ -221,7 +221,7 @@ public class ARM7TDMI {
             } else if (checkBits(instruction, 0b00001111100000000000000011110000, 0b00000000100000000000000010010000)) {
                 multiplyAndMultiplyAccumulate(instruction);
             } else if (checkBits(instruction, 0b00001111101100000000111111110000, 0b00000001000000000000000010010000)) {
-                signedDataSwap(instruction);
+                singleDataSwap(instruction);
             } else if (checkBits(instruction, 0b00001110010000000000111110010000, 0b00000000000000000000000010010000)) {
                 halfwordAndSignedDataTransfer(instruction);
             } else if (checkBits(instruction, 0b00001110010000000000000010010000, 0b00000000010000000000000010010000)) {
@@ -866,7 +866,7 @@ public class ARM7TDMI {
             }
         }
 
-        private void signedDataSwap(int instruction) {
+        private void singleDataSwap(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
@@ -1559,9 +1559,8 @@ public class ARM7TDMI {
                     return op;
                 } else {
                     carry = getBit(op, shift - 1);
-                    byte byteShift = cast(byte) shift;
                     asm {
-                        mov CL, byteShift;
+                        mov CX, shift;
                         ror op, CL;
                     }
                     return op;
@@ -1727,11 +1726,11 @@ public class ARM7TDMI {
         }
 
         private static struct Instruction {
-            Mode mode;
-            int address;
-            int code;
-            string mnemonic;
-            Set set;
+            private Mode mode;
+            private int address;
+            private int code;
+            private string mnemonic;
+            private Set set;
         }
     }
 }
