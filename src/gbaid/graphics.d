@@ -110,17 +110,17 @@ public class Display {
         Program upscaleProgram = void;
         Texture upscaledTexture = void;
         FrameBuffer upscaleFrameBuffer = void;
-        final switch (upscalingMode) {
-            case UpscalingMode.NONE:
+        final switch (upscalingMode) with (UpscalingMode) {
+            case NONE:
                 upscaleProgram = null;
                 upscaledTexture = null;
                 upscaleFrameBuffer = null;
                 break;
-            case UpscalingMode.EPX:
+            case EPX:
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, EPX_UPSCALE_FRAGMENT_SHADER_SOURCE);
                 upscaledTexture = makeTexture(RGBA, RGBA8, HORIZONTAL_RESOLUTION * 2, VERTICAL_RESOLUTION * 2);
                 break;
-            case UpscalingMode.XBR:
+            case XBR:
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, XBR_UPSCALE_FRAGMENT_SHADER_SOURCE);
                 upscaledTexture = makeTexture(RGBA, RGBA8, HORIZONTAL_RESOLUTION * 5, VERTICAL_RESOLUTION * 5);
                 break;

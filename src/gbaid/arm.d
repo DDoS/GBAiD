@@ -1707,11 +1707,11 @@ public class ARM7TDMI {
             }
             foreach (uint i; 0 .. amount) {
                 uint j = (i + start) % queueMaxSize;
-                final switch (lastInstructions[j].set) {
-                    case Set.ARM:
+                final switch (lastInstructions[j].set) with (Set) {
+                    case ARM:
                         writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
-                    case Set.THUMB:
+                    case THUMB:
                         writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
                 }
@@ -1786,11 +1786,11 @@ private int getRegisterIndex(Mode mode, int register) {
         R13_und - R14_und = 34 - 35
         SPSR_und = 36
     */
-    final switch (mode) {
-        case Mode.USER:
-        case Mode.SYSTEM:
+    final switch (mode) with (Mode) {
+        case USER:
+        case SYSTEM:
             return register;
-        case Mode.FIQ:
+        case FIQ:
             switch (register) {
                 case 8: .. case 14:
                     return register + 9;
@@ -1799,7 +1799,7 @@ private int getRegisterIndex(Mode mode, int register) {
                 default:
                     return register;
             }
-        case Mode.SUPERVISOR:
+        case SUPERVISOR:
             switch (register) {
                 case 13: .. case 14:
                     return register + 12;
@@ -1808,7 +1808,7 @@ private int getRegisterIndex(Mode mode, int register) {
                 default:
                     return register;
             }
-        case Mode.ABORT:
+        case ABORT:
             switch (register) {
                 case 13: .. case 14:
                     return register + 15;
@@ -1817,7 +1817,7 @@ private int getRegisterIndex(Mode mode, int register) {
                 default:
                     return register;
             }
-        case Mode.IRQ:
+        case IRQ:
             switch (register) {
                 case 13: .. case 14:
                     return register + 18;
@@ -1826,7 +1826,7 @@ private int getRegisterIndex(Mode mode, int register) {
                 default:
                     return register;
             }
-        case Mode.UNDEFINED:
+        case UNDEFINED:
             switch (register) {
                 case 13: .. case 14:
                     return register + 21;

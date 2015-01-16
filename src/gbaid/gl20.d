@@ -1142,8 +1142,11 @@ public class GL20VertexArray : VertexArray {
     private DrawingMode drawingMode = TRIANGLES;
     // Polygon mode
     private PolygonMode polygonMode = FILL;
-    // The available vao extension
-    private VertexArrayExtension extension = new NoneVertexArrayExtension();
+    // The pointers to the functions for the available vertex extension
+    private bool hasVertexArrayExtension;
+    private da_glGenVertexArrays genVertexArrays;
+    private da_glBindVertexArray bindVertexArray;
+    private da_glDeleteVertexArrays deleteVertexArrays;
     // Attribute properties for when we don't have a vao extension
     private uint[] attributeSizes;
     private uint[] attributeTypes;
@@ -1151,17 +1154,28 @@ public class GL20VertexArray : VertexArray {
 
     public this() {
         if (ARB_vertex_array_object) {
-            extension = new ARBVertexArrayExtension();
+            hasVertexArrayExtension = true;
+            genVertexArrays = glGenVertexArrays;
+            bindVertexArray = glBindVertexArray;
+            deleteVertexArrays = glDeleteVertexArrays;
+        } else if (APPLE_vertex_array_object) {
+            hasVertexArrayExtension = true;
+            genVertexArrays = glGenVertexArraysAPPLE;
+            bindVertexArray = glBindVertexArrayAPPLE;
+            deleteVertexArrays = glDeleteVertexArraysAPPLE;
         } else {
-            extension = new NoneVertexArrayExtension();
+            hasVertexArrayExtension = false;
+            genVertexArrays = null;
+            bindVertexArray = null;
+            deleteVertexArrays = null;
         }
     }
 
     public override void create() {
         checkNotCreated();
-        if (extension.has()) {
+        if (hasVertexArrayExtension) {
             // Generate the vao
-            extension.genVertexArrays(1, &id);
+            genVertexArrays(1, &id);
         }
         // Update state
         super.create();
@@ -1175,9 +1189,9 @@ public class GL20VertexArray : VertexArray {
         glDeleteBuffers(1, &indicesBufferID);
         // Delete the attribute buffers
         glDeleteBuffers(cast(uint) attributeBufferIDs.length, attributeBufferIDs.ptr);
-        if (extension.has()) {
+        if (hasVertexArrayExtension) {
             // Delete the vao
-            extension.deleteVertexArrays(1, &id);
+            deleteVertexArrays(1, &id);
         } else {
             // Else delete the attribute properties
             attributeSizes = null;
@@ -1222,8 +1236,8 @@ public class GL20VertexArray : VertexArray {
         indicesOffset = min(indicesOffset, indicesCount - 1);
         indicesDrawCount = indicesDrawCount - indicesOffset;
         // Bind the vao
-        if (extension.has()) {
-            extension.bindVertexArray(id);
+        if (hasVertexArrayExtension) {
+            bindVertexArray(id);
         }
         // Create a new array of attribute buffers ID of the correct size
         uint attributeCount = vertexData.getAttributeCount();
@@ -1243,7 +1257,7 @@ public class GL20VertexArray : VertexArray {
         length = min(attributeBufferSizes.length, newAttributeBufferSizes.length);
         newAttributeBufferSizes[0 .. length] = attributeBufferSizes[0 .. length];
         // If we don't have a vao, we have to save the properties manually
-        if (!extension.has()) {
+        if (!hasVertexArrayExtension) {
             attributeSizes = new uint[attributeCount];
             attributeTypes = new uint[attributeCount];
             attributeNormalizing = new bool[attributeCount];
@@ -1268,7 +1282,7 @@ public class GL20VertexArray : VertexArray {
             // Update the buffer size to the new one
             newAttributeBufferSizes[i] = newBufferSize;
             // Next, we add the pointer to the data in the vao
-            if (extension.has()) {
+            if (hasVertexArrayExtension) {
                 // As a float, normalized or not
                 glVertexAttribPointer(i, attribute.getSize(), attribute.getType().getGLConstant(), attribute.getUploadMode().normalize(), 0, null);
                 // Enable the attribute
@@ -1283,8 +1297,8 @@ public class GL20VertexArray : VertexArray {
         // Unbind the last vbo
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         // Unbind the vao
-        if (extension.has()) {
-            extension.bindVertexArray(0);
+        if (hasVertexArrayExtension) {
+            bindVertexArray(0);
         }
         // Update the attribute buffer IDs to the new ones
         attributeBufferIDs = newAttributeBufferIDs;
@@ -1324,9 +1338,9 @@ public class GL20VertexArray : VertexArray {
 
     public override void draw() {
         checkCreated();
-        if (extension.has()) {
+        if (hasVertexArrayExtension) {
             // Bind the vao
-            extension.bindVertexArray(id);
+            bindVertexArray(id);
         } else {
             // Enable the vertex attributes
             foreach (uint i; 0 .. cast(uint) attributeBufferIDs.length) {
@@ -1354,45 +1368,5 @@ public class GL20VertexArray : VertexArray {
 
     public gbaid.gl.GLVersion getGLVersion() {
         return GL20;
-    }
-
-    private static interface VertexArrayExtension {
-        protected bool has();
-        protected void genVertexArrays(uint n, uint* arrays);
-        protected void bindVertexArray(uint array);
-        protected void deleteVertexArrays(uint n, uint* arrays);
-    }
-
-    private static class NoneVertexArrayExtension : VertexArrayExtension {
-        protected bool has() {
-            return false;
-        }
-
-        protected void genVertexArrays(uint n, uint* arrays) {
-        }
-
-        protected void bindVertexArray(uint array) {
-        }
-
-        protected void deleteVertexArrays(uint n, uint* arrays) {
-        }
-    }
-
-    private static class ARBVertexArrayExtension : VertexArrayExtension {
-        protected bool has() {
-            return true;
-        }
-
-        protected void genVertexArrays(uint n, uint* arrays) {
-            glGenVertexArrays(n, arrays);
-        }
-
-        protected void bindVertexArray(uint array) {
-            glBindVertexArray(array);
-        }
-
-        protected void deleteVertexArrays(uint n, uint* arrays) {
-            glDeleteVertexArrays(n, arrays);
-        }
     }
 }
