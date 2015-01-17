@@ -53,12 +53,12 @@ public class Display {
 
         frameSync = new Condition(new Mutex());
         lineTypes = [
-            &lineMode0,
-            &lineMode1,
-            &lineMode2,
-            &lineModeBitmap!"lineBackgroundBitmap16Single",
-            &lineModeBitmap!"lineBackgroundBitmap8Double",
-            &lineModeBitmap!"lineBackgroundBitmap16Double",
+            &lineMode!"Text",
+            &lineMode!"Mixed",
+            &lineMode!"Affine",
+            &lineMode!"Bitmap16Single",
+            &lineMode!"Bitmap8Double",
+            &lineMode!"Bitmap16Double",
             &lineBlank
         ];
         context = new GL20Context();
@@ -256,64 +256,9 @@ public class Display {
         }
     }
 
-    private void lineMode0(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
-
-        int blendControl = ioRegisters.getShort(0x50);
-
-        short backColor = palette.getShort(0x0) & 0x7FFF;
-
-        lineBackgroundText(line, lines[0], 0, bgEnables);
-        lineBackgroundText(line, lines[1], 1, bgEnables);
-        lineBackgroundText(line, lines[2], 2, bgEnables);
-        lineBackgroundText(line, lines[3], 3, bgEnables);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
-
-    private void lineMode1(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
-
-        int blendControl = ioRegisters.getShort(0x50);
-
-        short backColor = palette.getShort(0x0)  & 0x7FFF;
-
-        lineBackgroundText(line, lines[0], 0, bgEnables);
-        lineBackgroundText(line, lines[1], 1, bgEnables);
-        lineBackgroundAffine(line, lines[2], 2, bgEnables);
-        lineTransparent(lines[3]);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
-
-    private void lineMode2(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
-
-        int blendControl = ioRegisters.getShort(0x50);
-
-        short backColor = palette.getShort(0x0) & 0x7FFF;
-
-        lineTransparent(lines[0]);
-        lineTransparent(lines[1]);
-        lineBackgroundAffine(line, lines[2], 2, bgEnables);
-        lineBackgroundAffine(line, lines[3], 3, bgEnables);
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
-    }
-
-    private template lineModeBitmap(string lineBackgroundBitmap) {
-        private void lineModeBitmap(int line) {
+    private template lineMode(string type) {
+        private void lineMode(int line) {
             int displayControl = ioRegisters.getShort(0x0);
-            int frame = getBit(displayControl, 4);
             int tileMapping = getBit(displayControl, 6);
             int bgEnables = getBits(displayControl, 8, 12);
             int windowEnables = getBits(displayControl, 13, 15);
@@ -322,10 +267,30 @@ public class Display {
 
             short backColor = palette.getShort(0x0) & 0x7FFF;
 
-            lineTransparent(lines[0]);
-            lineTransparent(lines[1]);
-            mixin(lineBackgroundBitmap ~ "(line, lines[2], bgEnables, frame);");
-            lineTransparent(lines[3]);
+            static if (type == "Text") {
+                lineBackgroundText(line, lines[0], 0, bgEnables);
+                lineBackgroundText(line, lines[1], 1, bgEnables);
+                lineBackgroundText(line, lines[2], 2, bgEnables);
+                lineBackgroundText(line, lines[3], 3, bgEnables);
+            } else static if (type == "Mixed") {
+                lineBackgroundText(line, lines[0], 0, bgEnables);
+                lineBackgroundText(line, lines[1], 1, bgEnables);
+                lineBackgroundAffine(line, lines[2], 2, bgEnables);
+                lineTransparent(lines[3]);
+            } else static if (type == "Affine") {
+                lineTransparent(lines[0]);
+                lineTransparent(lines[1]);
+                lineBackgroundAffine(line, lines[2], 2, bgEnables);
+                lineBackgroundAffine(line, lines[3], 3, bgEnables);
+            } else {
+                int frame = getBit(displayControl, 4);
+
+                lineTransparent(lines[0]);
+                lineTransparent(lines[1]);
+                mixin("lineBackground" ~ type ~ "(line, lines[2], bgEnables, frame);");
+                lineTransparent(lines[3]);
+            }
+
             lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
             lineCompose(line, windowEnables, blendControl, backColor);
         }
