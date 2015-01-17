@@ -98,7 +98,6 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       fix minish cap corrupt vram when entering house in intro sequence
     //       sound
     //       implement optional RTC
 }

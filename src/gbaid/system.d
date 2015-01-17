@@ -436,7 +436,6 @@ public class DMAs {
     private int[4] controls = new int[4];
     private Timing[4] timings = new Timing[4];
     private bool[4] incomplete = new bool[4];
-    private shared Timing currentTiming = Timing.DISABLED;
 
     private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
@@ -493,10 +492,16 @@ public class DMAs {
     }
 
     private void triggerDMA(Timing timing) {
-        if (!hasPendingDMA(timing)) {
+        bool shouldRun = false;
+        foreach (int channel; 0 .. 4) {
+            if (timings[channel] == timing) {
+                incomplete[channel] = true;
+                shouldRun = true;
+            }
+        }
+        if (!shouldRun) {
             return;
         }
-        atomicStore(currentTiming, timing);
         interruptDMA = true;
         if (timing == Timing.IMMEDIATE) {
             haltHandler.halt(HaltSource.DMA);
@@ -506,40 +511,26 @@ public class DMAs {
         }
     }
 
-    private bool hasPendingDMA(Timing timing) {
-        foreach (int channel; 0 .. 4) {
-            if (timings[channel] == timing) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private void run() {
         while (true) {
-            while (atomicLoad(currentTiming) == Timing.DISABLED) {
-                synchronized (dmaWait.mutex) {
-                    if (atomicLoad(currentTiming) == Timing.DISABLED) {
-                        haltHandler.resume(HaltSource.DMA);
-                        dmaWait.wait();
-                    }
-                }
-                if (!running) {
-                    return;
-                }
+            synchronized (dmaWait.mutex) {
+                haltHandler.resume(HaltSource.DMA);
+                dmaWait.wait();
             }
-
-            Timing timing = void;
-            do {
-                timing = atomicLoad(currentTiming);
-            } while (!cas(&currentTiming, timing, Timing.DISABLED));
-
-            foreach (int channel; 0 .. 4) {
-                if (timings[channel] == timing || incomplete[channel]) {
-                    haltHandler.halt(HaltSource.DMA);
-                    interruptDMA = false;
-                    if (!runDMA(channel)) {
-                        break;
+            if (!running) {
+                return;
+            }
+            bool shouldRun = true;
+            while (shouldRun) {
+                shouldRun = false;
+                foreach (int channel; 0 .. 4) {
+                    if (incomplete[channel]) {
+                        haltHandler.halt(HaltSource.DMA);
+                        interruptDMA = false;
+                        if (!runDMA(channel)) {
+                            shouldRun = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -550,10 +541,8 @@ public class DMAs {
         int control = controls[channel];
 
         if (!doCopy(channel, control)) {
-            incomplete[channel] = true;
             return false;
         }
-        incomplete[channel] = false;
 
         int dmaAddress = channel * 0xC + 0xB8;
         if (checkBit(control, 9)) {
@@ -611,6 +600,8 @@ public class DMAs {
             modifyAddress(destinationAddresses[channel], destinationAddressControl, increment);
             wordCounts[channel]--;
         }
+
+        incomplete[channel] = false;
 
         return true;
     }
