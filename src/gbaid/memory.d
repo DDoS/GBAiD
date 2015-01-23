@@ -31,15 +31,13 @@ public abstract class Memory {
     public abstract int getInt(uint address);
 
     public abstract void setInt(uint address, int i);
-
-    public abstract bool compareAndSet(uint address, int expected, int update);
 }
 
 public class ROM : Memory {
-    protected shared void[] memory;
+    protected void[] memory;
 
     protected this(size_t capacity) {
-        this.memory = new shared byte[capacity];
+        this.memory = new byte[capacity];
     }
 
     public this(void[] memory) {
@@ -60,11 +58,11 @@ public class ROM : Memory {
     }
 
     public override void[] getArray(uint address) {
-        return cast(void[]) memory[address .. $];
+        return memory[address .. $];
     }
 
     public override void* getPointer(uint address) {
-        return cast(void*) memory.ptr + address;
+        return memory.ptr + address;
     }
 
     public override byte getByte(uint address) {
@@ -86,10 +84,6 @@ public class ROM : Memory {
     }
 
     public override void setInt(uint address, int i) {
-    }
-
-    public override bool compareAndSet(uint address, int expected, int update) {
-        return false;
     }
 }
 
@@ -116,10 +110,6 @@ public class RAM : ROM {
 
     public override void setInt(uint address, int i) {
         (cast(int[]) memory)[address >> 2] = i;
-    }
-
-    public override bool compareAndSet(uint address, int expected, int update) {
-        return cas(cast(shared int*) getPointer(address), expected, update);
     }
 }
 
@@ -296,10 +286,6 @@ public class Flash : RAM {
         throw new UnsupportedMemoryWidthException(address, 4);
     }
 
-    public override bool compareAndSet(uint address, int expected, int update) {
-        throw new UnsupportedMemoryOperationException("compareAndSet");
-    }
-
     private static enum Mode {
         NORMAL,
         ID,
@@ -436,10 +422,6 @@ public class EEPROM : RAM {
         throw new UnsupportedMemoryWidthException(address, 4);
     }
 
-    public override bool compareAndSet(uint address, int expected, int update) {
-        throw new UnsupportedMemoryOperationException("compareAndSet");
-    }
-
     private static enum Mode {
         NORMAL = 2,
         READ = 1,
@@ -488,11 +470,6 @@ public abstract class MappedMemory : Memory {
     public override void setInt(uint address, int i) {
         Memory memory = map(address);
         memory.setInt(address, i);
-    }
-
-    public override bool compareAndSet(uint address, int expected, int update) {
-        Memory memory = map(address);
-        return memory.compareAndSet(address, expected, update);
     }
 }
 
@@ -648,10 +625,6 @@ public class MonitoredMemory(M : Memory) : Memory {
         } else {
             memory.setInt(address, i);
         }
-    }
-
-    public override bool compareAndSet(uint address, int expected, int update) {
-        return memory.compareAndSet(address, expected, update);
     }
 
     private MemoryMonitor getMonitor(int address) {
@@ -811,10 +784,6 @@ public class DelegatedROM : Memory {
     public override void setInt(uint address, int i) {
     }
 
-    public override bool compareAndSet(uint address, int expected, int update) {
-        throw new UnsupportedMemoryOperationException("compareAndSet");
-    }
-
     private int nullDelegate(uint address) {
         return 0;
     }
@@ -852,10 +821,6 @@ public class NullMemory : Memory {
     }
 
     public override void setInt(uint address, int i) {
-    }
-
-    public override bool compareAndSet(uint address, int expected, int update) {
-        return false;
     }
 }
 

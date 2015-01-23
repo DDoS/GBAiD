@@ -21,7 +21,7 @@ public class Display {
     private static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
-    private static TickDuration H_VISIBLE_DURATION;
+    private static TickDuration H_DRAW_DURATION;
     private static TickDuration H_BLANK_DURATION;
     private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
@@ -39,7 +39,7 @@ public class Display {
     private LineType[7] lineTypes;
 
     static this() {
-        H_VISIBLE_DURATION = TickDuration.from!"nsecs"(57221);
+        H_DRAW_DURATION = TickDuration.from!"nsecs"(57221);
         H_BLANK_DURATION = TickDuration.from!"nsecs"(16212);
     }
 
@@ -234,10 +234,6 @@ public class Display {
         while (drawRunning) {
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
                 timer.start();
-                if (line == VERTICAL_RESOLUTION + 1) {
-                    signalVBLANK();
-                }
-                setVCOUNT(line);
                 if (line < VERTICAL_RESOLUTION) {
                     lineTypes[getMode()](line);
                 } else if (line == VERTICAL_RESOLUTION) {
@@ -247,7 +243,12 @@ public class Display {
                     reloadInternalAffineReferencePoint(2);
                     reloadInternalAffineReferencePoint(3);
                 }
-                timer.waitUntil(H_VISIBLE_DURATION);
+                setVCOUNT(line);
+                if (line == VERTICAL_RESOLUTION) {
+                    signalVBLANK();
+                }
+                checkVMATCH(line);
+                timer.waitUntil(H_DRAW_DURATION);
                 timer.restart();
                 setHBLANK(line, true);
                 timer.waitUntil(H_BLANK_DURATION);
@@ -1524,17 +1525,14 @@ public class Display {
     }
 
     private void setHBLANK(int line, bool state) {
-        int oldDisplayStatus = void, newDisplayStatus = void;
-        do {
-            oldDisplayStatus = ioRegisters.getInt(0x4);
-            newDisplayStatus = oldDisplayStatus;
-            setBit(newDisplayStatus, 1, state);
-        } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
+        int displayStatus = ioRegisters.getShort(0x4);
+        setBit(displayStatus, 1, state);
+        ioRegisters.setShort(0x4, cast(short) displayStatus);
         if (state) {
             if (line < VERTICAL_RESOLUTION) {
                 dmas.signalHBLANK();
             }
-            if (checkBit(oldDisplayStatus, 4)) {
+            if (checkBit(displayStatus, 4)) {
                 interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
             }
         }
@@ -1542,14 +1540,15 @@ public class Display {
 
     private void setVCOUNT(int line) {
         ioRegisters.setByte(0x6, cast(byte) line);
-        int oldDisplayStatus = void, newDisplayStatus = void;
-        do {
-            oldDisplayStatus = ioRegisters.getInt(0x4);
-            newDisplayStatus = oldDisplayStatus;
-            setBit(newDisplayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
-            setBit(newDisplayStatus, 2, getBits(oldDisplayStatus, 8, 15) == line);
-        } while (!ioRegisters.compareAndSet(0x4, oldDisplayStatus, newDisplayStatus));
-        if (getBits(oldDisplayStatus, 8, 15) == line && checkBit(oldDisplayStatus, 5)) {
+        int displayStatus = ioRegisters.getShort(0x4);
+        setBit(displayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
+        setBit(displayStatus, 2, getBits(displayStatus, 8, 15) == line);
+        ioRegisters.setShort(0x4, cast(short) displayStatus);
+    }
+
+    private void checkVMATCH(int line) {
+        int displayStatus = ioRegisters.getInt(0x4);
+        if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
     }
