@@ -54,7 +54,7 @@ public class ARM7TDMI {
         if (thread !is null) {
             running = false;
             if (isHalted()) {
-                resume();
+                halt(false);
             }
             thread = null;
         }
@@ -64,14 +64,12 @@ public class ARM7TDMI {
         return running;
     }
 
-    public void halt() {
-        haltSignal = true;
-    }
-
-    public void resume() {
-        haltSignal = false;
-        synchronized (haltCondition.mutex) {
-            haltCondition.notify();
+    public void halt(bool state) {
+        haltSignal = state;
+        if (!state) {
+            synchronized (haltCondition.mutex) {
+                haltCondition.notify();
+            }
         }
     }
 

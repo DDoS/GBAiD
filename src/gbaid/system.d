@@ -21,7 +21,6 @@ import gbaid.util;
 
 public alias IORegisters = MonitoredMemory!RAM;
 public alias InterruptSource = InterruptHandler.InterruptSource;
-public alias HaltSource = HaltHandler.HaltSource;
 
 public class GameBoyAdvance {
     private MainMemory memory;
@@ -504,7 +503,7 @@ public class DMAs {
         }
         interruptDMA = true;
         if (timing == Timing.IMMEDIATE) {
-            haltHandler.halt(HaltSource.DMA);
+            haltHandler.dmaHalt(true);
         }
         synchronized (dmaWait.mutex) {
             dmaWait.notify();
@@ -514,7 +513,7 @@ public class DMAs {
     private void run() {
         while (true) {
             synchronized (dmaWait.mutex) {
-                haltHandler.resume(HaltSource.DMA);
+                haltHandler.dmaHalt(false);
                 dmaWait.wait();
             }
             if (!running) {
@@ -525,7 +524,7 @@ public class DMAs {
                 shouldRun = false;
                 foreach (int channel; 0 .. 4) {
                     if (incomplete[channel]) {
-                        haltHandler.halt(HaltSource.DMA);
+                        haltHandler.dmaHalt(true);
                         interruptDMA = false;
                         if (!runDMA(channel)) {
                             shouldRun = true;
@@ -909,7 +908,7 @@ public class InterruptHandler {
             setBit(flags, source, 1);
             ioRegisters.setShort(0x202, cast(short) flags);
             processor.triggerIRQ();
-            haltHandler.resume(HaltSource.SOFTWARE);
+            haltHandler.softwareHalt(false);
         }
     }
 
@@ -924,7 +923,7 @@ public class InterruptHandler {
             if (checkBit(newValue, 15)) {
                 // TODO: implement stop
             } else {
-                haltHandler.halt(HaltSource.SOFTWARE);
+                haltHandler.softwareHalt(true);
             }
         }
     }
@@ -949,27 +948,24 @@ public class InterruptHandler {
 
 private class HaltHandler {
     private ARM7TDMI processor;
-    private bool[2] halts = new bool[2];
+    private bool softwareHalted = false, dmaHalted = false;
 
     private this(ARM7TDMI processor) {
         this.processor = processor;
     }
 
-    private void halt(HaltSource source) {
-        halts[source] = true;
-        processor.halt();
+    private void softwareHalt(bool state) {
+        softwareHalted = state;
+        updateState();
     }
 
-    private void resume(HaltSource source) {
-        halts[source] = false;
-        if (!halts[0] && !halts[1]) {
-            processor.resume();
-        }
+    private void dmaHalt(bool state) {
+        dmaHalted = state;
+        updateState();
     }
 
-    private static enum HaltSource {
-        SOFTWARE = 0,
-        DMA = 1
+    private void updateState() {
+        processor.halt(softwareHalted || dmaHalted);
     }
 }
 
