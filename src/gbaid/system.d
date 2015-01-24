@@ -907,14 +907,14 @@ public class InterruptHandler {
             int flags = ioRegisters.getShort(0x202);
             setBit(flags, source, 1);
             ioRegisters.setShort(0x202, cast(short) flags);
-            processor.triggerIRQ();
+            processor.irq(true);
             haltHandler.softwareHalt(false);
         }
     }
 
     private bool onInterruptAcknowledgePreWrite(Memory ioRegisters, int address, int shift, int mask, ref int value) {
-        int flags = ioRegisters.getInt(0x200);
-        setBits(value, 16, 31, (flags & ~value) >> 16);
+        value = ioRegisters.getInt(0x200) & ~value | value & 0xFFFF;
+        processor.irq((value & 0x3FFF0000) != 0);
         return true;
     }
 

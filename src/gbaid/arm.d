@@ -77,8 +77,12 @@ public class ARM7TDMI {
         return haltSignal;
     }
 
-    public void triggerIRQ() {
-        irqSignal = true;
+    public void irq(bool state) {
+        irqSignal = state;
+    }
+
+    public bool inIRQ() {
+        return irqSignal;
     }
 
     public int getProgramCounter() {
@@ -164,7 +168,6 @@ public class ARM7TDMI {
     }
 
     private void processIRQ() {
-        irqSignal = false;
         if (getFlag(CPSRFlag.I)) {
             return;
         }

@@ -98,7 +98,6 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       fix slowness in PKMN Emerald trainer info
     //       sound
     //       implement optional RTC
 }

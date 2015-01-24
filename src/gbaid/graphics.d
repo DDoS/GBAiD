@@ -244,10 +244,10 @@ public class Display {
                     reloadInternalAffineReferencePoint(3);
                 }
                 setVCOUNT(line);
-                if (line == VERTICAL_RESOLUTION) {
+                checkVMATCH(line);
+                if (line == VERTICAL_RESOLUTION - 1) {
                     signalVBLANK();
                 }
-                checkVMATCH(line);
                 timer.waitUntil(H_DRAW_DURATION);
                 timer.restart();
                 setHBLANK(line, true);
