@@ -234,6 +234,7 @@ public class Display {
         while (drawRunning) {
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
                 timer.start();
+                setHBLANK(line, false);
                 if (line < VERTICAL_RESOLUTION) {
                     lineTypes[getMode()](line);
                 } else if (line == VERTICAL_RESOLUTION) {
@@ -252,7 +253,6 @@ public class Display {
                 timer.restart();
                 setHBLANK(line, true);
                 timer.waitUntil(H_BLANK_DURATION);
-                setHBLANK(line, false);
             }
         }
     }
@@ -945,7 +945,7 @@ public class Display {
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
-            if (x < 0 || x >= 240 || y < 0 || y >= 160) {
+            if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
                 continue;
             }
@@ -955,7 +955,7 @@ public class Display {
                 y -= y % mosaicSizeY;
             }
 
-            int address = x + y * 240 << 1;
+            int address = x + y * HORIZONTAL_RESOLUTION << 1;
 
             short color = vram.getShort(address) & 0x7FFF;
             buffer[column] = color;
@@ -1000,7 +1000,7 @@ public class Display {
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
-            if (x < 0 || x >= 240 || y < 0 || y >= 160) {
+            if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
                 continue;
             }
@@ -1010,7 +1010,7 @@ public class Display {
                 y -= y % mosaicSizeY;
             }
 
-            int address = x + y * 240 + addressBase;
+            int address = x + y * HORIZONTAL_RESOLUTION + addressBase;
 
             int paletteIndex = vram.getByte(address) & 0xFF;
             if (paletteIndex == 0) {
@@ -1059,7 +1059,6 @@ public class Display {
         int addressBase = frame ? 0xA000 : 0x0;
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-
             int x = dx + 128 >> 8;
             int y = dy + 128 >> 8;
 
@@ -1548,7 +1547,7 @@ public class Display {
 
     private void checkVMATCH(int line) {
         int displayStatus = ioRegisters.getInt(0x4);
-        if (getBits(displayStatus, 8, 15) == line && checkBit(displayStatus, 5)) {
+        if (checkBit(displayStatus, 5) && getBits(displayStatus, 8, 15) == line) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
     }
