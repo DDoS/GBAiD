@@ -522,12 +522,7 @@ public class ARM7TDMI {
                 int op;
                 if (opSrc) {
                     // immediate
-                    byte shift = cast(byte) (getBits(instruction, 8, 11) * 2);
-                    op = instruction & 0xFF;
-                    asm {
-                        mov CL, shift;
-                        ror op, CL;
-                    }
+                    op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
                 } else {
                     // register
                     op = getRegister(instruction & 0xF);
@@ -1154,12 +1149,8 @@ public class ARM7TDMI {
                 case 0x7:
                     // ROR
                     debug (outputInstructions) logInstruction(instruction, "ROR");
-                    byte shift = cast(byte) op2;
-                    asm {
-                        mov CL, shift;
-                        ror op1, CL;
-                    }
-                    int res = op1;
+                    int shift = op2 & 0xFF;
+                    int res = rotateRight(op1, shift);
                     setRegister(rd, res);
                     if (shift == 0) {
                         setAPSRFlags(res < 0, res == 0);
@@ -1552,19 +1543,13 @@ public class ARM7TDMI {
                 if (shift == 0) {
                     // RRX
                     carry = getBit(op, 0);
-                    asm {
-                        ror op, 1;
-                    }
+                    rotateRight(op, 1);
                     setBit(op, 31, getFlag(CPSRFlag.C));
                     setFlag(CPSRFlag.C, carry);
                     return op;
                 } else {
                     carry = getBit(op, shift - 1);
-                    asm {
-                        mov ECX, shift;
-                        ror op, CL;
-                    }
-                    return op;
+                    return rotateRight(op, shift);
                 }
         }
     }
@@ -1741,35 +1726,15 @@ private int getConditionBits(int instruction) {
 }
 
 private int rotateRead(int address, int value) {
-    asm {
-        mov ECX, address;
-        and ECX, 3;
-        shl ECX, 3;
-        ror value, CL;
-    }
-    return value;
+    return rotateRight(value, (address & 3) << 3);
 }
 
 private int rotateRead(int address, short value) {
-    int intValue = value & 0xFFFF;
-    asm {
-        mov ECX, address;
-        and ECX, 1;
-        shl ECX, 3;
-        ror intValue, CL;
-    }
-    return intValue;
+    return rotateRight(value & 0xFFFF, (address & 1) << 3);
 }
 
 private int rotateReadSigned(int address, short value) {
-    int intValue = value;
-    asm {
-        mov ECX, address;
-        and ECX, 1;
-        shl ECX, 3;
-        sar intValue, CL;
-    }
-    return intValue;
+    return value >> ((address & 1) << 3);
 }
 
 private int getRegisterIndex(Mode mode, int register) {

@@ -9,6 +9,9 @@ import std.range;
 import std.algorithm;
 import std.container;
 
+version (D_InlineAsm_X86) version = UseASM;
+version (D_InlineAsm_X86_64) version = UseASM;
+
 public uint ucast(byte v) {
     return cast(uint) v & 0xFF;
 }
@@ -68,6 +71,18 @@ public int bitCount(int i) {
     return (i + (i >>> 4) & 0x0F0F0F0F) * 0x01010101 >>> 24;
 }
 
+public int rotateRight(int i, int shift) {
+    version (UseASM) {
+        asm {
+            mov ECX, shift;
+            ror i, CL;
+        }
+        return i;
+    } else {
+        return i >>> shift | i << 32 - shift;
+    }
+}
+
 template getSafe(T) {
     public T getSafe(T[] array, int index, T def) {
         if (index < 0 || index >= array.length) {
@@ -114,6 +129,26 @@ public string toDString(inout(char)* cs, size_t length) {
 
 public string expandPath(string relative) {
     return buildNormalizedPath(absolutePath(expandTilde(relative)));
+}
+
+// Very basic conversion for the purpose of this project only
+// Only converts 64 registers to 32 bit
+public char[] x64_to_x86(string x64) {
+    size_t length = x64.length;
+    char[] x86 = new char[length];
+    foreach (i; 0 .. length - 2) {
+        if (x64[i] == 'R' && x64[i + 2] == 'X') {
+            char c = x64[i + 1];
+            if (c == 'A' || c == 'B' || c == 'C' || c == 'D') {
+                x86[i] = 'E';
+                continue;
+            }
+        }
+        x86[i] = x64[i];
+    }
+    x86[length - 1] = x64[length - 1];
+    x86[length - 2] = x64[length - 2];
+    return x86;
 }
 
 public class Scheduler {
