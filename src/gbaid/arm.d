@@ -1561,7 +1561,7 @@ public class ARM7TDMI {
                 } else {
                     carry = getBit(op, shift - 1);
                     asm {
-                        mov CX, shift;
+                        mov ECX, shift;
                         ror op, CL;
                     }
                     return op;
