@@ -44,7 +44,6 @@ public class ARM7TDMI {
             thread.name = "ARM CPU";
             running = true;
             thread.start();
-            thread.priority = Thread.PRIORITY_MAX;
         }
     }
 
