@@ -19,9 +19,14 @@ I've tested 4 games so far:
 - Mario kart
 - Pokemon Emerald
 - Legend of Zelda: a link to the past
+- Legend of Zelda: Minish Cap
+- Doom
+- Classic NES Series: Super Mario Bros.
 
-Mario Kart exhibits some light graphical glitches due problems with timings in the graphics
-(this also affects the world map in LoZ).
+Mario Kart exhibits some light graphical glitches due problems with timings (this also affects the world map in LoZ).
+
+The Classic NES Series games load, but are very glitchy. Considering the anti-emulation feature implemented in them,
+just the fact that they load is a good thing.
 
 The emulator uses just under 50% CPU on my 2.66GHz dual core i7 (4GB RAM), at 60 FPS.
 
@@ -63,14 +68,15 @@ The following arguments are also recognized:
 
 | Long form   | Short form | Argument               | Usage                                                                        |
 |-------------|------------|------------------------|------------------------------------------------------------------------------|
-| --bios      | -b         | path to bios           | Specify bios image                                                           |
-| --save      | -s         | path to save           | Specify path for loading and saving saves                                    |
-| --noload    | -n         | none                   | Don't load the save                                                          |
-| --nosave    | -N         | none                   | Don't save the save                                                          |
-| --scale     | -r         | scaling factor (float) | Draw the display at "factor" times the original resolution                   |
+| --bios      | -b         | Path to bios           | Specify bios image                                                           |
+| --save      | -s         | Path to save           | Specify path for loading and saving saves                                    |
+| --noload    | -n         | None                   | Don't load the save                                                          |
+| --nosave    | -N         | None                   | Don't save the save                                                          |
+| --scale     | -r         | Scaling factor (float) | Draw the display at "factor" times the original resolution                   |
 | --filtering | -f         | LINEAR or NONE         | What technique to use to filter the output texture to be drawn to the screen |
 | --upscaling | -u         | EPX, XBR or NONE       | What technique to use to increase the resolution of the drawn texture        |
-| --controller| -c         | none                   | Disable keyboard input and use a controller instead                          |
+| --controller| -c         | None                   | Disable keyboard input and use a controller instead                          |
+| --memory    | -m         | See saves section      | What memory configuration to use for the save format                         |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
 
@@ -80,6 +86,24 @@ Saves use a custom format and .sav extension that is not compatible with other e
 the same path as the ROM is used, but with the .sav extension instead of whatever the ROM image is using. If no save is
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the --nosave argument is used.
+
+The emulator can almost always auto-detect the save type, but for some games, such as the Classic NES Series, this will not work.
+Instead, the --memory flag should be used, with one of the arguments from below.
+
+| Argument         | Description                     |
+|------------------|---------------------------------|
+| SRAM             | 64K of static RAM               |
+| SRAM_EEPROM      | 64K of static RAM and an EEPROM |
+| FLASH64K         | 64K of Flash                    |
+| FLASH64K_EEPROM  | 64K of Flash and an EEPROM      |
+| FLASH128K        | 128K of Flash                   |
+| FLASH128K_EEPROM | 128K of Flash and an EEPROM     |
+| EEPROM           | Only an EEPROM                  |
+| AUTO             | Auto-detect, default            |
+
+For Classic NES Series games, use EEPROM
+
+These flags are only needed when creating a new save, after that the format is saved in the save file.
 
 ### Controls ###
 

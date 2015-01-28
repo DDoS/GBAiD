@@ -20,6 +20,7 @@ import gbaid.input;
 import gbaid.util;
 
 public alias IORegisters = MonitoredMemory!RAM;
+public alias SaveConfiguration = GamePak.SaveConfiguration;
 public alias InterruptSource = InterruptHandler.InterruptSource;
 
 public class GameBoyAdvance {
@@ -288,28 +289,70 @@ public class GamePak : MappedMemory {
     private ROM rom;
     private Memory save;
     private Memory eeprom;
-    private bool hasEEPROM;
     private uint eepromMask;
     private size_t capacity;
 
-    public this(string romFile) {
-        this(romFile, null);
-    }
-
-    public this(string romFile, string saveFile) {
+    private this(string romFile) {
         unusedMemory = new NullMemory();
 
         if (romFile is null) {
             throw new NullPathException("ROM");
         }
         loadROM(romFile);
+    }
+
+    public this(string romFile, string saveFile) {
+        this(romFile);
 
         if (saveFile is null) {
-            loadEmptySave();
-        } else {
-            loadSave(saveFile);
+            throw new NullPathException("save");
+        }
+        loadSave(saveFile);
+
+        updateCapacity();
+    }
+
+    public this(string romFile, SaveConfiguration saveConfig) {
+        this(romFile);
+
+        final switch (saveConfig) {
+            case SaveConfiguration.SRAM:
+                save = new RAM(SaveMemory.SRAM[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.SRAM_EEPROM:
+                save = new RAM(SaveMemory.SRAM[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.FLASH64K:
+                save = new Flash(SaveMemory.FLASH512[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.FLASH64K_EEPROM:
+                save = new Flash(SaveMemory.FLASH512[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.FLASH128K:
+                save = new Flash(SaveMemory.FLASH1M[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.FLASH128K_EEPROM:
+                save = new Flash(SaveMemory.FLASH1M[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.EEPROM:
+                save = unusedMemory;
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.AUTO:
+                autoNewSave();
+                break;
         }
 
+        updateCapacity();
+    }
+
+    private void updateCapacity() {
         capacity = rom.getCapacity() + save.getCapacity() + eeprom.getCapacity();
     }
 
@@ -318,18 +361,13 @@ public class GamePak : MappedMemory {
         eepromMask = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_MASK_HIGH : EEPROM_MASK_LOW;
     }
 
-    private void discardSave() {
+    private void loadSave(string saveFile) {
         save = unusedMemory;
         eeprom = unusedMemory;
-    }
-
-    private void loadSave(string saveFile) {
-        discardSave();
         Memory[] loaded = loadFromFile(saveFile);
         foreach (Memory memory; loaded) {
             if (cast(EEPROM) memory) {
                 eeprom = memory;
-                hasEEPROM = true;
             } else if (cast(Flash) memory || cast(RAM) memory) {
                 save = memory;
             } else {
@@ -338,24 +376,28 @@ public class GamePak : MappedMemory {
         }
     }
 
-    private void loadEmptySave() {
-        discardSave();
+    private void autoNewSave() {
         // Detect save types and size using ID strings in ROM
-        bool hasFlash = false;
-        int saveSize = SaveMemory.SRAM[1];
+        bool hasSRAM = false, hasFlash = false, hasEEPROM = false;
+        int saveSize = SaveMemory.SRAM[1], eepromSize = SaveMemory.EEPROM[1];
         char[] romChars = cast(char[]) rom.getArray(0);
         auto saveTypes = EnumMembers!SaveMemory;
         for (size_t i = 0; i < romChars.length; i += 4) {
             foreach (saveType; saveTypes) {
                 string saveID = saveType[0];
                 if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
-                    final switch (saveID) {
-                        case SaveMemory.EEPROM[0]:
-                            hasEEPROM = true;
+                    final switch (saveID) with (SaveMemory) {
+                        case SRAM[0]:
+                            hasSRAM = true;
+                            saveSize = saveType[1];
                             break;
-                        case SaveMemory.FLASH[0]:
-                        case SaveMemory.FLASH512[0]:
-                        case SaveMemory.FLASH1M[0]:
+                        case EEPROM[0]:
+                            hasEEPROM = true;
+                            saveSize = saveType[1];
+                            break;
+                        case FLASH[0]:
+                        case FLASH512[0]:
+                        case FLASH1M[0]:
                             hasFlash = true;
                             saveSize = saveType[1];
                             break;
@@ -370,7 +412,9 @@ public class GamePak : MappedMemory {
             save = new RAM(saveSize);
         }
         if (hasEEPROM) {
-            eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+            eeprom = new EEPROM(eepromSize);
+        } else {
+            eeprom = unusedMemory;
         }
     }
 
@@ -386,7 +430,7 @@ public class GamePak : MappedMemory {
                 }
             case 0x5:
                 int lowAddress = address & 0xFFFFFF;
-                if (hasEEPROM && (lowAddress & eepromMask) == eepromMask) {
+                if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
                     address = lowAddress & ~eepromMask;
                     return eeprom;
                 }
@@ -406,17 +450,30 @@ public class GamePak : MappedMemory {
     public void saveSave(string saveFile) {
         if (cast(NullMemory) eeprom) {
             saveToFile(saveFile, save);
+        } else if (cast(NullMemory) save) {
+            saveToFile(saveFile, eeprom);
         } else {
             saveToFile(saveFile, save, eeprom);
         }
     }
 
-    private static enum SaveMemory {
+    private static enum SaveMemory : Tuple!(string, uint) {
         EEPROM = tuple("EEPROM_V", 8 * BYTES_PER_KIB),
         SRAM = tuple("SRAM_V", 64 * BYTES_PER_KIB),
         FLASH = tuple("FLASH_V", 64 * BYTES_PER_KIB),
         FLASH512 = tuple("FLASH512_V", 64 * BYTES_PER_KIB),
         FLASH1M = tuple("FLASH1M_V", 128 * BYTES_PER_KIB)
+    }
+
+    public static enum SaveConfiguration {
+        SRAM,
+        SRAM_EEPROM,
+        FLASH64K,
+        FLASH64K_EEPROM,
+        FLASH128K,
+        FLASH128K_EEPROM,
+        EEPROM,
+        AUTO
     }
 }
 

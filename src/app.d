@@ -15,6 +15,7 @@ public void main(string[] args) {
     float scale = 2;
     FilteringMode filtering = FilteringMode.NONE;
     UpscalingMode upscaling = UpscalingMode.NONE;
+    SaveConfiguration memory = SaveConfiguration.AUTO;
     bool controller = false;
     getopt(args,
         config.caseSensitive,
@@ -27,7 +28,8 @@ public void main(string[] args) {
         "scale|r", &scale,
         "filtering|f", &filtering,
         "upscaling|u", &upscaling,
-        "controller|c", &controller
+        "controller|c", &controller,
+        "memory|m", &memory
     );
 
     // Resolve BIOS
@@ -73,7 +75,7 @@ public void main(string[] args) {
     }
 
     // Create Game Pak
-    GamePak gamePak = new GamePak(rom, save);
+    GamePak gamePak = save is null ? new GamePak(rom, memory) : new GamePak(rom, save);
 
     // Create and configure GBA
     GameBoyAdvance gba = new GameBoyAdvance(bios);
