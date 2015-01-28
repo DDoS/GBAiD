@@ -19,7 +19,6 @@ public class ARM7TDMI {
     private int[37] registers = new int[37];
     private Mode mode = Mode.SYSTEM;
     private bool haltSignal = false;
-    private Condition haltCondition;
     private bool irqSignal = false;
     private Pipeline armPipeline;
     private Pipeline thumbPipeline;
@@ -30,7 +29,6 @@ public class ARM7TDMI {
 
     public this(Memory memory) {
         this.memory = memory;
-        haltCondition = new Condition(new Mutex());
         armPipeline = new ARMPipeline();
         thumbPipeline = new THUMBPipeline();
         pipeline = armPipeline;
@@ -66,11 +64,6 @@ public class ARM7TDMI {
 
     public void halt(bool state) {
         haltSignal = state;
-        if (!state) {
-            synchronized (haltCondition.mutex) {
-                haltCondition.notify();
-            }
-        }
     }
 
     public bool isHalted() {
@@ -118,9 +111,7 @@ public class ARM7TDMI {
                 }
                 tick();
                 while (haltSignal) {
-                    synchronized (haltCondition.mutex) {
-                        haltCondition.wait();
-                    }
+                    Thread.yield();
                 }
                 updateModeAndSet();
                 if (branchSignal) {
