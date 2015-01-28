@@ -885,11 +885,13 @@ public Memory[] loadFromFile(string filePath) {
     File file = File(filePath, "rb");
     // read size of header
     int[1] lengthBytes = new int[1];
-    file.rawRead(lengthBytes);
+    // TODO: ubyte[] casts are a work around for a DMD bug
+    // remove once fixed!
+    file.rawRead(cast(ubyte[]) lengthBytes);
     int length = lengthBytes[0];
     // read type and capacity information
     int[] header = new int[length * 2];
-    file.rawRead(header);
+    file.rawRead(cast(ubyte[]) header);
     // read memory objects
     Memory[] memories = new Memory[length];
     foreach (i; 0 .. length) {
@@ -897,7 +899,7 @@ public Memory[] loadFromFile(string filePath) {
         int type = header[pair];
         int capacity = header[pair + 1];
         void[] contents = new byte[capacity];
-        file.rawRead(contents);
+        file.rawRead(cast(ubyte[]) contents);
         memories[i] = fromTypeID(type, contents);
     }
     return memories;
