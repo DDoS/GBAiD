@@ -779,12 +779,10 @@ private class Timers {
         }
     }
 
-    private template irqHandler(int i) {
-        private void irqHandler() {
-            interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + i);
-            irqTasks[i] = 0;
-            scheduleIRQ(i);
-        }
+    private void irqHandler(int i)() {
+        interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + i);
+        irqTasks[i] = 0;
+        scheduleIRQ(i);
     }
 
     private void scheduleIRQ(int i) {

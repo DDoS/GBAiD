@@ -83,28 +83,22 @@ public int rotateRight(int i, int shift) {
     }
 }
 
-template getSafe(T) {
-    public T getSafe(T[] array, int index, T def) {
-        if (index < 0 || index >= array.length) {
-            return def;
-        }
-        return array[index];
+public T getSafe(T)(T[] array, int index, T def) {
+    if (index < 0 || index >= array.length) {
+        return def;
+    }
+    return array[index];
+}
+
+public void addAll(K, V)(ref V[K] to, V[K] from) {
+    foreach (k; from.byKey()) {
+        to[k] = from[k];
     }
 }
 
-template addAll(K, V) {
-    public void addAll(ref V[K] to, V[K] from) {
-        foreach (k; from.byKey()) {
-            to[k] = from[k];
-        }
-    }
-}
-
-template removeAll(K, V) {
-    public void removeAll(ref V[K] to, V[K] from) {
-        foreach (k; from.byKey()) {
-            to.remove(k);
-        }
+public void removeAll(K, V)(ref V[K] to, V[K] from) {
+    foreach (k; from.byKey()) {
+        to.remove(k);
     }
 }
 

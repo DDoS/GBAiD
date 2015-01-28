@@ -27,16 +27,14 @@ public class Keypad {
         source = new Keyboard();
     }
 
-    public template changeInput(T : InputSource) {
-        public void changeInput() {
-            if (!(cast(T) source)) {
-                if (running) {
-                    source.destroy();
-                }
-                source = new T();
-                if (running) {
-                    source.create();
-                }
+    public void changeInput(T : InputSource)() {
+        if (!(cast(T) source)) {
+            if (running) {
+                source.destroy();
+            }
+            source = new T();
+            if (running) {
+                source.create();
             }
         }
     }

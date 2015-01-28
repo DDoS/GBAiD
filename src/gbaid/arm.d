@@ -114,7 +114,7 @@ public class ARM7TDMI {
             // start ticking
             while (running) {
                 if (irqSignal) {
-                    processIRQ();
+                    branchIRQ();
                 }
                 tick();
                 while (haltSignal) {
@@ -167,7 +167,7 @@ public class ARM7TDMI {
         pipeline = getFlag(CPSRFlag.T) ? thumbPipeline : armPipeline;
     }
 
-    private void processIRQ() {
+    private void branchIRQ() {
         if (getFlag(CPSRFlag.I)) {
             return;
         }
