@@ -306,6 +306,10 @@ public class EEPROM : RAM {
 
     public this(size_t capacity) {
         super(capacity);
+        byte[] byteMemory = cast(byte[]) memory;
+        foreach (i; 0 .. capacity) {
+            byteMemory[i] = cast(byte) 0xFF;
+        }
     }
 
     public this(void[] memory) {
@@ -330,12 +334,13 @@ public class EEPROM : RAM {
             int actualAddress = void;
             int bitOffset = void;
             if (currentAddressBit > 73) {
-                actualAddress = targetAddress >>> 14;
+                actualAddress = getBits(targetAddress, 18, 31);
                 bitOffset = 14;
             } else {
-                actualAddress = targetAddress >>> 23;
+                actualAddress = getBits(targetAddress, 26, 31);
                 bitOffset = 6;
             }
+            actualAddress <<= 3;
             // get data to write from buffer
             long toWrite = 0;
             foreach (int i; 0 .. 64) {
@@ -350,8 +355,6 @@ public class EEPROM : RAM {
             targetAddress = 0;
             currentAddressBit = 0;
             currentReadBit = 0;
-            // return ready
-            return 1;
         } else if (mode == Mode.READ) {
             // get data
             short data = void;
@@ -362,10 +365,11 @@ public class EEPROM : RAM {
                 // get read address depending on amount of bits received
                 int actualAddress = void;
                 if (currentAddressBit > 9) {
-                    actualAddress = targetAddress >>> 14;
+                    actualAddress = getBits(targetAddress, 18, 31);
                 } else {
-                    actualAddress = targetAddress >>> 23;
+                    actualAddress = getBits(targetAddress, 26, 31);
                 }
+                actualAddress <<= 3;
                 actualAddress += 7 - (currentReadBit - 4 >> 3);
                 // get the data bit
                 data = cast(short) getBit(super.getByte(actualAddress), 7 - (currentReadBit - 4 & 7));
@@ -383,7 +387,8 @@ public class EEPROM : RAM {
             }
             return data;
         }
-        return 0;
+        // return ready
+        return 1;
     }
 
     public override void setShort(uint address, short s) {
@@ -410,7 +415,7 @@ public class EEPROM : RAM {
             // set address bit if command was valid
             setBit(targetAddress, 33 - currentAddressBit, bit);
         }
-        // increment bit count and save address
+        // increment bit count
         currentAddressBit++;
     }
 

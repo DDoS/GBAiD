@@ -91,8 +91,8 @@ public class GameBoyAdvance {
     }
 
     public void run() {
+        checkNotRunning();
         try {
-            checkNotRunning();
             if (!DerelictSDL2.isLoaded) {
                 DerelictSDL2.load();
             }
@@ -231,7 +231,7 @@ public class MainMemory : MappedMemory {
     }
 
     protected override Memory map(ref uint address) {
-        int highAddress = address >> 24;
+        int highAddress = address >>> 24;
         int lowAddress = address & 0xFFFFFF;
         switch (highAddress) {
             case 0x0:
@@ -419,7 +419,8 @@ public class GamePak : MappedMemory {
     }
 
     protected override Memory map(ref uint address) {
-        int highAddress = address >> 24;
+        int highAddress = address >>> 24;
+        int lowAddress = address & 0xFFFFFF;
         switch (highAddress) {
             case 0x0: .. case 0x4:
                 address &= ROM_MASK;
@@ -429,7 +430,6 @@ public class GamePak : MappedMemory {
                     return unusedMemory;
                 }
             case 0x5:
-                int lowAddress = address & 0xFFFFFF;
                 if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
                     address = lowAddress & ~eepromMask;
                     return eeprom;

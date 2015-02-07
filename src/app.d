@@ -100,6 +100,10 @@ public void main(string[] args) {
     }
 
     // TODO:
+    //       use bit capacity for EEPROMs, not bytes
+    //       try to get the CPU thread to run the DMAs
+    //       improve scheduler and timers accuracy
+    //       reduce ARM duplicate code
     //       sound
     //       implement optional RTC
 }
