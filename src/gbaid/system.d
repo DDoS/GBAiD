@@ -63,6 +63,7 @@ public class GameBoyAdvance {
             throw new NullGamePakException();
         }
         checkNotRunning();
+        gamePak.setUnusedMemoryFallBack(&unusedReadFallBack);
         memory.setGamePak(gamePak);
     }
 
@@ -285,7 +286,7 @@ public class GamePak : MappedMemory {
     private static enum uint SAVE_MASK = 0xFFFF;
     private static enum uint EEPROM_MASK_HIGH = 0xFFFF00;
     private static enum uint EEPROM_MASK_LOW = 0x0;
-    private NullMemory unusedMemory;
+    private DelegatedROM unusedMemory;
     private ROM rom;
     private Memory save;
     private Memory eeprom;
@@ -293,7 +294,7 @@ public class GamePak : MappedMemory {
     private size_t capacity;
 
     private this(string romFile) {
-        unusedMemory = new NullMemory();
+        unusedMemory = new DelegatedROM(0);
 
         if (romFile is null) {
             throw new NullPathException("ROM");
@@ -418,6 +419,10 @@ public class GamePak : MappedMemory {
         }
     }
 
+    private void setUnusedMemoryFallBack(int delegate(uint) fallback) {
+        unusedMemory.setDelegate(fallback);
+    }
+
     protected override Memory map(ref uint address) {
         int highAddress = address >>> 24;
         int lowAddress = address & 0xFFFFFF;
@@ -448,9 +453,9 @@ public class GamePak : MappedMemory {
     }
 
     public void saveSave(string saveFile) {
-        if (cast(NullMemory) eeprom) {
+        if (cast(EEPROM) eeprom is null) {
             saveToFile(saveFile, save);
-        } else if (cast(NullMemory) save) {
+        } else if (cast(RAM) save is null && cast(Flash) save is null) {
             saveToFile(saveFile, eeprom);
         } else {
             saveToFile(saveFile, save, eeprom);

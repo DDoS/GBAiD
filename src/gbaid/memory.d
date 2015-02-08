@@ -914,16 +914,16 @@ public Memory[] loadFromFile(string filePath) {
 public void saveToFile(string filePath, Memory[] memories ...) {
     int toTypeID(Memory memory) {
         // order matters because of inheritance, check subclasses first
-        if (cast(EEPROM) memory) {
+        if (cast(EEPROM) memory !is null) {
             return 3;
         }
-        if (cast(Flash) memory) {
+        if (cast(Flash) memory !is null) {
             return 2;
         }
-        if (cast(RAM) memory) {
+        if (cast(RAM) memory !is null) {
             return 1;
         }
-        if (cast(ROM) memory) {
+        if (cast(ROM) memory !is null) {
             return 0;
         }
         throw new Exception("Unsupported memory type: " ~ typeid(memory).name);
