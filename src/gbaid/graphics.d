@@ -626,10 +626,8 @@ public class Display {
                         push 0;
                     loop:
                         // calculate x
-                        add EAX, 128;
                         sar EAX, 8;
                         // calculate y
-                        add EBX, 128;
                         sar EBX, 8;
                         // EAX = x, EBX = y
                         // check and handle overflow
@@ -743,8 +741,8 @@ public class Display {
             version (X86) mixin (x64_to_x86(x64));
         } else {
             for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-                int x = dx + 128 >> 8;
-                int y = dy + 128 >> 8;
+                int x = dx >> 8;
+                int y = dy >> 8;
 
                 if (x & bgSizeInv) {
                     if (displayOverflow) {
@@ -824,8 +822,8 @@ public class Display {
         int dy = internalAffineReferenceY[0];
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-            int x = dx + 128 >> 8;
-            int y = dy + 128 >> 8;
+            int x = dx >> 8;
+            int y = dy >> 8;
 
             if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
@@ -879,8 +877,8 @@ public class Display {
         int addressBase = frame ? 0xA000 : 0x0;
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-            int x = dx + 128 >> 8;
-            int y = dy + 128 >> 8;
+            int x = dx >> 8;
+            int y = dy >> 8;
 
             if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
                 buffer[column] = TRANSPARENT;
@@ -941,8 +939,8 @@ public class Display {
         int addressBase = frame ? 0xA000 : 0x0;
 
         for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
-            int x = dx + 128 >> 8;
-            int y = dy + 128 >> 8;
+            int x = dx >> 8;
+            int y = dy >> 8;
 
             if (x < 0 || x >= 160 || y < 0 || y >= 128) {
                 buffer[column] = TRANSPARENT;
@@ -1121,8 +1119,8 @@ public class Display {
                 if (rotAndScale) {
                     int tmpX = sampleX - (horizontalSize >> 1);
                     int tmpY = sampleY - (verticalSize >> 1);
-                    sampleX = pa * tmpX + pb * tmpY + 128 >> 8;
-                    sampleY = pc * tmpX + pd * tmpY + 128 >> 8;
+                    sampleX = pa * tmpX + pb * tmpY >> 8;
+                    sampleY = pc * tmpX + pd * tmpY >> 8;
                     sampleX += sampleHorizontalSize >> 1;
                     sampleY += sampleVerticalSize >> 1;
                     // this mask is inverted

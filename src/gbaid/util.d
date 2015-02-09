@@ -62,7 +62,7 @@ public int mirror(byte b) {
 }
 
 public int mirror(short s) {
-    return s << 16 | (s & 0xFFFF);
+    return s << 16 | s & 0xFFFF;
 }
 
 public int bitCount(int i) {
