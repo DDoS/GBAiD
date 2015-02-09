@@ -299,7 +299,6 @@ public class Flash : RAM {
 
 public class EEPROM : RAM {
     private Mode mode = Mode.NORMAL;
-    private int validCMD = false;
     private int targetAddress = 0;
     private int currentAddressBit = 0, currentReadBit = 0;
     private int[3] writeBuffer = new int[3];
@@ -334,10 +333,10 @@ public class EEPROM : RAM {
             int actualAddress = void;
             int bitOffset = void;
             if (currentAddressBit > 73) {
-                actualAddress = getBits(targetAddress, 18, 31);
+                actualAddress = targetAddress >>> 18;
                 bitOffset = 14;
             } else {
-                actualAddress = getBits(targetAddress, 26, 31);
+                actualAddress = targetAddress >>> 26;
                 bitOffset = 6;
             }
             actualAddress <<= 3;
@@ -351,10 +350,8 @@ public class EEPROM : RAM {
             super.setInt(actualAddress + 4, cast(int) (toWrite >>> 32));
             // end write mode
             mode = Mode.NORMAL;
-            validCMD = false;
             targetAddress = 0;
             currentAddressBit = 0;
-            currentReadBit = 0;
         } else if (mode == Mode.READ) {
             // get data
             short data = void;
@@ -365,9 +362,9 @@ public class EEPROM : RAM {
                 // get read address depending on amount of bits received
                 int actualAddress = void;
                 if (currentAddressBit > 9) {
-                    actualAddress = getBits(targetAddress, 18, 31);
+                    actualAddress = targetAddress >>> 18;
                 } else {
-                    actualAddress = getBits(targetAddress, 26, 31);
+                    actualAddress = targetAddress >>> 26;
                 }
                 actualAddress <<= 3;
                 actualAddress += 7 - (currentReadBit - 4 >> 3);
@@ -377,7 +374,6 @@ public class EEPROM : RAM {
             // end read mode on last bit
             if (currentReadBit == 67) {
                 mode = Mode.NORMAL;
-                validCMD = false;
                 targetAddress = 0;
                 currentAddressBit = 0;
                 currentReadBit = 0;
@@ -400,23 +396,23 @@ public class EEPROM : RAM {
         }
         // then process as command or address bit
         if (currentAddressBit == 0) {
-            // first command bit
+            // check for first command bit
             if (bit == 0b1) {
-                // mark as valid if it corresponds to a command
-                validCMD = true;
+                // wait for second bit
+                currentAddressBit++;
             }
         } else if (currentAddressBit == 1) {
-            // second command bit
-            if (validCMD) {
-                // set mode if we have a proper command
-                mode = cast(Mode) bit;
+            // second command bit, set mode to the command
+            mode = cast(Mode) bit;
+            currentAddressBit++;
+        } else {
+            // set address if we have a command
+            if (currentAddressBit < 16) {
+                // max address size if 14 (+2 including command bits)
+                setBit(targetAddress, 33 - currentAddressBit, bit);
             }
-        } else if (validCMD && currentAddressBit < 16) {
-            // set address bit if command was valid
-            setBit(targetAddress, 33 - currentAddressBit, bit);
+            currentAddressBit++;
         }
-        // increment bit count
-        currentAddressBit++;
     }
 
     public override int getInt(uint address) {

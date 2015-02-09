@@ -102,7 +102,6 @@ public void main(string[] args) {
     // TODO:
     //       fix game pak reads when no game pak is set
     //       fix vram write using 8 bit quantities
-    //       use bit capacity for EEPROMs, not bytes
     //       try to get the CPU thread to run the DMAs
     //       improve scheduler and timers accuracy
     //       reduce ARM duplicate code
