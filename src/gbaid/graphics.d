@@ -17,7 +17,6 @@ version (D_InlineAsm_X86) version = UseASM;
 version (D_InlineAsm_X86_64) version = UseASM;
 
 public class Display {
-    private alias LineType = void delegate(int);
     private static enum uint HORIZONTAL_RESOLUTION = 240;
     private static enum uint VERTICAL_RESOLUTION = 160;
     private static enum uint LAYER_COUNT = 6;

@@ -82,8 +82,8 @@ Note that these arguments are case sensitive and that bundling is only supported
 
 ### Saves ###
 
-Saves use a custom format and .sav extension that is not compatible with other emulators. If no save path is specified,
-the same path as the ROM is used, but with the .sav extension instead of whatever the ROM image is using. If no save is
+Saves use a custom format and .gsf extension that is not compatible with other emulators. If no save path is specified,
+the same path as the ROM is used, but with the .gsf extension instead of whatever the ROM image is using. If no save is
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the --nosave argument is used.
 

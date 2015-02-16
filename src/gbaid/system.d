@@ -105,7 +105,7 @@ public class GameBoyAdvance {
             display.run();
         } catch (Exception ex) {
             writeln("Emulator encountered an exception, system stopping...");
-            writeln("Exception: " ~ ex.msg);
+            writeln("Exception: ", ex.msg);
         } finally {
             processor.stop();
             timers.stop();
@@ -643,7 +643,16 @@ public class DMAs {
         int sourceAddressControl = getBits(control, 7, 8);
         int increment = type ? 4 : 2;
 
-        //writefln("DMA %s %08x to %08x, %x bytes, timing %s", channel, sourceAddresses[channel], destinationAddresses[channel], wordCounts[channel] * increment, getTiming(channel, control << 16));
+        debug (outputDMAs) writefln(
+            "DMA %s %08x%s to %08x%s, %04x bytes, timing %s",
+            channel,
+            sourceAddresses[channel],
+            sourceAddressControl == 0 ? "++" : sourceAddressControl == 1 ? "--" : "  ",
+            destinationAddresses[channel],
+            destinationAddressControl == 0 || destinationAddressControl == 3 ? "++" : destinationAddressControl == 1 ? "--" : "  ",
+            wordCounts[channel] * increment,
+            getTiming(channel, control << 16)
+        );
 
         while (wordCounts[channel] > 0) {
             if (interruptDMA) {

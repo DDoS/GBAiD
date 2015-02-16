@@ -8,6 +8,8 @@ import gbaid.system;
 import gbaid.graphics;
 import gbaid.util;
 
+private immutable string SAVE_EXTENSION = ".gsf";
+
 public void main(string[] args) {
     // Parse comand line arguments
     string bios = null, save = null;
@@ -61,13 +63,13 @@ public void main(string[] args) {
         writeln("Using new save");
     } else {
         if (save is null) {
-            save = setExtension(rom, ".sav");
-            writeln("Save path not specified, using default \"" ~ save ~ "\"");
+            save = setExtension(rom, SAVE_EXTENSION);
+            writeln("Save path not specified, using default \"", save, "\"");
         } else {
             save = expandPath(save);
         }
         if (exists(save)) {
-            writeln("Loaded save \"" ~ save ~ "\"");
+            writeln("Loaded save \"", save, "\"");
         } else {
             save = null;
             writeln("Save file not found, using new save");
@@ -93,13 +95,14 @@ public void main(string[] args) {
     // Save Game Pak save
     if (!noSave) {
         if (save is null) {
-            save = setExtension(rom, ".sav");
+            save = setExtension(rom, SAVE_EXTENSION);
         }
         gamePak.saveSave(save);
-        writeln("Saved save \"" ~ save ~ "\"");
+        writeln("Saved save \"", save, "\"");
     }
 
     // TODO:
+    //       improve default R and L button mappings for keyboard
     //       fix game pak reads when no game pak is set
     //       fix vram write using 8 bit quantities
     //       try to get the CPU thread to run the DMAs
