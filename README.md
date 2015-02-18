@@ -46,13 +46,13 @@ GBAiD is officially built using [LDC](http://wiki.dlang.org/LDC), which should a
 
 Then use:
 
-    dub build --compiler=ldc2 --build=release
+    dub build --compiler ldc2 --build release
 
 ## Running ##
 
 Use:
 
-    dub run --compiler=ldc2 --build=release -- (arguments)
+    dub run --compiler ldc2 --build release -- (arguments)
 
 Or get the binary from the bin folder after building and use:
 

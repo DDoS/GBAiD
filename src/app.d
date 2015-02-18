@@ -107,7 +107,6 @@ public void main(string[] args) {
     //       fix vram write using 8 bit quantities
     //       try to get the CPU thread to run the DMAs
     //       improve scheduler and timers accuracy
-    //       reduce ARM duplicate code
     //       sound
     //       implement optional RTC
 }

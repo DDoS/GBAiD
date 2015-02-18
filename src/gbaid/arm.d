@@ -121,7 +121,7 @@ public class ARM7TDMI {
             }
         } catch (Exception ex) {
             writeln("ARM CPU encountered an exception, thread stopping...");
-            writeln("Exception: " ~ ex.msg);
+            writeln("Exception: ", ex.msg);
             debug (outputInstructions) {
                 dumpInstructions();
                 dumpRegisters();
@@ -249,12 +249,9 @@ public class ARM7TDMI {
             debug (outputInstructions) logInstruction(instruction, "BX");
             int address = getRegister(instruction & 0xF);
             if (address & 0b1) {
-                // switch to THUMB
                 setFlag(CPSRFlag.T, Set.THUMB);
-                // discard the last bit in the address
-                address -= 1;
             }
-            setRegister(Register.PC, address);
+            setRegister(Register.PC, address & ~1);
         }
 
         private void branchAndBranchWithLink(int instruction) {
@@ -648,56 +645,35 @@ public class ARM7TDMI {
             }
             int address = getRegister(rn);
             if (preIncr) {
-                int writeBack = getBit(instruction, 21);
                 if (upIncr) {
                     address += offset;
                 } else {
                     address -= offset;
                 }
-                if (load) {
-                    if (byteQuantity) {
-                        debug (outputInstructions) logInstruction(instruction, "LDRB");
-                        int b = memory.getByte(address) & 0xFF;
-                        setRegister(rd, b);
-                    } else {
-                        debug (outputInstructions) logInstruction(instruction, "LDR");
-                        setRegister(rd, rotateRead(address, memory.getInt(address)));
-                    }
+            }
+            if (load) {
+                if (byteQuantity) {
+                    debug (outputInstructions) logInstruction(instruction, "LDRB");
+                    setRegister(rd, memory.getByte(address) & 0xFF);
                 } else {
-                    if (byteQuantity) {
-                        debug (outputInstructions) logInstruction(instruction, "STRB");
-                        byte b = cast(byte) getRegister(rd);
-                        memory.setByte(address, b);
-                    } else {
-                        debug (outputInstructions) logInstruction(instruction, "STR");
-                        int w = getRegister(rd);
-                        memory.setInt(address, w);
-                    }
+                    debug (outputInstructions) logInstruction(instruction, "LDR");
+                    setRegister(rd, rotateRead(address, memory.getInt(address)));
                 }
+            } else {
+                if (byteQuantity) {
+                    debug (outputInstructions) logInstruction(instruction, "STRB");
+                    memory.setByte(address, cast(byte) getRegister(rd));
+                } else {
+                    debug (outputInstructions) logInstruction(instruction, "STR");
+                    memory.setInt(address, getRegister(rd));
+                }
+            }
+            if (preIncr) {
+                int writeBack = getBit(instruction, 21);
                 if (writeBack) {
                     setRegister(rn, address);
                 }
             } else {
-                if (load) {
-                    if (byteQuantity) {
-                        debug (outputInstructions) logInstruction(instruction, "LDRB");
-                        int b = memory.getByte(address) & 0xFF;
-                        setRegister(rd, b);
-                    } else {
-                        debug (outputInstructions) logInstruction(instruction, "LDR");
-                        setRegister(rd, rotateRead(address, memory.getInt(address)));
-                    }
-                } else {
-                    if (byteQuantity) {
-                        debug (outputInstructions) logInstruction(instruction, "STRB");
-                        byte b = cast(byte) getRegister(rd);
-                        memory.setByte(address, b);
-                    } else {
-                        debug (outputInstructions) logInstruction(instruction, "STR");
-                        int w = getRegister(rd);
-                        memory.setInt(address, w);
-                    }
-                }
                 if (upIncr) {
                     address += offset;
                 } else {
@@ -740,26 +716,22 @@ public class ARM7TDMI {
                 final switch (opCode) {
                     case 1:
                         debug (outputInstructions) logInstruction(instruction, "LDRH");
-                        int hw = rotateRead(address, memory.getShort(address));
-                        setRegister(rd, hw);
+                        setRegister(rd, rotateRead(address, memory.getShort(address)));
                         break;
                     case 2:
                         debug (outputInstructions) logInstruction(instruction, "LDRSB");
-                        int b = memory.getByte(address);
-                        setRegister(rd, b);
+                        setRegister(rd, memory.getByte(address));
                         break;
                     case 3:
                         debug (outputInstructions) logInstruction(instruction, "LDRSH");
-                        int hw = rotateReadSigned(address, memory.getShort(address));
-                        setRegister(rd, hw);
+                        setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
                         break;
                 }
             } else {
                 final switch (opCode) {
                     case 1:
                         debug (outputInstructions) logInstruction(instruction, "STRH");
-                        short hw = cast(short) getRegister(rd);
-                        memory.setShort(address, hw);
+                        memory.setShort(address, cast(short) getRegister(rd));
                         break;
                 }
             }
@@ -1231,12 +1203,10 @@ public class ARM7TDMI {
                     // BX
                     debug (outputInstructions) logInstruction(instruction, "BX");
                     int address = getRegister(rs);
-                    if (address & 0b1) {
-                        address -= 1;
-                    } else {
+                    if (!(address & 0b1)) {
                         setFlag(CPSRFlag.T, Set.ARM);
                     }
-                    setRegister(Register.PC, address);
+                    setRegister(Register.PC, address & ~1);
                     break;
             }
         }
@@ -1245,7 +1215,7 @@ public class ARM7TDMI {
             int rd = getBits(instruction, 8, 10);
             int offset = (instruction & 0xFF) * 4;
             int pc = getRegister(Register.PC);
-            int address = (pc & ~2) + offset;
+            int address = (pc & ~3) + offset;
             debug (outputInstructions) logInstruction(instruction, "LDR");
             setRegister(rd, rotateRead(address, memory.getInt(address)));
         }
@@ -1366,7 +1336,7 @@ public class ARM7TDMI {
                 setRegister(rd, getRegister(Register.SP) + offset);
             } else {
                 debug (outputInstructions) logInstruction(instruction, "ADD");
-                setRegister(rd, (getRegister(Register.PC) & 0xFFFFFFFD) + offset);
+                setRegister(rd, (getRegister(Register.PC) & ~3) + offset);
             }
         }
 
