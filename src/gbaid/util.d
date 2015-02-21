@@ -9,9 +9,6 @@ import std.range;
 import std.algorithm;
 import std.container;
 
-version (D_InlineAsm_X86) version = UseASM;
-version (D_InlineAsm_X86_64) version = UseASM;
-
 public uint ucast(byte v) {
     return cast(uint) v & 0xFF;
 }
@@ -72,15 +69,7 @@ public int bitCount(int i) {
 }
 
 public int rotateRight(int i, int shift) {
-    version (UseASM) {
-        asm {
-            mov ECX, shift;
-            ror i, CL;
-        }
-        return i;
-    } else {
-        return i >>> shift | i << 32 - shift;
-    }
+    return i >>> shift | i << 32 - shift;
 }
 
 public T getSafe(T)(T[] array, int index, T def) {

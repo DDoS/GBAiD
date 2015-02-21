@@ -282,33 +282,32 @@ public class ARM7TDMI {
             int setFlags = getBit(instruction, 20);
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
-            int shiftSrc;
-            int shift;
-            int shiftType;
+            int op1 = getRegister(rn);
             int op2;
+            int carry;
             if (op2Src) {
-                // immediate
-                shiftSrc = 1;
-                shift = getBits(instruction, 8, 11) * 2;
-                shiftType = 3;
-                op2 = instruction & 0xFF;
-            } else {
-                // register
-                shiftSrc = getBit(instruction, 4);
-                if (shiftSrc) {
-                    // register
-                    shift = getRegister(getBits(instruction, 8, 11)) & 0xFF;
-
+                // immediate op2
+                int shift = getBits(instruction, 8, 11) * 2;
+                op2 = rotateRight(instruction & 0xFF, shift);
+                if (shift == 0) {
+                    carry = getFlag(CPSRFlag.C);
                 } else {
-                    // immediate
+                    carry = getBit(op2, 31);
+                }
+            } else {
+                // register op2
+                int shiftSrc = getBit(instruction, 4);
+                int shift;
+                if (shiftSrc) {
+                    // register shift
+                    shift = getRegister(getBits(instruction, 8, 11)) & 0xFF;
+                } else {
+                    // immediate shift
                     shift = getBits(instruction, 7, 11);
                 }
-                shiftType = getBits(instruction, 5, 6);
-                op2 = getRegister(instruction & 0b1111);
+                int shiftType = getBits(instruction, 5, 6);
+                op2 = applyShift(shiftType, shift, cast(bool) shiftSrc, getRegister(instruction & 0b1111), carry);
             }
-            int carry;
-            op2 = applyShift(shiftType, !shiftSrc, shift, op2, carry);
-            int op1 = getRegister(rn);
             int res;
             int negative, zero, overflow;
             final switch (opCode) {
@@ -636,9 +635,8 @@ public class ARM7TDMI {
                 // register
                 int shift = getBits(instruction, 7, 11);
                 int shiftType = getBits(instruction, 5, 6);
-                offset = getRegister(instruction & 0xF);
                 int carry;
-                offset = applyShift(shiftType, true, shift, offset, carry);
+                offset = applyShift(shiftType, shift, false, getRegister(instruction & 0xF), carry);
             } else {
                 // immediate
                 offset = instruction & 0xFFF;
@@ -959,9 +957,9 @@ public class ARM7TDMI {
                 }
             }
             int carry;
-            op = applyShift(shiftType, true, shift, op, carry);
-            setAPSRFlags(op < 0, op == 0, carry);
+            op = applyShift(shiftType, shift, false, op, carry);
             setRegister(rd, op);
+            setAPSRFlags(op < 0, op == 0, carry);
         }
 
         private void addAndSubtract(int instruction) {
@@ -1059,38 +1057,26 @@ public class ARM7TDMI {
                 case 0x2:
                     // LSL
                     debug (outputInstructions) logInstruction(instruction, "LSL");
-                    int shift = op2 & 0xFF;
-                    int res = op1 << shift;
+                    int carry;
+                    int res = applyShift(0, op2 & 0xFF, true, op1, carry);
                     setRegister(rd, res);
-                    if (shift == 0) {
-                        setAPSRFlags(res < 0, res == 0);
-                    } else {
-                        setAPSRFlags(res < 0, res == 0, getBit(op1, 32 - shift));
-                    }
+                    setAPSRFlags(res < 0, res == 0, carry);
                     break;
                 case 0x3:
                     // LSR
                     debug (outputInstructions) logInstruction(instruction, "LSR");
-                    int shift = op2 & 0xFF;
-                    int res = op1 >>> shift;
+                    int carry;
+                    int res = applyShift(1, op2 & 0xFF, true, op1, carry);
                     setRegister(rd, res);
-                    if (shift == 0) {
-                        setAPSRFlags(res < 0, res == 0);
-                    } else {
-                        setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
-                    }
+                    setAPSRFlags(res < 0, res == 0, carry);
                     break;
                 case 0x4:
                     // ASR
                     debug (outputInstructions) logInstruction(instruction, "ASR");
-                    int shift = op2 & 0xFF;
-                    int res = op1 >> shift;
+                    int carry;
+                    int res = applyShift(2, op2 & 0xFF, true, op1, carry);
                     setRegister(rd, res);
-                    if (shift == 0) {
-                        setAPSRFlags(res < 0, res == 0);
-                    } else {
-                        setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
-                    }
+                    setAPSRFlags(res < 0, res == 0, carry);
                     break;
                 case 0x5:
                     // ADC
@@ -1111,14 +1097,10 @@ public class ARM7TDMI {
                 case 0x7:
                     // ROR
                     debug (outputInstructions) logInstruction(instruction, "ROR");
-                    int shift = op2 & 0xFF;
-                    int res = rotateRight(op1, shift);
+                    int carry;
+                    int res = applyShift(3, op2 & 0xFF, true, op1, carry);
                     setRegister(rd, res);
-                    if (shift == 0) {
-                        setAPSRFlags(res < 0, res == 0);
-                    } else {
-                        setAPSRFlags(res < 0, res == 0, getBit(op1, shift - 1));
-                    }
+                    setAPSRFlags(res < 0, res == 0, carry);
                     break;
                 case 0x8:
                     // TST
@@ -1465,51 +1447,103 @@ public class ARM7TDMI {
         }
     }
 
-    private int applyShift(int shiftType, bool specialZeroShift, int shift, int op, out int carry) {
-        if (!specialZeroShift && shift == 0) {
-            carry = getFlag(CPSRFlag.C);
-            return op;
-        }
+    private int applyShift(int shiftType, int shift, bool shiftSrc, int op, out int carry) {
         final switch (shiftType) {
             // LSL
             case 0:
-                if (shift == 0) {
-                    carry = getFlag(CPSRFlag.C);
-                    return op;
+                if (shiftSrc) {
+                    if (shift == 0) {
+                        carry = getFlag(CPSRFlag.C);
+                        return op;
+                    } else if (shift < 32) {
+                        carry = getBit(op, 32 - shift);
+                        return op << shift;
+                    } else if (shift == 32) {
+                        carry = op & 0b1;
+                        return 0;
+                    } else {
+                        carry = 0;
+                        return 0;
+                    }
                 } else {
-                    carry = getBit(op, 32 - shift);
-                    return op << shift;
+                    if (shift == 0) {
+                        carry = getFlag(CPSRFlag.C);
+                        return op;
+                    } else {
+                        carry = getBit(op, 32 - shift);
+                        return op << shift;
+                    }
                 }
             // LSR
             case 1:
-                if (shift == 0) {
-                    carry = getBit(op, 31);
-                    return 0;
+                if (shiftSrc) {
+                    if (shift == 0) {
+                        carry = getFlag(CPSRFlag.C);
+                        return op;
+                    } else if (shift < 32) {
+                        carry = getBit(op, shift - 1);
+                        return op >>> shift;
+                    } else if (shift == 32) {
+                        carry = getBit(op, 31);
+                        return 0;
+                    } else {
+                        carry = 0;
+                        return 0;
+                    }
                 } else {
-                    carry = getBit(op, shift - 1);
-                    return op >>> shift;
+                    if (shift == 0) {
+                        carry = getBit(op, 31);
+                        return 0;
+                    } else {
+                        carry = getBit(op, shift - 1);
+                        return op >>> shift;
+                    }
                 }
             // ASR
             case 2:
-                if (shift == 0) {
-                    carry = getBit(op, 31);
-                    return op >> 31;
+                if (shiftSrc) {
+                    if (shift == 0) {
+                        carry = getFlag(CPSRFlag.C);
+                        return op;
+                    } else if (shift < 32) {
+                        carry = getBit(op, shift - 1);
+                        return op >> shift;
+                    } else {
+                        carry = getBit(op, 31);
+                        return carry ? 0xFFFFFFFF : 0;
+                    }
                 } else {
-                    carry = getBit(op, shift - 1);
-                    return op >> shift;
+                    if (shift == 0) {
+                        carry = getBit(op, 31);
+                        return carry ? 0xFFFFFFFF : 0;
+                    } else {
+                        carry = getBit(op, shift - 1);
+                        return op >> shift;
+                    }
                 }
             // ROR
             case 3:
-                if (shift == 0) {
-                    // RRX
-                    carry = getBit(op, 0);
-                    rotateRight(op, 1);
-                    setBit(op, 31, getFlag(CPSRFlag.C));
-                    setFlag(CPSRFlag.C, carry);
-                    return op;
+                if (shiftSrc) {
+                    if (shift == 0) {
+                        carry = getFlag(CPSRFlag.C);
+                        return op;
+                    } else if (shift & 0b11111) {
+                        shift &= 0b11111;
+                        carry = getBit(op, shift - 1);
+                        return rotateRight(op, shift);
+                    } else {
+                        carry = getBit(op, 31);
+                        return op;
+                    }
                 } else {
-                    carry = getBit(op, shift - 1);
-                    return rotateRight(op, shift);
+                    if (shift == 0) {
+                        // RRX
+                        carry = op & 0b1;
+                        return getFlag(CPSRFlag.C) << 31 | op >>> 1;
+                    } else {
+                        carry = getBit(op, shift - 1);
+                        return rotateRight(op, shift);
+                    }
                 }
         }
     }
