@@ -102,7 +102,6 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       improve default R and L button mappings for keyboard
     //       fix game pak reads when no game pak is set
     //       fix vram write using 8 bit quantities
     //       try to get the CPU thread to run the DMAs

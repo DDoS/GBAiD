@@ -112,13 +112,13 @@ These will be re-mapable soon.
 | Gamepad | Keyboard | Controller       |
 |---------|----------|------------------|
 | A       | P        | A                |
-| B       | O        | B                |
+| B       | L        | B                |
 | Up      | W        | D-pad or L-stick |
 | Down    | S        | D-pad or L-stick |
 | Right   | D        | D-pad or L-stick |
 | Left    | A        | D-pad or L-stick |
-| R       | E        | RB or RT         |
-| L       | Q        | LB or LT         |
+| R       | R-shift  | RB or RT         |
+| L       | L-shift  | LB or LT         |
 | Start   | Enter    | Start            |
 | Select  | Tab      | Select           |
 

@@ -97,15 +97,15 @@ public abstract class InputSource {
 public class Keyboard : InputSource {
     private int[10] buttonMap = [
         SDL_SCANCODE_P,
-        SDL_SCANCODE_O,
+        SDL_SCANCODE_L,
         SDL_SCANCODE_TAB,
         SDL_SCANCODE_RETURN,
         SDL_SCANCODE_D,
         SDL_SCANCODE_A,
         SDL_SCANCODE_W,
         SDL_SCANCODE_S,
-        SDL_SCANCODE_E,
-        SDL_SCANCODE_Q
+        SDL_SCANCODE_RSHIFT,
+        SDL_SCANCODE_LSHIFT
     ];
 
     public void map(Button gbaButton, int key) {
