@@ -25,7 +25,7 @@ I've tested 4 games so far:
 
 Mario Kart exhibits some light graphical glitches due problems with timings (this also affects the world map in LoZ).
 
-The Classic NES Series games load, but are very glitchy. Considering the anti-emulation feature implemented in them,
+The Classic NES Series games load, but are very glitchy. Considering the anti-emulation features implemented in them,
 just the fact that they load is a good thing.
 
 The emulator uses just under 50% CPU on my 2.66GHz dual core i7 (4GB RAM), at 60 FPS.
