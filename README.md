@@ -14,14 +14,15 @@ compile in release mode and linking is broken on Windows.
 
 All of the GameBoy's built-in hardware has been implemented, with the exception of sound.
 
-I've tested 4 games so far:
+I've tested 8 games so far:
 - Super Mario Advance
 - Mario kart
 - Pokemon Emerald
-- Legend of Zelda: a link to the past
+- Legend of Zelda: A Link To The Past
 - Legend of Zelda: Minish Cap
 - Doom
-- Classic NES Series: Super Mario Bros.
+- Classic NES Series: Super Mario Bros
+- Classic NES Series: Metroid
 
 Mario Kart exhibits some light graphical glitches due problems with timings (this also affects the world map in LoZ).
 
