@@ -99,7 +99,6 @@ public class GameBoyAdvance {
             }
             SDL_Init(0);
             keypad.start();
-            dmas.start();
             timers.start();
             processor.start();
             display.run();
@@ -109,7 +108,6 @@ public class GameBoyAdvance {
         } finally {
             processor.stop();
             timers.stop();
-            dmas.stop();
             keypad.stop();
             SDL_Quit();
         }
@@ -487,52 +485,34 @@ public class DMAs {
     private RAM ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
-    private Thread thread;
-    private bool running = false;
-    private Condition dmaWait;
     private bool interruptDMA = false;
     private int[4] sourceAddresses = new int[4];
     private int[4] destinationAddresses = new int[4];
     private int[4] wordCounts = new int[4];
     private int[4] controls = new int[4];
     private Timing[4] timings = new Timing[4];
-    private bool[4] incomplete = new bool[4];
+    private int incomplete = 0;
 
     private this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
         this.haltHandler = haltHandler;
-        dmaWait = new Condition(new Mutex());
 
         ioRegisters.addMonitor(&onPostWrite, 0xBA, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xC6, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xD2, 2);
         ioRegisters.addMonitor(&onPostWrite, 0xDE, 2);
-    }
 
-    private void start() {
-        thread = new Thread(&run);
-        thread.name = "DMA";
-        running = true;
-        thread.start();
-    }
-
-    private void stop() {
-        if (running) {
-            running = false;
-            synchronized (dmaWait.mutex) {
-                dmaWait.notify();
-            }
-        }
+        haltHandler.setHaltTask(&dmaTask);
     }
 
     public void signalVBLANK() {
-        triggerDMA(Timing.VBLANK);
+        updateDMAs(Timing.VBLANK);
     }
 
     public void signalHBLANK() {
-        triggerDMA(Timing.HBLANK);
+        updateDMAs(Timing.HBLANK);
     }
 
     private void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
@@ -548,54 +528,37 @@ public class DMAs {
             sourceAddresses[channel] = formatSourceAddress(channel, ioRegisters.getInt(address - 8));
             destinationAddresses[channel] = formatDestinationAddress(channel, ioRegisters.getInt(address - 4));
             wordCounts[channel] = getWordCount(channel, newControl);
-            triggerDMA(Timing.IMMEDIATE);
+            updateDMAs(Timing.IMMEDIATE);
         }
     }
 
-    private void triggerDMA(Timing timing) {
-        bool shouldRun = false;
+    private void updateDMAs(Timing timing) {
         foreach (int channel; 0 .. 4) {
             if (timings[channel] == timing) {
-                incomplete[channel] = true;
-                shouldRun = true;
+                setBit(incomplete, channel, 1);
             }
         }
-        if (!shouldRun) {
+        if (!incomplete) {
             return;
         }
+        haltHandler.dmaHalt(true);
         interruptDMA = true;
-        if (timing == Timing.IMMEDIATE) {
-            haltHandler.dmaHalt(true);
-        }
-        synchronized (dmaWait.mutex) {
-            dmaWait.notify();
-        }
     }
 
-    private void run() {
-        while (true) {
-            synchronized (dmaWait.mutex) {
-                haltHandler.dmaHalt(false);
-                dmaWait.wait();
-            }
-            if (!running) {
-                return;
-            }
-            bool shouldRun = true;
-            while (shouldRun) {
-                shouldRun = false;
-                foreach (int channel; 0 .. 4) {
-                    if (incomplete[channel]) {
-                        haltHandler.dmaHalt(true);
-                        interruptDMA = false;
-                        if (!runDMA(channel)) {
-                            shouldRun = true;
-                            break;
-                        }
+    private bool dmaTask() {
+        bool ran = cast(bool) incomplete;
+        while (incomplete) {
+            foreach (int channel; 0 .. 4) {
+                if (checkBit(incomplete, channel)) {
+                    interruptDMA = false;
+                    if (!runDMA(channel)) {
+                        break;
                     }
                 }
             }
         }
+        haltHandler.dmaHalt(false);
+        return ran;
     }
 
     private bool runDMA(int channel) {
@@ -671,7 +634,7 @@ public class DMAs {
             wordCounts[channel]--;
         }
 
-        incomplete[channel] = false;
+        setBit(incomplete, channel, 0);
 
         return true;
     }
@@ -1021,6 +984,10 @@ private class HaltHandler {
 
     private this(ARM7TDMI processor) {
         this.processor = processor;
+    }
+
+    private void setHaltTask(bool delegate() haltTask) {
+        processor.setHaltTask(haltTask);
     }
 
     private void softwareHalt(bool state) {

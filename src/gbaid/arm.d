@@ -12,8 +12,10 @@ import gbaid.memory;
 import gbaid.util;
 
 public class ARM7TDMI {
+    private alias HaltTask = bool delegate();
     private Memory memory;
     private uint entryPointAddress = 0x0;
+    private HaltTask haltTask;
     private Thread thread;
     private bool running = false;
     private int[37] registers = new int[37];
@@ -36,6 +38,10 @@ public class ARM7TDMI {
 
     public void setEntryPointAddress(uint entryPointAddress) {
         this.entryPointAddress = entryPointAddress;
+    }
+
+    public void setHaltTask(HaltTask haltTask) {
+        this.haltTask = haltTask;
     }
 
     public void start() {
@@ -110,7 +116,9 @@ public class ARM7TDMI {
                 }
                 tick();
                 while (haltSignal) {
-                    Thread.yield();
+                    if (!haltTask()) {
+                        Thread.yield();
+                    }
                 }
                 updateModeAndSet();
                 if (branchSignal) {
@@ -1663,7 +1671,7 @@ public class ARM7TDMI {
         private uint index = 0;
 
         private void logInstruction(int code, string mnemonic) {
-            logInstruction(getRegister(Register.PC) - pipeline.getPCIncrement() * 2, code, mnemonic);
+            logInstruction(getProgramCounter(), code, mnemonic);
         }
 
         private void logInstruction(int address, int code, string mnemonic) {
