@@ -854,8 +854,9 @@ private class Timers {
 
     private double getTimeUntilIRQ(int i, int control, int reload) {
         // the time per tick multiplied by the number of ticks until overflow
+        double tickPeriod = getTickPeriod(i, control);
         int remainingTicks = 0x10000 - formatTickCount(getTickCount(i, control, reload), reload);
-        return getTickPeriod(i, control) * remainingTicks;
+        return tickPeriod * remainingTicks;
     }
 
     private short formatTickCount(double tickCount, int reload) {
@@ -869,7 +870,9 @@ private class Timers {
 
     private double getTickCount(int i, int control, int reload) {
         // convert the time into using the period ticks and add the reload value
-        return getTimeDelta(i, control) / getTickPeriod(i, control) + reload;
+        double tickPeriod = getTickPeriod(i, control);
+        long timeDelta = getTimeDelta(i, control);
+        return timeDelta / tickPeriod + reload;
     }
 
     private long getTimeDelta(int i, int control) {
