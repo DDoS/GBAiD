@@ -102,8 +102,6 @@ public void main(string[] args) {
     }
 
     // TODO:
-    //       fix game pak reads when no game pak is set
-    //       fix vram write using 8 bit quantities
     //       sound
     //       implement optional RTC
 }

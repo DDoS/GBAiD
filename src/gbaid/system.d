@@ -161,9 +161,9 @@ public class MainMemory : MappedMemory {
     private RAM boardWRAM;
     private RAM chipWRAM;
     private IORegisters ioRegisters;
+    private RAM palette;
     private RAM vram;
     private RAM oam;
-    private RAM palette;
     private Memory gamePak;
     private size_t capacity;
 
@@ -173,9 +173,9 @@ public class MainMemory : MappedMemory {
         boardWRAM = new RAM(BOARD_WRAM_SIZE);
         chipWRAM = new RAM(CHIP_WRAM_SIZE);
         ioRegisters = new IORegisters(new RAM(IO_REGISTERS_SIZE));
-        vram = new RAM(VRAM_SIZE);
-        oam = new RAM(OAM_SIZE);
-        palette = new RAM(PALETTE_SIZE);
+        palette = new Palette(PALETTE_SIZE);
+        vram = new VRAM(VRAM_SIZE);
+        oam = new OAM(OAM_SIZE);
         gamePak = new NullMemory();
         updateCapacity();
     }
@@ -275,6 +275,37 @@ public class MainMemory : MappedMemory {
 
     public override size_t getCapacity() {
         return capacity;
+    }
+
+    private static class Palette : RAM {
+        public this(size_t capacity) {
+            super(capacity);
+        }
+
+        public override void setByte(uint address, byte b) {
+            super.setShort(address, b << 8 | b & 0xFF);
+        }
+    }
+
+    private class VRAM : RAM {
+        public this(size_t capacity) {
+            super(capacity);
+        }
+
+        public override void setByte(uint address, byte b) {
+            if (address < 0x10000 || (ioRegisters.getShort(0x0) & 0b111) > 2 && address < 0x14000) {
+                super.setShort(address, b << 8 | b & 0xFF);
+            }
+        }
+    }
+
+    private static class OAM : RAM {
+        public this(size_t capacity) {
+            super(capacity);
+        }
+
+        public override void setByte(uint address, byte b) {
+        }
     }
 }
 
