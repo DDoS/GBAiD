@@ -117,6 +117,11 @@ public class Display {
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, XBR_UPSCALE_FRAGMENT_SHADER_SOURCE);
                 upscaledTexture = makeTexture(RGBA, RGBA8, HORIZONTAL_RESOLUTION * 5, VERTICAL_RESOLUTION * 5);
                 break;
+            case BICUBIC:
+                upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, BICUBIC_UPSCALE_FRAGMENT_SHADER_SOURCE);
+                upscaledTexture = makeTexture(RGBA, RGBA8, width, height);
+                texture.setWraps(CLAMP_TO_EDGE, CLAMP_TO_EDGE);
+                break;
         }
         if (upscaleProgram !is null) {
             upscaleFrameBuffer = context.newFrameBuffer();
@@ -1458,7 +1463,8 @@ public enum FilteringMode {
 public enum UpscalingMode {
     NONE,
     EPX,
-    XBR
+    XBR,
+    BICUBIC
 }
 
 private VertexData generatePlane(float width, float height) {

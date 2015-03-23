@@ -67,17 +67,17 @@ At minimum, you must specify the path to the bios and rom images with
 
 The following arguments are also recognized:
 
-| Long form   | Short form | Argument               | Usage                                                                        |
-|-------------|------------|------------------------|------------------------------------------------------------------------------|
-| --bios      | -b         | Path to bios           | Specify bios image                                                           |
-| --save      | -s         | Path to save           | Specify path for loading and saving saves                                    |
-| --noload    | -n         | None                   | Don't load the save                                                          |
-| --nosave    | -N         | None                   | Don't save the save                                                          |
-| --scale     | -r         | Scaling factor (float) | Draw the display at "factor" times the original resolution                   |
-| --filtering | -f         | LINEAR or NONE         | What technique to use to filter the output texture to be drawn to the screen |
-| --upscaling | -u         | EPX, XBR or NONE       | What technique to use to increase the resolution of the drawn texture        |
-| --controller| -c         | None                   | Disable keyboard input and use a controller instead                          |
-| --memory    | -m         | See saves section      | What memory configuration to use for the save format                         |
+| Long form   | Short form | Argument                 | Usage                                                                       |
+|-------------|------------|--------------------------|-----------------------------------------------------------------------------|
+| --bios      | -b         | Path to bios             | Specify bios image                                                          |
+| --save      | -s         | Path to save             | Specify path for loading and saving saves                                   |
+| --noload    | -n         | None                     | Don't load the save                                                         |
+| --nosave    | -N         | None                     | Don't save the save                                                         |
+| --scale     | -r         | Scaling factor (float)   | Draw the display at "factor" times the original resolution                  |
+| --filtering | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
+| --upscaling | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
+| --controller| -c         | None                     | Disable keyboard input and use a controller instead                         |
+| --memory    | -m         | See saves section        | What memory configuration to use for the save format                        |
 
 Note that these arguments are case sensitive and that bundling is only supported by the noload and nosave switches.
 
@@ -125,9 +125,15 @@ These will be re-mapable soon.
 
 ### Upscaling ###
 
-All upscaling is implemented as OpenGL shaders. EPX is a simple but fast 2x upscaler. XBR is the 5x implementation,
-it gives better results, but is slower. When you use the --upscaling switch you should also use the --scale switch
-with the appropriate factor for the selected algorithm.
+All upscaling is implemented as OpenGL shaders.
+
+- EPX is a simple but fast 2x upscaler.
+- XBR is a 5x implementation, it gives better results, but is slower.
+- BICUBIC is an interpolation method that offers better results than linear filtering at a greater cost.
+  It upscales to whatever is defined by the --scale switch so it should always be used with this method.
+
+
+ When you use the --upscaling switch you should also use the --scale switch with the appropriate factor for the selected algorithm.
 
 ## License ##
 

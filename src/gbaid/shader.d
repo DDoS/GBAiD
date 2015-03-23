@@ -271,3 +271,60 @@ void main() {
                         : E;
 }
 `;
+
+public enum string BICUBIC_UPSCALE_FRAGMENT_SHADER_SOURCE =
+`
+// See: http://www.paulinternet.nl/?page=bicubic
+
+// $shader_type: fragment
+
+// $texture_layout: color = 0
+
+#version 120
+
+varying vec2 textureCoords;
+
+uniform sampler2D color;
+uniform vec2 size;
+
+vec4 cubic(vec4 s0, vec4 s1, vec4 s2, vec4 s3, float p) {
+    return s1 + 0.5 * p * (s2 - s0 + p * (2 * s0 - 5 * s1 + 4 * s2 - s3 + p * (3 * (s1 - s2) + s3 - s0)));
+}
+
+void main() {
+    float sx = 1 / size.x;
+    float sy = 1 / size.y;
+
+    vec2 dx = vec2(sx, 0);
+    vec2 dy = vec2(0, sy);
+
+    vec2 fp = fract(textureCoords * size);
+
+    vec4 s00 = texture2D(color, textureCoords - dx - dy);
+    vec4 s01 = texture2D(color, textureCoords - dy);
+    vec4 s02 = texture2D(color, textureCoords + dx - dy);
+    vec4 s03 = texture2D(color, textureCoords + 2 * dx - dy);
+
+    vec4 s10 = texture2D(color, textureCoords - dx);
+    vec4 s11 = texture2D(color, textureCoords);
+    vec4 s12 = texture2D(color, textureCoords + dx);
+    vec4 s13 = texture2D(color, textureCoords + 2 * dx);
+
+    vec4 s20 = texture2D(color, textureCoords - dx + dy);
+    vec4 s21 = texture2D(color, textureCoords + dy);
+    vec4 s22 = texture2D(color, textureCoords + dx + dy);
+    vec4 s23 = texture2D(color, textureCoords + 2 * dx + dy);
+
+    vec4 s30 = texture2D(color, textureCoords - dx + 2 * dy);
+    vec4 s31 = texture2D(color, textureCoords + 2 * dy);
+    vec4 s32 = texture2D(color, textureCoords + dx + 2 * dy);
+    vec4 s33 = texture2D(color, textureCoords + 2 * dx + 2 * dy);
+
+    vec4 c0 = cubic(s00, s01, s02, s03, fp.x);
+    vec4 c1 = cubic(s10, s11, s12, s13, fp.x);
+    vec4 c2 = cubic(s20, s21, s22, s23, fp.x);
+    vec4 c3 = cubic(s30, s31, s32, s33, fp.x);
+
+    gl_FragColor = cubic(c0, c1, c2, c3, fp.y);
+}
+`;
