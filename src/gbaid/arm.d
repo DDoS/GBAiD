@@ -511,11 +511,9 @@ public class ARM7TDMI {
             int psrSrc = getBit(instruction, 22);
             int opCode = getBit(instruction, 21);
             if (opCode) {
-                debug (outputInstructions) logInstruction(instruction, "MSR");
                 // MSR
+                debug (outputInstructions) logInstruction(instruction, "MSR");
                 int opSrc = getBit(instruction, 25);
-                int writeFlags = getBit(instruction, 19);
-                int writeControl = getBit(instruction, 16);
                 int op;
                 if (opSrc) {
                     // immediate
@@ -524,17 +522,22 @@ public class ARM7TDMI {
                     // register
                     op = getRegister(instruction & 0xF);
                 }
-                int mask;
-                if (writeFlags) {
+                int mask = 0;
+                if (checkBit(instruction, 19)) {
+                    // flags
                     mask |= 0xFF000000;
                 }
-                if (writeControl && mode != Mode.USER) {
+                // status and extension can be ignored in ARMv4T
+                if (checkBit(instruction, 16)) {
+                    // control
                     mask |= 0xFF;
                 }
                 if (psrSrc) {
+                    mask &= 0xF00000EF;
                     int spsr = getRegister(Register.SPSR);
                     setRegister(Register.SPSR, spsr & ~mask | op & mask);
                 } else {
+                    mask &= 0xF0000000 | (getMode() != Mode.USER ? 0xCF : 0);
                     int cpsr = getRegister(Register.CPSR);
                     setRegister(Register.CPSR, cpsr & ~mask | op & mask);
                 }
