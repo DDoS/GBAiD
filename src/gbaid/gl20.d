@@ -360,7 +360,7 @@ public class GL20FrameBuffer : FrameBuffer {
             }
             // Sorting the array ensures that attachments are in order n, n + 1, n + 2...
             // This is important!
-            outputBuffersArray.sort;
+            sort(outputBuffersArray);
         }
         glDrawBuffers(cast(uint) outputBuffersArray.length, outputBuffersArray.ptr);
     }
