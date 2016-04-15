@@ -6,7 +6,7 @@
 	"license": "MIT",
 	"targetPath": "bin",
 	"dependencies": {
-		"derelict-sdl2":"1.9.1",
-		"derelict-gl3":"1.0.12"
+		"derelict-sdl2":"2.0.0",
+		"derelict-gl3":"1.0.18"
 	},
 }
