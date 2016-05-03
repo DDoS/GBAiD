@@ -189,6 +189,31 @@ public class ARM7TDMI {
     }
 
     private class ARMPipeline : Pipeline {
+        private void delegate(int)[] dataProcessingInstructions;
+
+        private this() {
+            // Bits are I,OpCode,S
+            // where I is the immediate enable and S the set flags enable
+            dataProcessingInstructions = [
+                &registerOp2AND, &registerOp2ANDS, &registerOp2EOR, &registerOp2EORS,
+                &registerOp2SUB, &registerOp2SUBS, &registerOp2RSB, &registerOp2RSBS,
+                &registerOp2ADD, &registerOp2ADDS, &registerOp2ADC, &registerOp2ADCS,
+                &registerOp2SBC, &registerOp2SBCS, &registerOp2RSC, &registerOp2RSCS,
+                &registerOp2TST, &registerOp2TST, &registerOp2TEQ, &registerOp2TEQ,
+                &registerOp2CMP, &registerOp2CMP, &registerOp2CMN, &registerOp2CMN,
+                &registerOp2ORR, &registerOp2ORRS, &registerOp2MOV, &registerOp2MOVS,
+                &registerOp2BIC, &registerOp2BICS, &registerOp2MVN, &registerOp2MVNS,
+                &immediateOp2AND, &immediateOp2ANDS, &immediateOp2EOR, &immediateOp2EORS,
+                &immediateOp2SUB, &immediateOp2SUBS, &immediateOp2RSB, &immediateOp2RSBS,
+                &immediateOp2ADD, &immediateOp2ADDS, &immediateOp2ADC, &immediateOp2ADCS,
+                &immediateOp2SBC, &immediateOp2SBCS, &immediateOp2RSC, &immediateOp2RSCS,
+                &immediateOp2TST, &immediateOp2TST, &immediateOp2TEQ, &immediateOp2TEQ,
+                &immediateOp2CMP, &immediateOp2CMP, &immediateOp2CMN, &immediateOp2CMN,
+                &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV, &immediateOp2MOVS,
+                &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN, &immediateOp2MVNS,
+            ];
+        }
+
         protected Set getSet() {
             return Set.ARM;
         }
@@ -256,252 +281,501 @@ public class ARM7TDMI {
             }
             debug (outputInstructions) logInstruction(instruction, "BX");
             int address = getRegister(instruction & 0xF);
-            if (address & 0b1) {
+            if (address & 0b1) { // TODO: check this condition
                 setFlag(CPSRFlag.T, Set.THUMB);
             }
             setRegister(Register.PC, address & ~1);
         }
 
         private void branchAndBranchWithLink(int instruction) {
+            int opCode = getBit(instruction, 24);
+            if (opCode) {
+                branchAndLink(instruction);
+            } else {
+                branch(instruction);
+            }
+        }
+
+        private void branch(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int opCode = getBit(instruction, 24);
+            debug (outputInstructions) logInstruction(instruction, "B");
             int offset = instruction & 0xFFFFFF;
             // sign extend the offset
             offset <<= 8;
             offset >>= 8;
             int pc = getRegister(Register.PC);
-            if (opCode) {
-                debug (outputInstructions) logInstruction(instruction, "BL");
-                setRegister(Register.LR, pc - 4);
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "B");
-            }
             setRegister(Register.PC, pc + offset * 4);
         }
 
-        private void dataProcessing(int instruction) {
+        private void branchAndLink(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int op2Src = getBit(instruction, 25);
-            int opCode = getBits(instruction, 21, 24);
-            int setFlags = getBit(instruction, 20);
+            debug (outputInstructions) logInstruction(instruction, "BL");
+            int offset = instruction & 0xFFFFFF;
+            // sign extend the offset
+            offset <<= 8;
+            offset >>= 8;
+            int pc = getRegister(Register.PC);
+            setRegister(Register.LR, pc - 4);
+            setRegister(Register.PC, pc + offset * 4);
+        }
+
+        private mixin template decodeOp2Immediate() {
+            // Decode
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
             int op1 = getRegister(rn);
-            int op2;
+            // Get op2
+            int shift = getBits(instruction, 8, 11) * 2;
+            int op2 = rotateRight(instruction & 0xFF, shift);
+            int carry = shift == 0 ? getFlag(CPSRFlag.C) : getBit(op2, 31);
+        }
+
+        private mixin template decodeOp2Register() {
+            // Decode
+            int rn = getBits(instruction, 16, 19);
+            int rd = getBits(instruction, 12, 15);
+            int op1 = getRegister(rn);
+            // Get op2
+            int shiftSrc = getBit(instruction, 4);
+            int shift = shiftSrc ? getRegister(getBits(instruction, 8, 11)) & 0xFF : getBits(instruction, 7, 11);
+            int shiftType = getBits(instruction, 5, 6);
             int carry;
-            if (op2Src) {
-                // immediate op2
-                int shift = getBits(instruction, 8, 11) * 2;
-                op2 = rotateRight(instruction & 0xFF, shift);
-                if (shift == 0) {
-                    carry = getFlag(CPSRFlag.C);
-                } else {
-                    carry = getBit(op2, 31);
-                }
-            } else {
-                // register op2
-                int shiftSrc = getBit(instruction, 4);
-                int shift;
-                if (shiftSrc) {
-                    // register shift
-                    shift = getRegister(getBits(instruction, 8, 11)) & 0xFF;
-                } else {
-                    // immediate shift
-                    shift = getBits(instruction, 7, 11);
-                }
-                int shiftType = getBits(instruction, 5, 6);
-                op2 = applyShift(shiftType, shift, cast(bool) shiftSrc, getRegister(instruction & 0b1111), carry);
+            int op2 = applyShift(shiftType, shift, cast(bool) shiftSrc, getRegister(instruction & 0b1111), carry);
+        }
+
+        private void dataProcessingAND(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
             }
-            int res;
-            int negative, zero, overflow;
-            final switch (opCode) {
-                case 0x0:
-                    // AND
-                    debug (outputInstructions) logInstruction(instruction, "AND");
-                    res = op1 & op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x1:
-                    // EOR
-                    debug (outputInstructions) logInstruction(instruction, "EOR");
-                    res = op1 ^ op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x2:
-                    // SUB
-                    debug (outputInstructions) logInstruction(instruction, "SUB");
-                    res = op1 - op2;
-                    if (setFlags) {
-                        overflow = overflowedSub(op1, op2, res);
-                        carry = !borrowedSub(op1, op2, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x3:
-                    // RSB
-                    debug (outputInstructions) logInstruction(instruction, "RSB");
-                    res = op2 - op1;
-                    if (setFlags) {
-                        overflow = overflowedSub(op2, op1, res);
-                        carry = !borrowedSub(op2, op1, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x4:
-                    // ADD
-                    debug (outputInstructions) logInstruction(instruction, "ADD");
-                    res = op1 + op2;
-                    if (setFlags) {
-                        overflow = overflowedAdd(op1, op2, res);
-                        carry = carriedAdd(op1, op2, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x5:
-                    // ADC
-                    debug (outputInstructions) logInstruction(instruction, "ADC");
-                    int tmp = op1 + op2;
-                    res = tmp + carry;
-                    if (setFlags) {
-                        overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
-                        carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x6:
-                    // SBC
-                    debug (outputInstructions) logInstruction(instruction, "SBC");
-                    int tmp = op1 - op2;
-                    res = tmp - !carry;
-                    if (setFlags) {
-                        overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
-                        carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x7:
-                    // RSC
-                    debug (outputInstructions) logInstruction(instruction, "RSC");
-                    int tmp = op2 - op1;
-                    res = tmp - !carry;
-                    if (setFlags) {
-                        overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
-                        carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0x8:
-                    // TST
-                    debug (outputInstructions) logInstruction(instruction, "TST");
-                    int v = op1 & op2;
-                    overflow = getFlag(CPSRFlag.V);
-                    zero = v == 0;
-                    negative = v < 0;
-                    break;
-                case 0x9:
-                    // TEQ
-                    debug (outputInstructions) logInstruction(instruction, "TEQ");
-                    int v = op1 ^ op2;
-                    overflow = getFlag(CPSRFlag.V);
-                    zero = v == 0;
-                    negative = v < 0;
-                    break;
-                case 0xA:
-                    // CMP
-                    debug (outputInstructions) logInstruction(instruction, "CMP");
-                    int v = op1 - op2;
-                    overflow = overflowedSub(op1, op2, v);
-                    carry = !borrowedSub(op1, op2, v);
-                    zero = v == 0;
-                    negative = v < 0;
-                    break;
-                case 0xB:
-                    // CMN
-                    debug (outputInstructions) logInstruction(instruction, "CMN");
-                    int v = op1 + op2;
-                    overflow = overflowedAdd(op1, op2, v);
-                    carry = carriedAdd(op1, op2, v);
-                    zero = v == 0;
-                    negative = v < 0;
-                    break;
-                case 0xC:
-                    // ORR
-                    debug (outputInstructions) logInstruction(instruction, "ORR");
-                    res = op1 | op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0xD:
-                    // MOV
-                    debug (outputInstructions) logInstruction(instruction, "MOV");
-                    res = op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0xE:
-                    // BIC
-                    debug (outputInstructions) logInstruction(instruction, "BIC");
-                    res = op1 & ~op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-                case 0xF:
-                    // MVN
-                    debug (outputInstructions) logInstruction(instruction, "MVN");
-                    res = ~op2;
-                    if (setFlags) {
-                        overflow = getFlag(CPSRFlag.V);
-                        zero = res == 0;
-                        negative = res < 0;
-                    }
-                    setRegister(rd, res);
-                    break;
-            }
+            debug (outputInstructions) logInstruction(instruction, "AND");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 & op2;
+            setRegister(rd, res);
+            // Flag updates
             if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
                 if (rd == Register.PC) {
                     setRegister(Register.CPSR, getRegister(Register.SPSR));
                 } else {
                     setAPSRFlags(negative, zero, carry, overflow);
                 }
             }
+        }
+
+        private alias immediateOp2AND = dataProcessingAND!(decodeOp2Immediate, false);
+        private alias immediateOp2ANDS = dataProcessingAND!(decodeOp2Immediate, true);
+        private alias registerOp2AND = dataProcessingAND!(decodeOp2Register, false);
+        private alias registerOp2ANDS = dataProcessingAND!(decodeOp2Register, true);
+
+        private void dataProcessingEOR(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "EOR");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 ^ op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2EOR = dataProcessingEOR!(decodeOp2Immediate, false);
+        private alias immediateOp2EORS = dataProcessingEOR!(decodeOp2Immediate, true);
+        private alias registerOp2EOR = dataProcessingEOR!(decodeOp2Register, false);
+        private alias registerOp2EORS = dataProcessingEOR!(decodeOp2Register, true);
+
+        private void dataProcessingSUB(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "SUB");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 - op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = overflowedSub(op1, op2, res);
+                carry = !borrowedSub(op1, op2, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2SUB = dataProcessingSUB!(decodeOp2Immediate, false);
+        private alias immediateOp2SUBS = dataProcessingSUB!(decodeOp2Immediate, true);
+        private alias registerOp2SUB = dataProcessingSUB!(decodeOp2Register, false);
+        private alias registerOp2SUBS = dataProcessingSUB!(decodeOp2Register, true);
+
+        private void dataProcessingRSB(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "RSB");
+            mixin decodeOperands;
+            // Operation
+            int res = op2 - op1;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = overflowedSub(op2, op1, res);
+                carry = !borrowedSub(op2, op1, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2RSB = dataProcessingRSB!(decodeOp2Immediate, false);
+        private alias immediateOp2RSBS = dataProcessingRSB!(decodeOp2Immediate, true);
+        private alias registerOp2RSB = dataProcessingRSB!(decodeOp2Register, false);
+        private alias registerOp2RSBS = dataProcessingRSB!(decodeOp2Register, true);
+
+        private void dataProcessingADD(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "ADD");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 + op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = overflowedAdd(op1, op2, res);
+                carry = carriedAdd(op1, op2, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2ADD = dataProcessingADD!(decodeOp2Immediate, false);
+        private alias immediateOp2ADDS = dataProcessingADD!(decodeOp2Immediate, true);
+        private alias registerOp2ADD = dataProcessingADD!(decodeOp2Register, false);
+        private alias registerOp2ADDS = dataProcessingADD!(decodeOp2Register, true);
+
+        private void dataProcessingADC(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "ADC");
+            mixin decodeOperands;
+            // Operation
+            int tmp = op1 + op2;
+            int res = tmp + carry;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) { // TODO: check if this is correct
+                int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
+                carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2ADC = dataProcessingADC!(decodeOp2Immediate, false);
+        private alias immediateOp2ADCS = dataProcessingADC!(decodeOp2Immediate, true);
+        private alias registerOp2ADC = dataProcessingADC!(decodeOp2Register, false);
+        private alias registerOp2ADCS = dataProcessingADC!(decodeOp2Register, true);
+
+        private void dataProcessingSBC(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "SBC");
+            mixin decodeOperands;
+            // Operation
+            int tmp = op1 - op2;
+            int res = tmp - !carry; // TODO: check if this is correct
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) { // TODO: check if this is correct
+                int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
+                carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2SBC = dataProcessingSBC!(decodeOp2Immediate, false);
+        private alias immediateOp2SBCS = dataProcessingSBC!(decodeOp2Immediate, true);
+        private alias registerOp2SBC = dataProcessingSBC!(decodeOp2Register, false);
+        private alias registerOp2SBCS = dataProcessingSBC!(decodeOp2Register, true);
+
+        private void dataProcessingRSC(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "RSC");
+            mixin decodeOperands;
+            // Operation
+            int tmp = op2 - op1;
+            int res = tmp - !carry; // TODO: check if this is correct
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) { // TODO: check if this is correct
+                int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
+                carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2RSC = dataProcessingRSC!(decodeOp2Immediate, false);
+        private alias immediateOp2RSCS = dataProcessingRSC!(decodeOp2Immediate, true);
+        private alias registerOp2RSC = dataProcessingRSC!(decodeOp2Register, false);
+        private alias registerOp2RSCS = dataProcessingRSC!(decodeOp2Register, true);
+
+        private void dataProcessingTST(alias decodeOperands)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "TST");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 & op2;
+            // Flag updates
+            int overflow = getFlag(CPSRFlag.V);
+            int zero = res == 0;
+            int negative = res < 0;
+            if (rd == Register.PC) {
+                setRegister(Register.CPSR, getRegister(Register.SPSR));
+            } else {
+                setAPSRFlags(negative, zero, carry, overflow);
+            }
+        }
+
+        private alias immediateOp2TST = dataProcessingTST!decodeOp2Immediate;
+        private alias registerOp2TST = dataProcessingTST!decodeOp2Register;
+
+        private void dataProcessingTEQ(alias decodeOperands)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "TEQ");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 ^ op2;
+            // Flag updates
+            int overflow = getFlag(CPSRFlag.V);
+            int zero = res == 0;
+            int negative = res < 0;
+            if (rd == Register.PC) {
+                setRegister(Register.CPSR, getRegister(Register.SPSR));
+            } else {
+                setAPSRFlags(negative, zero, carry, overflow);
+            }
+        }
+
+        private alias immediateOp2TEQ = dataProcessingTEQ!decodeOp2Immediate;
+        private alias registerOp2TEQ = dataProcessingTEQ!decodeOp2Register;
+
+        private void dataProcessingCMP(alias decodeOperands)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "CMP");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 - op2;
+            // Flag updates
+            int overflow = overflowedSub(op1, op2, res);
+            carry = !borrowedSub(op1, op2, res);
+            int zero = res == 0;
+            int negative = res < 0;
+            if (rd == Register.PC) {
+                setRegister(Register.CPSR, getRegister(Register.SPSR));
+            } else {
+                setAPSRFlags(negative, zero, carry, overflow);
+            }
+        }
+
+        private alias immediateOp2CMP = dataProcessingCMP!decodeOp2Immediate;
+        private alias registerOp2CMP = dataProcessingCMP!decodeOp2Register;
+
+        private void dataProcessingCMN(alias decodeOperands)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "CMN");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 + op2;
+            // Flag updates
+            int overflow = overflowedAdd(op1, op2, res);
+            carry = carriedAdd(op1, op2, res);
+            int zero = res == 0;
+            int negative = res < 0;
+            if (rd == Register.PC) {
+                setRegister(Register.CPSR, getRegister(Register.SPSR));
+            } else {
+                setAPSRFlags(negative, zero, carry, overflow);
+            }
+        }
+
+        private alias immediateOp2CMN = dataProcessingCMN!decodeOp2Immediate;
+        private alias registerOp2CMN = dataProcessingCMN!decodeOp2Register;
+
+        private void dataProcessingORR(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "ORR");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 | op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2ORR = dataProcessingORR!(decodeOp2Immediate, false);
+        private alias immediateOp2ORRS = dataProcessingORR!(decodeOp2Immediate, true);
+        private alias registerOp2ORR = dataProcessingORR!(decodeOp2Register, false);
+        private alias registerOp2ORRS = dataProcessingORR!(decodeOp2Register, true);
+
+        private void dataProcessingMOV(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "MOV");
+            mixin decodeOperands;
+            // Operation
+            int res = op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2MOV = dataProcessingMOV!(decodeOp2Immediate, false);
+        private alias immediateOp2MOVS = dataProcessingMOV!(decodeOp2Immediate, true);
+        private alias registerOp2MOV = dataProcessingMOV!(decodeOp2Register, false);
+        private alias registerOp2MOVS = dataProcessingMOV!(decodeOp2Register, true);
+
+        private void dataProcessingBIC(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "BIC");
+            mixin decodeOperands;
+            // Operation
+            int res = op1 & ~op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2BIC = dataProcessingBIC!(decodeOp2Immediate, false);
+        private alias immediateOp2BICS = dataProcessingBIC!(decodeOp2Immediate, true);
+        private alias registerOp2BIC = dataProcessingBIC!(decodeOp2Register, false);
+        private alias registerOp2BICS = dataProcessingBIC!(decodeOp2Register, true);
+
+        private void dataProcessingMVN(alias decodeOperands, bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "MVN");
+            mixin decodeOperands;
+            // Operation
+            int res = ~op2;
+            setRegister(rd, res);
+            // Flag updates
+            if (setFlags) {
+                int overflow = getFlag(CPSRFlag.V);
+                int zero = res == 0;
+                int negative = res < 0;
+                if (rd == Register.PC) {
+                    setRegister(Register.CPSR, getRegister(Register.SPSR));
+                } else {
+                    setAPSRFlags(negative, zero, carry, overflow);
+                }
+            }
+        }
+
+        private alias immediateOp2MVN = dataProcessingMVN!(decodeOp2Immediate, false);
+        private alias immediateOp2MVNS = dataProcessingMVN!(decodeOp2Immediate, true);
+        private alias registerOp2MVN = dataProcessingMVN!(decodeOp2Register, false);
+        private alias registerOp2MVNS = dataProcessingMVN!(decodeOp2Register, true);
+
+        private void dataProcessing(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            int code = getBits(instruction, 20, 25);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void psrTransfer(int instruction) {
