@@ -195,22 +195,22 @@ public class ARM7TDMI {
             // Bits are I,OpCode,S
             // where I is the immediate enable and S the set flags enable
             dataProcessingInstructions = [
-                &registerOp2AND, &registerOp2ANDS, &registerOp2EOR, &registerOp2EORS,
-                &registerOp2SUB, &registerOp2SUBS, &registerOp2RSB, &registerOp2RSBS,
-                &registerOp2ADD, &registerOp2ADDS, &registerOp2ADC, &registerOp2ADCS,
-                &registerOp2SBC, &registerOp2SBCS, &registerOp2RSC, &registerOp2RSCS,
-                &registerOp2TST, &registerOp2TST, &registerOp2TEQ, &registerOp2TEQ,
-                &registerOp2CMP, &registerOp2CMP, &registerOp2CMN, &registerOp2CMN,
-                &registerOp2ORR, &registerOp2ORRS, &registerOp2MOV, &registerOp2MOVS,
-                &registerOp2BIC, &registerOp2BICS, &registerOp2MVN, &registerOp2MVNS,
-                &immediateOp2AND, &immediateOp2ANDS, &immediateOp2EOR, &immediateOp2EORS,
-                &immediateOp2SUB, &immediateOp2SUBS, &immediateOp2RSB, &immediateOp2RSBS,
-                &immediateOp2ADD, &immediateOp2ADDS, &immediateOp2ADC, &immediateOp2ADCS,
-                &immediateOp2SBC, &immediateOp2SBCS, &immediateOp2RSC, &immediateOp2RSCS,
-                &immediateOp2TST, &immediateOp2TST, &immediateOp2TEQ, &immediateOp2TEQ,
-                &immediateOp2CMP, &immediateOp2CMP, &immediateOp2CMN, &immediateOp2CMN,
-                &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV, &immediateOp2MOVS,
-                &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN, &immediateOp2MVNS,
+                &registerOp2AND,  &registerOp2ANDS,  &registerOp2EOR,     &registerOp2EORS,
+                &registerOp2SUB,  &registerOp2SUBS,  &registerOp2RSB,     &registerOp2RSBS,
+                &registerOp2ADD,  &registerOp2ADDS,  &registerOp2ADC,     &registerOp2ADCS,
+                &registerOp2SBC,  &registerOp2SBCS,  &registerOp2RSC,     &registerOp2RSCS,
+                &cpsrRead,        &registerOp2TST,   &cpsrWriteRegister,  &registerOp2TEQ,
+                &spsrRead,        &registerOp2CMP,   &spsrWriteRegister,  &registerOp2CMN,
+                &registerOp2ORR,  &registerOp2ORRS,  &registerOp2MOV,     &registerOp2MOVS,
+                &registerOp2BIC,  &registerOp2BICS,  &registerOp2MVN,     &registerOp2MVNS,
+                &immediateOp2AND, &immediateOp2ANDS, &immediateOp2EOR,    &immediateOp2EORS,
+                &immediateOp2SUB, &immediateOp2SUBS, &immediateOp2RSB,    &immediateOp2RSBS,
+                &immediateOp2ADD, &immediateOp2ADDS, &immediateOp2ADC,    &immediateOp2ADCS,
+                &immediateOp2SBC, &immediateOp2SBCS, &immediateOp2RSC,    &immediateOp2RSCS,
+                &immediateOp2TST, &immediateOp2TST,  &cpsrWriteImmediate, &immediateOp2TEQ,
+                &immediateOp2CMP, &immediateOp2CMP,  &spsrWriteImmediate, &immediateOp2CMN,
+                &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV,    &immediateOp2MOVS,
+                &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN,    &immediateOp2MVNS,
             ];
         }
 
@@ -771,60 +771,81 @@ public class ARM7TDMI {
         private alias registerOp2MVNS = dataProcessingMVN!(decodeOp2Register, true);
 
         private void dataProcessing(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             int code = getBits(instruction, 20, 25);
             dataProcessingInstructions[code](instruction);
         }
 
-        private void psrTransfer(int instruction) {
+        private mixin template decodeOpPrsrImmediate() {
+            int op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
+        }
+
+        private mixin template decodeOpPrsrRegister() {
+            int op = getRegister(instruction & 0xF);
+        }
+
+        private int getPsrMask(int instruction) {
+            int mask = 0;
+            if (checkBit(instruction, 19)) {
+                // flags
+                mask |= 0xFF000000;
+            }
+            // status and extension can be ignored in ARMv4T
+            if (checkBit(instruction, 16)) {
+                // control
+                mask |= 0xFF;
+            }
+            return mask;
+        }
+
+        private void cpsrRead(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int psrSrc = getBit(instruction, 22);
-            int opCode = getBit(instruction, 21);
-            if (opCode) {
-                // MSR
-                debug (outputInstructions) logInstruction(instruction, "MSR");
-                int opSrc = getBit(instruction, 25);
-                int op;
-                if (opSrc) {
-                    // immediate
-                    op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
-                } else {
-                    // register
-                    op = getRegister(instruction & 0xF);
-                }
-                int mask = 0;
-                if (checkBit(instruction, 19)) {
-                    // flags
-                    mask |= 0xFF000000;
-                }
-                // status and extension can be ignored in ARMv4T
-                if (checkBit(instruction, 16)) {
-                    // control
-                    mask |= 0xFF;
-                }
-                if (psrSrc) {
-                    mask &= 0xF00000EF;
-                    int spsr = getRegister(Register.SPSR);
-                    setRegister(Register.SPSR, spsr & ~mask | op & mask);
-                } else {
-                    mask &= 0xF0000000 | (getMode() != Mode.USER ? 0xCF : 0);
-                    int cpsr = getRegister(Register.CPSR);
-                    setRegister(Register.CPSR, cpsr & ~mask | op & mask);
-                }
-            } else {
-                // MRS
-                debug (outputInstructions) logInstruction(instruction, "MRS");
-                int rd = getBits(instruction, 12, 15);
-                if (psrSrc) {
-                    setRegister(rd, getRegister(Register.SPSR));
-                } else {
-                    setRegister(rd, getRegister(Register.CPSR));
-                }
+            debug (outputInstructions) logInstruction(instruction, "MRS");
+            int rd = getBits(instruction, 12, 15);
+            setRegister(rd, getRegister(Register.CPSR));
+        }
+
+        private void cpsrWrite(alias decodeOperand)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
             }
+            debug (outputInstructions) logInstruction(instruction, "MSR");
+            mixin decodeOperand;
+            int mask = getPsrMask(instruction) & (0xF0000000 | (getMode() != Mode.USER ? 0xCF : 0));
+            int cpsr = getRegister(Register.CPSR);
+            setRegister(Register.CPSR, cpsr & ~mask | op & mask);
+        }
+
+        private alias cpsrWriteImmediate = cpsrWrite!decodeOpPrsrImmediate;
+        private alias cpsrWriteRegister = cpsrWrite!decodeOpPrsrRegister;
+
+        private void spsrRead(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "MRS");
+            int rd = getBits(instruction, 12, 15);
+            setRegister(rd, getRegister(Register.SPSR));
+        }
+
+        private void spsrWrite(alias decodeOperand)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "MSR");
+            mixin decodeOperand;
+            int mask = getPsrMask(instruction) & 0xF00000EF;
+            int spsr = getRegister(Register.SPSR);
+            setRegister(Register.SPSR, spsr & ~mask | op & mask);
+        }
+
+        private alias spsrWriteImmediate = spsrWrite!decodeOpPrsrImmediate;
+        private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
+
+        private void psrTransfer(int instruction) {
+            int code = getBits(instruction, 20, 25);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void multiplyAndMultiplyAccumulate(int instruction) {
