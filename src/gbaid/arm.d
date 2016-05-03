@@ -323,6 +323,16 @@ public class ARM7TDMI {
             setRegister(Register.PC, pc + offset * 4);
         }
 
+        private void setDataProcessingFlags(int rd, int res, int overflow, int carry) {
+            int zero = res == 0;
+            int negative = res < 0;
+            if (rd == Register.PC) {
+                setRegister(Register.CPSR, getRegister(Register.SPSR));
+            } else {
+                setAPSRFlags(negative, zero, carry, overflow);
+            }
+        }
+
         private mixin template decodeOp2Immediate() {
             // Decode
             int rn = getBits(instruction, 16, 19);
@@ -359,13 +369,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -386,13 +390,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -414,13 +412,7 @@ public class ARM7TDMI {
             if (setFlags) {
                 int overflow = overflowedSub(op1, op2, res);
                 carry = !borrowedSub(op1, op2, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -442,13 +434,7 @@ public class ARM7TDMI {
             if (setFlags) {
                 int overflow = overflowedSub(op2, op1, res);
                 carry = !borrowedSub(op2, op1, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -470,13 +456,7 @@ public class ARM7TDMI {
             if (setFlags) {
                 int overflow = overflowedAdd(op1, op2, res);
                 carry = carriedAdd(op1, op2, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -499,13 +479,7 @@ public class ARM7TDMI {
             if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
                 carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -528,13 +502,7 @@ public class ARM7TDMI {
             if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
                 carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -557,13 +525,7 @@ public class ARM7TDMI {
             if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
                 carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -582,13 +544,7 @@ public class ARM7TDMI {
             int res = op1 & op2;
             // Flag updates
             int overflow = getFlag(CPSRFlag.V);
-            int zero = res == 0;
-            int negative = res < 0;
-            if (rd == Register.PC) {
-                setRegister(Register.CPSR, getRegister(Register.SPSR));
-            } else {
-                setAPSRFlags(negative, zero, carry, overflow);
-            }
+            setDataProcessingFlags(rd, res, overflow, carry);
         }
 
         private alias immediateOp2TST = dataProcessingTST!decodeOp2Immediate;
@@ -604,13 +560,7 @@ public class ARM7TDMI {
             int res = op1 ^ op2;
             // Flag updates
             int overflow = getFlag(CPSRFlag.V);
-            int zero = res == 0;
-            int negative = res < 0;
-            if (rd == Register.PC) {
-                setRegister(Register.CPSR, getRegister(Register.SPSR));
-            } else {
-                setAPSRFlags(negative, zero, carry, overflow);
-            }
+            setDataProcessingFlags(rd, res, overflow, carry);
         }
 
         private alias immediateOp2TEQ = dataProcessingTEQ!decodeOp2Immediate;
@@ -627,13 +577,7 @@ public class ARM7TDMI {
             // Flag updates
             int overflow = overflowedSub(op1, op2, res);
             carry = !borrowedSub(op1, op2, res);
-            int zero = res == 0;
-            int negative = res < 0;
-            if (rd == Register.PC) {
-                setRegister(Register.CPSR, getRegister(Register.SPSR));
-            } else {
-                setAPSRFlags(negative, zero, carry, overflow);
-            }
+            setDataProcessingFlags(rd, res, overflow, carry);
         }
 
         private alias immediateOp2CMP = dataProcessingCMP!decodeOp2Immediate;
@@ -650,13 +594,7 @@ public class ARM7TDMI {
             // Flag updates
             int overflow = overflowedAdd(op1, op2, res);
             carry = carriedAdd(op1, op2, res);
-            int zero = res == 0;
-            int negative = res < 0;
-            if (rd == Register.PC) {
-                setRegister(Register.CPSR, getRegister(Register.SPSR));
-            } else {
-                setAPSRFlags(negative, zero, carry, overflow);
-            }
+            setDataProcessingFlags(rd, res, overflow, carry);
         }
 
         private alias immediateOp2CMN = dataProcessingCMN!decodeOp2Immediate;
@@ -674,13 +612,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -701,13 +633,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -728,13 +654,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
@@ -755,13 +675,7 @@ public class ARM7TDMI {
             // Flag updates
             if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
-                int zero = res == 0;
-                int negative = res < 0;
-                if (rd == Register.PC) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    setAPSRFlags(negative, zero, carry, overflow);
-                }
+                setDataProcessingFlags(rd, res, overflow, carry);
             }
         }
 
