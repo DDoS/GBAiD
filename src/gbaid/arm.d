@@ -190,10 +190,11 @@ public class ARM7TDMI {
 
     private class ARMPipeline : Pipeline {
         private void delegate(int)[] dataProcessingInstructions;
+        private void delegate(int)[] multiplyInstructions;
 
         private this() {
-            // Bits are I,OpCode,S
-            // where I is the immediate enable and S the set flags enable
+            // Bits are I(1),OpCode(4),S(1)
+            // where I is the immediate flag and S the set flags flag
             dataProcessingInstructions = [
                 &registerOp2AND,  &registerOp2ANDS,  &registerOp2EOR,     &registerOp2EORS,
                 &registerOp2SUB,  &registerOp2SUBS,  &registerOp2RSB,     &registerOp2RSBS,
@@ -211,6 +212,14 @@ public class ARM7TDMI {
                 &immediateOp2CMP, &immediateOp2CMP,  &spsrWriteImmediate, &immediateOp2CMN,
                 &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV,    &immediateOp2MOVS,
                 &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN,    &immediateOp2MVNS,
+            ];
+            // Bits are L(1),~U(1),A(1),S(1)
+            // where L is the long flag, U is the unsigned flag, A is the accumulate flag and S is the set flags flag
+            multiplyInstructions = [
+                &multiplyMUL,   &multiplyMULS,   &multiplyMLA,   &multiplyMLAS,
+                &unsupported,   &unsupported,    &unsupported,   &unsupported,
+                &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
+                &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
             ];
         }
 
@@ -762,84 +771,117 @@ public class ARM7TDMI {
             dataProcessingInstructions[code](instruction);
         }
 
-        private void multiplyAndMultiplyAccumulate(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
+        private void setMultiplyIntResult(bool setFlags)(int rd, int res) {
+            setRegister(rd, res);
+            if (setFlags) {
+                setAPSRFlags(res < 0, res == 0);
             }
-            int opCode = getBits(instruction, 21, 24);
-            int setFlags = getBit(instruction, 20);
+        }
+
+        private void setMultiplyLongResult(bool setFlags)(int rd, int rn, long res) {
+            int resLo = cast(int) res;
+            int resHi = cast(int) (res >> 32);
+            setRegister(rn, resLo);
+            setRegister(rd, resHi);
+            if (setFlags) {
+                setAPSRFlags(res < 0, res == 0);
+            }
+        }
+
+        private mixin template decodeOpMultiply() {
             int rd = getBits(instruction, 16, 19);
             int op2 = getRegister(getBits(instruction, 8, 11));
             int op1 = getRegister(instruction & 0xF);
-            final switch (opCode) {
-                case 0:
-                    debug (outputInstructions) logInstruction(instruction, "MUL");
-                    int res = op1 * op2;
-                    setRegister(rd, res);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
-                case 1:
-                    debug (outputInstructions) logInstruction(instruction, "MLA");
-                    int op3 = getRegister(getBits(instruction, 12, 15));
-                    int res = op1 * op2 + op3;
-                    setRegister(rd, res);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
-                case 4:
-                    debug (outputInstructions) logInstruction(instruction, "UMULL");
-                    int rn = getBits(instruction, 12, 15);
-                    ulong res = ucast(op1) * ucast(op2);
-                    int resLo = cast(int) res;
-                    int resHi = cast(int) (res >> 32);
-                    setRegister(rn, resLo);
-                    setRegister(rd, resHi);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
-                case 5:
-                    debug (outputInstructions) logInstruction(instruction, "UMLAL");
-                    int rn = getBits(instruction, 12, 15);
-                    ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
-                    ulong res = ucast(op1) * ucast(op2) + op3;
-                    int resLo = cast(int) res;
-                    int resHi = cast(int) (res >> 32);
-                    setRegister(rn, resLo);
-                    setRegister(rd, resHi);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
-                case 6:
-                    debug (outputInstructions) logInstruction(instruction, "SMULL");
-                    int rn = getBits(instruction, 12, 15);
-                    long res = cast(long) op1 * cast(long) op2;
-                    int resLo = cast(int) res;
-                    int resHi = cast(int) (res >> 32);
-                    setRegister(rn, resLo);
-                    setRegister(rd, resHi);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
-                case 7:
-                    debug (outputInstructions) logInstruction(instruction, "SMLAL");
-                    int rn = getBits(instruction, 12, 15);
-                    long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
-                    long res = cast(long) op1 * cast(long) op2 + op3;
-                    int resLo = cast(int) res;
-                    int resHi = cast(int) (res >> 32);
-                    setRegister(rn, resLo);
-                    setRegister(rd, resHi);
-                    if (setFlags) {
-                        setAPSRFlags(res < 0, res == 0);
-                    }
-                    break;
+        }
+
+        private void multiplyInt(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
             }
+            debug (outputInstructions) logInstruction(instruction, "MUL");
+            mixin decodeOpMultiply;
+            int res = op1 * op2;
+            setMultiplyIntResult!setFlags(rd, res);
+        }
+
+        private alias multiplyMUL = multiplyInt!(false);
+        private alias multiplyMULS = multiplyInt!(true);
+
+        private void multiplyAccumulateInt(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "MLA");
+            mixin decodeOpMultiply;
+            int op3 = getRegister(getBits(instruction, 12, 15));
+            int res = op1 * op2 + op3;
+            setMultiplyIntResult!setFlags(rd, res);
+        }
+
+        private alias multiplyMLA = multiplyAccumulateInt!(false);
+        private alias multiplyMLAS = multiplyAccumulateInt!(true);
+
+        private void multiplyLongUnsigned(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "UMULL");
+            mixin decodeOpMultiply;
+            int rn = getBits(instruction, 12, 15);
+            ulong res = ucast(op1) * ucast(op2);
+            setMultiplyLongResult!setFlags(rd, rn, res);
+        }
+
+        private alias multiplyUMULL = multiplyLongUnsigned!(false);
+        private alias multiplyUMULLS = multiplyLongUnsigned!(true);
+
+        private void multiplyAccumulateLongUnsigned(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "UMLAL");
+            mixin decodeOpMultiply;
+            int rn = getBits(instruction, 12, 15);
+            ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
+            ulong res = ucast(op1) * ucast(op2) + op3;
+            setMultiplyLongResult!setFlags(rd, rn, res);
+        }
+
+        private alias multiplyUMLAL = multiplyAccumulateLongUnsigned!(false);
+        private alias multiplyUMLALS = multiplyAccumulateLongUnsigned!(true);
+
+        private void multiplyLongSigned(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "SMULL");
+            mixin decodeOpMultiply;
+            int rn = getBits(instruction, 12, 15);
+            long res = cast(long) op1 * cast(long) op2;
+            setMultiplyLongResult!setFlags(rd, rn, res);
+        }
+
+        private alias multiplySMULL = multiplyLongSigned!(false);
+        private alias multiplySMULLS = multiplyLongSigned!(true);
+
+        private void multiplyAccumulateLongSigned(bool setFlags)(int instruction) {
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
+            }
+            debug (outputInstructions) logInstruction(instruction, "SMLAL");
+            mixin decodeOpMultiply;
+            int rn = getBits(instruction, 12, 15);
+            long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
+            long res = cast(long) op1 * cast(long) op2 + op3;
+            setMultiplyLongResult!setFlags(rd, rn, res);
+        }
+
+        private alias multiplySMLAL = multiplyAccumulateLongSigned!(false);
+        private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
+
+        private void multiplyAndMultiplyAccumulate(int instruction) {
+            int code = getBits(instruction, 20, 23);
+            multiplyInstructions[code](instruction);
         }
 
         private void singleDataTransfer(int instruction) {
