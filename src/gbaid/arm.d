@@ -191,6 +191,7 @@ public class ARM7TDMI {
     private class ARMPipeline : Pipeline {
         private void delegate(int)[] dataProcessingInstructions;
         private void delegate(int)[] multiplyInstructions;
+        private void delegate(int)[] singleDataTransferInstructions;
 
         private this() {
             // Bits are I(1),OpCode(4),S(1)
@@ -208,8 +209,8 @@ public class ARM7TDMI {
                 &immediateOp2SUB, &immediateOp2SUBS, &immediateOp2RSB,    &immediateOp2RSBS,
                 &immediateOp2ADD, &immediateOp2ADDS, &immediateOp2ADC,    &immediateOp2ADCS,
                 &immediateOp2SBC, &immediateOp2SBCS, &immediateOp2RSC,    &immediateOp2RSCS,
-                &immediateOp2TST, &immediateOp2TST,  &cpsrWriteImmediate, &immediateOp2TEQ,
-                &immediateOp2CMP, &immediateOp2CMP,  &spsrWriteImmediate, &immediateOp2CMN,
+                &unsupported,     &immediateOp2TST,  &cpsrWriteImmediate, &immediateOp2TEQ,
+                &unsupported,     &immediateOp2CMP,  &spsrWriteImmediate, &immediateOp2CMN,
                 &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV,    &immediateOp2MOVS,
                 &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN,    &immediateOp2MVNS,
             ];
@@ -221,6 +222,23 @@ public class ARM7TDMI {
                 &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
                 &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
             ];
+
+            // Bits are I(1),P(1),U(1),B(1),W(1),L(1)
+            // where I is not immediate, P is pre-increment, U is up-increment, B is byte quantity, W is write back
+            // and L is load
+            string genSingleDataTransferInstructionTable() {
+                auto s = "[";
+                foreach (i; 0 .. 64) {
+                    if (i % 4 == 0) {
+                        s ~= "\n";
+                    }
+                    s ~= "&singleDataTransfer!(" ~ i.to!string ~ "),";
+                }
+                s ~= "\n]";
+                return s;
+            }
+
+            mixin("singleDataTransferInstructions = " ~ genSingleDataTransferInstructionTable() ~ ";");
         }
 
         protected Set getSet() {
@@ -558,6 +576,7 @@ public class ARM7TDMI {
 
         private alias immediateOp2TST = dataProcessingTST!decodeOp2Immediate;
         private alias registerOp2TST = dataProcessingTST!decodeOp2Register;
+        // TODO: what does the P varient do?
 
         private void dataProcessingTEQ(alias decodeOperands)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -884,66 +903,89 @@ public class ARM7TDMI {
             multiplyInstructions[code](instruction);
         }
 
-        private void singleDataTransfer(int instruction) {
+        private mixin template decodeOpSingleDataTransferImmediate() {
+            int rn = getBits(instruction, 16, 19);
+            int rd = getBits(instruction, 12, 15);
+            int offset = instruction & 0xFFF;
+            int address = getRegister(rn);
+        }
+
+        private mixin template decodeOpSingleDataTransferRegister() {
+            int rn = getBits(instruction, 16, 19);
+            int rd = getBits(instruction, 12, 15);
+            int shift = getBits(instruction, 7, 11);
+            int shiftType = getBits(instruction, 5, 6);
+            int carry;
+            int offset = applyShift(shiftType, shift, false, getRegister(instruction & 0b1111), carry);
+            int address = getRegister(rn);
+        }
+
+        private template singleDataTransfer(byte flags) if (!flags.checkBit(5)) {
+            private void singleDataTransfer(int instruction) {
+                singleDataTransfer!(decodeOpSingleDataTransferImmediate, flags)(instruction);
+            }
+        }
+
+        private template singleDataTransfer(byte flags) if (flags.checkBit(5)) {
+            private void singleDataTransfer(int instruction) {
+                singleDataTransfer!(decodeOpSingleDataTransferRegister, flags)(instruction);
+            }
+        }
+
+        private void singleDataTransfer(alias decodeOperands, byte flags)(int instruction) {
+            singleDataTransfer!(decodeOperands, flags.checkBit(4), flags.checkBit(3),
+                    flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(instruction);
+        }
+
+        private void singleDataTransfer(alias decodeOperands, bool preIncr, bool upIncr, bool byteQty,
+                    bool writeBack, bool load)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int offsetSrc = getBit(instruction, 25);
-            int preIncr = getBit(instruction, 24);
-            int upIncr = getBit(instruction, 23);
-            int byteQuantity = getBit(instruction, 22);
-            int load = getBit(instruction, 20);
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int offset;
-            if (offsetSrc) {
-                // register
-                int shift = getBits(instruction, 7, 11);
-                int shiftType = getBits(instruction, 5, 6);
-                int carry;
-                offset = applyShift(shiftType, shift, false, getRegister(instruction & 0xF), carry);
-            } else {
-                // immediate
-                offset = instruction & 0xFFF;
-            }
-            int address = getRegister(rn);
-            if (preIncr) {
-                if (upIncr) {
+            // TODO: what does NoPrivilege do?
+            debug (outputInstructions) logInstruction(instruction, (load ? "LDR" : "STR") ~ (byteQty ? "B" : ""));
+            mixin decodeOperands;
+            // Do pre-increment if needed
+            static if (preIncr) {
+                static if (upIncr) {
                     address += offset;
                 } else {
                     address -= offset;
                 }
             }
-            if (load) {
-                if (byteQuantity) {
-                    debug (outputInstructions) logInstruction(instruction, "LDRB");
+            // Read or write memory
+            static if (load) {
+                static if (byteQty) {
                     setRegister(rd, memory.getByte(address) & 0xFF);
                 } else {
-                    debug (outputInstructions) logInstruction(instruction, "LDR");
                     setRegister(rd, rotateRead(address, memory.getInt(address)));
                 }
             } else {
-                if (byteQuantity) {
-                    debug (outputInstructions) logInstruction(instruction, "STRB");
+                static if (byteQty) {
                     memory.setByte(address, cast(byte) getRegister(rd));
                 } else {
-                    debug (outputInstructions) logInstruction(instruction, "STR");
                     memory.setInt(address, getRegister(rd));
                 }
             }
-            if (preIncr) {
-                int writeBack = getBit(instruction, 21);
-                if (writeBack) {
+            // Do post-increment and write back if needed
+            static if (preIncr) {
+                static if (writeBack) {
                     setRegister(rn, address);
                 }
             } else {
-                if (upIncr) {
+                static if (upIncr) {
                     address += offset;
                 } else {
                     address -= offset;
                 }
+                // Alway do write back in post increment
                 setRegister(rn, address);
             }
+        }
+
+        private void singleDataTransfer(int instruction) {
+            int code = getBits(instruction, 20, 25);
+            singleDataTransferInstructions[code](instruction);
         }
 
         private void halfwordAndSignedDataTransfer(int instruction) {
