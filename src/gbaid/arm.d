@@ -394,7 +394,7 @@ public class ARM7TDMI {
             int res = op1 & op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -415,7 +415,7 @@ public class ARM7TDMI {
             int res = op1 ^ op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -436,7 +436,7 @@ public class ARM7TDMI {
             int res = op1 - op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = overflowedSub(op1, op2, res);
                 carry = !borrowedSub(op1, op2, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -458,7 +458,7 @@ public class ARM7TDMI {
             int res = op2 - op1;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = overflowedSub(op2, op1, res);
                 carry = !borrowedSub(op2, op1, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -480,7 +480,7 @@ public class ARM7TDMI {
             int res = op1 + op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = overflowedAdd(op1, op2, res);
                 carry = carriedAdd(op1, op2, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -503,7 +503,7 @@ public class ARM7TDMI {
             int res = tmp + carry;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) { // TODO: check if this is correct
+            static if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
                 carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -526,7 +526,7 @@ public class ARM7TDMI {
             int res = tmp - !carry; // TODO: check if this is correct
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) { // TODO: check if this is correct
+            static if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
                 carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -549,7 +549,7 @@ public class ARM7TDMI {
             int res = tmp - !carry; // TODO: check if this is correct
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) { // TODO: check if this is correct
+            static if (setFlags) { // TODO: check if this is correct
                 int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
                 carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
                 setDataProcessingFlags(rd, res, overflow, carry);
@@ -638,7 +638,7 @@ public class ARM7TDMI {
             int res = op1 | op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -659,7 +659,7 @@ public class ARM7TDMI {
             int res = op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -680,7 +680,7 @@ public class ARM7TDMI {
             int res = op1 & ~op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -701,7 +701,7 @@ public class ARM7TDMI {
             int res = ~op2;
             setRegister(rd, res);
             // Flag updates
-            if (setFlags) {
+            static if (setFlags) {
                 int overflow = getFlag(CPSRFlag.V);
                 setDataProcessingFlags(rd, res, overflow, carry);
             }
@@ -792,7 +792,7 @@ public class ARM7TDMI {
 
         private void setMultiplyIntResult(bool setFlags)(int rd, int res) {
             setRegister(rd, res);
-            if (setFlags) {
+            static if (setFlags) {
                 setAPSRFlags(res < 0, res == 0);
             }
         }
@@ -802,7 +802,7 @@ public class ARM7TDMI {
             int resHi = cast(int) (res >> 32);
             setRegister(rn, resLo);
             setRegister(rd, resHi);
-            if (setFlags) {
+            static if (setFlags) {
                 setAPSRFlags(res < 0, res == 0);
             }
         }
