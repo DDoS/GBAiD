@@ -928,46 +928,28 @@ public class ARM7TDMI {
             multiplyInstructions[code](instruction);
         }
 
-        private mixin template decodeOpSingleDataTransferImmediate() {
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int offset = instruction & 0xFFF;
-        }
-
-        private mixin template decodeOpSingleDataTransferRegister() {
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int shift = getBits(instruction, 7, 11);
-            int shiftType = getBits(instruction, 5, 6);
-            int carry;
-            int offset = applyShift(shiftType, shift, false, getRegister(instruction & 0b1111), carry);
-        }
-
-        private template singleDataTransfer(byte flags) if (!flags.checkBit(5)) {
-            private void singleDataTransfer(int instruction) {
-                singleDataTransfer!(decodeOpSingleDataTransferImmediate, flags)(instruction);
-            }
-        }
-
-        private template singleDataTransfer(byte flags) if (flags.checkBit(5)) {
-            private void singleDataTransfer(int instruction) {
-                singleDataTransfer!(decodeOpSingleDataTransferRegister, flags)(instruction);
-            }
-        }
-
-        private void singleDataTransfer(alias decodeOperands, byte flags)(int instruction) {
-            singleDataTransfer!(decodeOperands, flags.checkBit(4), flags.checkBit(3),
+        private void singleDataTransfer(byte flags)(int instruction) {
+            singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
                     flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(instruction);
         }
 
-        private void singleDataTransfer(alias decodeOperands, bool preIncr, bool upIncr, bool byteQty,
+        private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
                     bool writeBack, bool load)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
             // TODO: what does NoPrivilege do?
-            debug (outputInstructions) logInstruction(instruction, (load ? "LDR" : "STR") ~ (byteQty ? "B" : ""));
-            mixin decodeOperands;
+            // Decode operands
+            int rn = getBits(instruction, 16, 19);
+            int rd = getBits(instruction, 12, 15);
+            static if (notImmediate) {
+                int shift = getBits(instruction, 7, 11);
+                int shiftType = getBits(instruction, 5, 6);
+                int carry;
+                int offset = applyShift(shiftType, shift, false, getRegister(instruction & 0b1111), carry);
+            } else {
+                int offset = instruction & 0xFFF;
+            }
             int address = getRegister(rn);
             // Do pre-increment if needed
             static if (preIncr) {
@@ -980,14 +962,18 @@ public class ARM7TDMI {
             // Read or write memory
             static if (load) {
                 static if (byteQty) {
+                    debug (outputInstructions) logInstruction(instruction, "LDRB");
                     setRegister(rd, memory.getByte(address) & 0xFF);
                 } else {
+                    debug (outputInstructions) logInstruction(instruction, "LDR");
                     setRegister(rd, rotateRead(address, memory.getInt(address)));
                 }
             } else {
                 static if (byteQty) {
+                    debug (outputInstructions) logInstruction(instruction, "STRB");
                     memory.setByte(address, cast(byte) getRegister(rd));
                 } else {
+                    debug (outputInstructions) logInstruction(instruction, "STR");
                     memory.setInt(address, getRegister(rd));
                 }
             }
