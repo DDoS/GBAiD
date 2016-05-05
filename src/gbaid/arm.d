@@ -193,6 +193,7 @@ public class ARM7TDMI {
         private void delegate(int)[] multiplyInstructions;
         private void delegate(int)[] singleDataTransferInstructions;
         private void delegate(int)[] halfwordAndSignedDataTransferInstructions;
+        private void delegate(int)[] blockDataTransferInstructions;
 
         private this() {
             // Bits are I(1),OpCode(4),S(1)
@@ -224,22 +225,22 @@ public class ARM7TDMI {
                 &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
             ];
 
-            // Bits are I(1),P(1),U(1),B(1),W(1),L(1)
-            // where I is not immediate, P is pre-increment, U is up-increment, B is byte quantity, W is write back
-            // and L is load
-            string genSingleDataTransferInstructionTable() {
+            string genInstructionTemplateTable(string instruction, int bitCount) {
                 auto s = "[";
-                foreach (i; 0 .. 64) {
+                foreach (i; 0 .. 1 << bitCount) {
                     if (i % 4 == 0) {
                         s ~= "\n";
                     }
-                    s ~= "&singleDataTransfer!(" ~ i.to!string ~ "),";
+                    s ~= "&" ~ instruction ~ "!(" ~ i.to!string ~ "),";
                 }
                 s ~= "\n]";
                 return s;
             }
 
-            mixin("singleDataTransferInstructions = " ~ genSingleDataTransferInstructionTable() ~ ";");
+            // Bits are I(1),P(1),U(1),B(1),W(1),L(1)
+            // where I is not immediate, P is pre-increment, U is up-increment, B is byte quantity, W is write back
+            // and L is load
+            mixin ("singleDataTransferInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 6) ~ ";");
 
             // Bits are P(1),U(1),I(1),W(1),L(1),OpCode(2)
             // where P is pre-increment, U is up-increment, I is immediate, W is write back and L is load
@@ -263,7 +264,11 @@ public class ARM7TDMI {
                 return s;
             }
 
-            mixin("halfwordAndSignedDataTransferInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable() ~ ";");
+            mixin ("halfwordAndSignedDataTransferInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable() ~ ";");
+
+            // Bits are P(1),U(1),S(1),W(1),L(1)
+            // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
+            mixin ("blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
         }
 
         protected Set getSet() {
@@ -1073,78 +1078,74 @@ public class ARM7TDMI {
             halfwordAndSignedDataTransferInstructions[code](instruction);
         }
 
-        private void blockDataTransfer(int instruction) {
+        private static string genBlockDataTransferOperation(bool preIncr, bool load) {
+            auto memoryOp = load ? "setRegister(mode, i, memory.getInt(address));\n" :
+                    "memory.setInt(address, getRegister(mode, i));\n";
+            string incr = "address += 4;\n";
+            auto singleOp = preIncr ? incr ~ memoryOp : memoryOp ~ incr;
+            return
+                `foreach (i; 0 .. 16) {
+                    if (checkBit(registerList, i)) {
+                        ` ~ singleOp ~ `
+                    }
+                }`;
+        }
+
+        private void blockDataTransfer(byte flags)(int instruction) {
+            blockDataTransfer!(flags.checkBit(4), flags.checkBit(3), flags.checkBit(2),
+                    flags.checkBit(1), flags.checkBit(0))(instruction);
+        }
+
+        private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
+                    bool writeBack, bool load)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int preIncr = getBit(instruction, 24);
-            int upIncr = getBit(instruction, 23);
-            int loadPSR = getBit(instruction, 22);
-            int writeBack = getBit(instruction, 21);
-            int load = getBit(instruction, 20);
-            int rn = getBits(instruction, 16, 19);
-            int registerList = instruction & 0xFFFF;
-            int address = getRegister(rn);
-            if (load) {
+            static if (load) {
                 debug (outputInstructions) logInstruction(instruction, "LDM");
             } else {
                 debug (outputInstructions) logInstruction(instruction, "STM");
             }
-            Mode mode = this.outer.mode;
-            if (loadPSR) {
-                if (load && checkBit(registerList, 15)) {
-                    setRegister(Register.CPSR, getRegister(Register.SPSR));
-                } else {
-                    mode = Mode.USER;
-                }
-            }
-            if (upIncr) {
-                foreach (i; 0 .. 16) {
-                    if (checkBit(registerList, i)) {
-                        if (preIncr) {
-                            address += 4;
-                            if (load) {
-                                setRegister(mode, i, memory.getInt(address));
-                            } else {
-                                memory.setInt(address, getRegister(mode, i));
-                            }
-                        } else {
-                            if (load) {
-                                setRegister(mode, i, memory.getInt(address));
-                            } else {
-                                memory.setInt(address, getRegister(mode, i));
-                            }
-                            address += 4;
-                        }
+            // Decode operands
+            int rn = getBits(instruction, 16, 19);
+            int registerList = instruction & 0xFFFF;
+            // Force user mode or restore PSR flag
+            static if (loadPSR) {
+                Mode mode = Mode.USER;
+                static if (load) {
+                    if (checkBit(registerList, 15)) {
+                        setRegister(Register.CPSR, getRegister(Register.SPSR));
+                        mode = this.outer.mode;
                     }
                 }
             } else {
-                int size = 4 * bitCount(registerList);
-                address -= size;
-                int currentAddress = address;
-                foreach (i; 0 .. 16) {
-                    if (checkBit(registerList, i)) {
-                        if (preIncr) {
-                            if (load) {
-                                setRegister(mode, i, memory.getInt(currentAddress));
-                            } else {
-                                memory.setInt(currentAddress, getRegister(mode, i));
-                            }
-                            currentAddress += 4;
-                        } else {
-                            currentAddress += 4;
-                            if (load) {
-                                setRegister(mode, i, memory.getInt(currentAddress));
-                            } else {
-                                memory.setInt(currentAddress, getRegister(mode, i));
-                            }
-                        }
-                    }
-                }
+                Mode mode = this.outer.mode;
             }
-            if (writeBack) {
+            // Memory transfer
+            int baseAddress = getRegister(rn);
+            int address;
+            static if (upIncr) {
+                address = baseAddress;
+                mixin (genBlockDataTransferOperation(preIncr, load));
+            } else {
+                baseAddress -= 4 * bitCount(registerList);
+                address = baseAddress;
+                // Load order is always in increasing memory order, even when
+                // using down-increment. This means we use bit counting to find
+                // the final address and use up-increments instead. This
+                // does reverse the pre-increment behaviour though
+                mixin (genBlockDataTransferOperation(!preIncr, load));
+                // The address to write back is the corrected base
+                address = baseAddress;
+            }
+            static if (writeBack) {
                 setRegister(mode, rn, address);
             }
+        }
+
+        private void blockDataTransfer(int instruction) {
+            int code = getBits(instruction, 20, 24);
+            blockDataTransferInstructions[code](instruction);
         }
 
         private void singleDataSwap(int instruction) {
