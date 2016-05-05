@@ -242,15 +242,16 @@ public class ARM7TDMI {
             // and L is load
             mixin ("singleDataTransferInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 6) ~ ";");
 
-            // Bits are P(1),U(1),I(1),W(1),L(1),OpCode(2)
-            // where P is pre-increment, U is up-increment, I is immediate, W is write back and L is load
+            // Bits are P(1),U(1),I(1),W(1),L(1),S(1),H(1)
+            // where P is pre-increment, U is up-increment, I is immediate, W is write back and L is load,
+            // S is signed and H is halfword
             string getHalfwordAndSignedDataTransferInstructionTable() {
                 auto s = "[";
                 foreach (i; 0 .. 128) {
                     if (i % 4 == 0) {
                         s ~= "\n";
                     }
-                    // If L, then there is no opCode for 0; otherwise only opCode for 1 exists
+                    // If L, then there is no opCode for ~S and ~H; otherwise only opCode for ~S and H exists
                     if (i.checkBit(2) ? i.getBits(0, 1) == 0 : i.getBits(0, 1) != 1) {
                         s ~= "&unsupported, ";
                     } else if (!i.checkBit(6) && i.checkBit(3)) {
@@ -265,6 +266,9 @@ public class ARM7TDMI {
             }
 
             mixin ("halfwordAndSignedDataTransferInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable() ~ ";");
+            // Swap instructions also go in the halfwordAndSignedDataTransferInstructions table
+            halfwordAndSignedDataTransferInstructions[0b1000000] = &singleDataSwap!(false);
+            halfwordAndSignedDataTransferInstructions[0b1010000] = &singleDataSwap!(true);
 
             // Bits are P(1),U(1),S(1),W(1),L(1)
             // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
@@ -976,7 +980,7 @@ public class ARM7TDMI {
             } else {
                 static if (byteQty) {
                     debug (outputInstructions) logInstruction(instruction, "STRB");
-                    memory.setByte(address, cast(byte) getRegister(rd));
+                    memory.setByte(address, cast(byte) getRegister(rd)); // TODO: check if this is correct
                 } else {
                     debug (outputInstructions) logInstruction(instruction, "STR");
                     memory.setInt(address, getRegister(rd));
@@ -1005,11 +1009,11 @@ public class ARM7TDMI {
 
         private void halfwordAndSignedDataTransfer(byte flags)(int instruction) {
             halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
-                    flags.checkBit(3), flags.checkBit(2), flags.getBits(0, 1))(instruction);
+                    flags.checkBit(3), flags.checkBit(2), flags.getBit(1), flags.getBit(0))(instruction);
         }
 
         private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
-                    bool writeBack, bool load, byte opCode)(int instruction) {
+                    bool writeBack, bool load, bool signed, bool half)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
@@ -1034,20 +1038,24 @@ public class ARM7TDMI {
             }
             // Read or write memory
             static if (load) {
-                static if (opCode == 1) {
-                    debug (outputInstructions) logInstruction(instruction, "LDRH");
-                    setRegister(rd, rotateRead(address, memory.getShort(address)));
-                } else static if (opCode == 2) {
-                    debug (outputInstructions) logInstruction(instruction, "LDRSB");
-                    setRegister(rd, memory.getByte(address));
-                } else static if (opCode == 3) {
-                    debug (outputInstructions) logInstruction(instruction, "LDRSH");
-                    setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
+                static if (half) {
+                    static if (signed) {
+                        debug (outputInstructions) logInstruction(instruction, "LDRSH");
+                        setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
+                    } else {
+                        debug (outputInstructions) logInstruction(instruction, "LDRH");
+                        setRegister(rd, rotateRead(address, memory.getShort(address)));
+                    }
                 } else {
-                    static assert (0);
+                    static if (signed) {
+                        debug (outputInstructions) logInstruction(instruction, "LDRSB");
+                        setRegister(rd, memory.getByte(address));
+                    } else {
+                        static assert (0);
+                    }
                 }
             } else {
-                static if (opCode == 1) {
+                static if (half && !signed) {
                     debug (outputInstructions) logInstruction(instruction, "STRH");
                     memory.setShort(address, cast(short) getRegister(rd));
                 } else {
@@ -1148,17 +1156,18 @@ public class ARM7TDMI {
             blockDataTransferInstructions[code](instruction);
         }
 
-        private void singleDataSwap(int instruction) {
+        private void singleDataSwap(bool byteQty)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int byteQuantity = getBit(instruction, 22);
+            debug (outputInstructions) logInstruction(instruction, "SWP");
+            // Decode operands
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
             int rm = instruction & 0xF;
             int address = getRegister(rn);
-            debug (outputInstructions) logInstruction(instruction, "SWP");
-            if (byteQuantity) {
+            // Do memory swap
+            static if (byteQty) {
                 int b = memory.getByte(address) & 0xFF;
                 memory.setByte(address, cast(byte) getRegister(rm));
                 setRegister(rd, b);
@@ -1167,6 +1176,11 @@ public class ARM7TDMI {
                 memory.setInt(address, getRegister(rm));
                 setRegister(rd, w);
             }
+        }
+
+        private void singleDataSwap(int instruction) {
+            int code = getBits(instruction, 20, 24) << 2 | getBits(instruction, 5, 6);
+            halfwordAndSignedDataTransferInstructions[code](instruction);
         }
 
         private void softwareInterrupt(int instruction) {
