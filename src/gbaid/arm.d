@@ -192,6 +192,7 @@ public class ARM7TDMI {
         private void delegate(int)[] dataProcessingInstructions;
         private void delegate(int)[] multiplyInstructions;
         private void delegate(int)[] singleDataTransferInstructions;
+        private void delegate(int)[] halfwordAndSignedDataTransferInstructions;
 
         private this() {
             // Bits are I(1),OpCode(4),S(1)
@@ -239,6 +240,30 @@ public class ARM7TDMI {
             }
 
             mixin("singleDataTransferInstructions = " ~ genSingleDataTransferInstructionTable() ~ ";");
+
+            // Bits are P(1),U(1),I(1),W(1),L(1),OpCode(2)
+            // where P is pre-increment, U is up-increment, I is immediate, W is write back and L is load
+            string getHalfwordAndSignedDataTransferInstructionTable() {
+                auto s = "[";
+                foreach (i; 0 .. 128) {
+                    if (i % 4 == 0) {
+                        s ~= "\n";
+                    }
+                    // If L, then there is no opCode for 0; otherwise only opCode for 1 exists
+                    if (i.checkBit(2) ? i.getBits(0, 1) == 0 : i.getBits(0, 1) != 1) {
+                        s ~= "&unsupported, ";
+                    } else if (!i.checkBit(6) && i.checkBit(3)) {
+                        // If post-increment, then write-back is always enabled and W should be 0
+                        s ~= "&unsupported, ";
+                    } else {
+                        s ~= "&halfwordAndSignedDataTransfer!(" ~ i.to!string ~ "), ";
+                    }
+                }
+                s ~= "\n]";
+                return s;
+            }
+
+            mixin("halfwordAndSignedDataTransferInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable() ~ ";");
         }
 
         protected Set getSet() {
@@ -907,7 +932,6 @@ public class ARM7TDMI {
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
             int offset = instruction & 0xFFF;
-            int address = getRegister(rn);
         }
 
         private mixin template decodeOpSingleDataTransferRegister() {
@@ -917,7 +941,6 @@ public class ARM7TDMI {
             int shiftType = getBits(instruction, 5, 6);
             int carry;
             int offset = applyShift(shiftType, shift, false, getRegister(instruction & 0b1111), carry);
-            int address = getRegister(rn);
         }
 
         private template singleDataTransfer(byte flags) if (!flags.checkBit(5)) {
@@ -945,6 +968,7 @@ public class ARM7TDMI {
             // TODO: what does NoPrivilege do?
             debug (outputInstructions) logInstruction(instruction, (load ? "LDR" : "STR") ~ (byteQty ? "B" : ""));
             mixin decodeOperands;
+            int address = getRegister(rn);
             // Do pre-increment if needed
             static if (preIncr) {
                 static if (upIncr) {
@@ -978,7 +1002,7 @@ public class ARM7TDMI {
                 } else {
                     address -= offset;
                 }
-                // Alway do write back in post increment
+                // Always do write back in post increment
                 setRegister(rn, address);
             }
         }
@@ -988,71 +1012,79 @@ public class ARM7TDMI {
             singleDataTransferInstructions[code](instruction);
         }
 
-        private void halfwordAndSignedDataTransfer(int instruction) {
+        private void halfwordAndSignedDataTransfer(byte flags)(int instruction) {
+            halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
+                    flags.checkBit(3), flags.checkBit(2), flags.getBits(0, 1))(instruction);
+        }
+
+        private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
+                    bool writeBack, bool load, byte opCode)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
                 return;
             }
-            int preIncr = getBit(instruction, 24);
-            int upIncr = getBit(instruction, 23);
-            int offsetSrc = getBit(instruction, 22);
-            int load = getBit(instruction, 20);
+            // Decode operands
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
-            int offset;
-            if (offsetSrc) {
-                // immediate
+            static if (immediate) {
                 int upperOffset = getBits(instruction, 8, 11);
                 int lowerOffset = instruction & 0xF;
-                offset = upperOffset << 4 | lowerOffset;
+                int offset = upperOffset << 4 | lowerOffset;
             } else {
-                // register
-                offset = getRegister(instruction & 0xF);
+                int offset = getRegister(instruction & 0xF);
             }
             int address = getRegister(rn);
-            if (preIncr) {
-                if (upIncr) {
+            // Do pre-increment if needed
+            static if (preIncr) {
+                static if (upIncr) {
                     address += offset;
                 } else {
                     address -= offset;
                 }
             }
-            int opCode = getBits(instruction, 5, 6);
-            if (load) {
-                final switch (opCode) {
-                    case 1:
-                        debug (outputInstructions) logInstruction(instruction, "LDRH");
-                        setRegister(rd, rotateRead(address, memory.getShort(address)));
-                        break;
-                    case 2:
-                        debug (outputInstructions) logInstruction(instruction, "LDRSB");
-                        setRegister(rd, memory.getByte(address));
-                        break;
-                    case 3:
-                        debug (outputInstructions) logInstruction(instruction, "LDRSH");
-                        setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
-                        break;
+            // Read or write memory
+            static if (load) {
+                static if (opCode == 1) {
+                    debug (outputInstructions) logInstruction(instruction, "LDRH");
+                    setRegister(rd, rotateRead(address, memory.getShort(address)));
+                } else static if (opCode == 2) {
+                    debug (outputInstructions) logInstruction(instruction, "LDRSB");
+                    setRegister(rd, memory.getByte(address));
+                } else static if (opCode == 3) {
+                    debug (outputInstructions) logInstruction(instruction, "LDRSH");
+                    setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
+                } else {
+                    static assert (0);
                 }
             } else {
-                final switch (opCode) {
-                    case 1:
-                        debug (outputInstructions) logInstruction(instruction, "STRH");
-                        memory.setShort(address, cast(short) getRegister(rd));
-                        break;
+                static if (opCode == 1) {
+                    debug (outputInstructions) logInstruction(instruction, "STRH");
+                    memory.setShort(address, cast(short) getRegister(rd));
+                } else {
+                    static assert (0);
                 }
             }
-            if (preIncr) {
-                int writeBack = getBit(instruction, 21);
-                if (writeBack) {
+            // Do post-increment and write back if needed
+            static if (preIncr) {
+                static if (writeBack) {
                     setRegister(rn, address);
                 }
             } else {
-                if (upIncr) {
+                static if (upIncr) {
                     address += offset;
                 } else {
                     address -= offset;
                 }
+                // Always do write back in post increment, the flag should be 0
+                static if (writeBack) {
+                    static assert (0);
+                }
                 setRegister(rn, address);
             }
+        }
+
+        private void halfwordAndSignedDataTransfer(int instruction) {
+            int code = getBits(instruction, 20, 24) << 2 | getBits(instruction, 5, 6);
+            halfwordAndSignedDataTransferInstructions[code](instruction);
         }
 
         private void blockDataTransfer(int instruction) {
