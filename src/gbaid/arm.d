@@ -190,10 +190,6 @@ public class ARM7TDMI {
 
     private class ARMPipeline : Pipeline {
         private void delegate(int)[] dataProcessingInstructions;
-        private void delegate(int)[] multiplyInstructions;
-        private void delegate(int)[] singleDataTransferInstructions;
-        private void delegate(int)[] halfwordAndSignedDataTransferInstructions;
-        private void delegate(int)[] blockDataTransferInstructions;
 
         private this() {
             // Bits are OpCode(4),S(1)
@@ -236,88 +232,109 @@ public class ARM7TDMI {
             ];
 
             // Bits are P(1),~L(1)
-            // where P is the SPSR flag and L is load
+            // where P is the SPSR flag and L is the load flag
             void delegate(int)[] psrTransferRegisterInstructions = [
                 &cpsrRead, &cpsrWriteRegister, &spsrRead, &spsrWriteRegister,
             ];
 
-            // Bits are L(1),~U(1),A(1),S(1)
-            // where L is the long flag, U is the unsigned flag, A is the accumulate flag and S is the set flags flag
-            multiplyInstructions = [
+            // Bits are A(1),S(1)
+            // where A is the accumulate flag and S is the set flags flag
+            void delegate(int)[] multiplyIntInstructions = [
                 &multiplyMUL,   &multiplyMULS,   &multiplyMLA,   &multiplyMLAS,
-                &unsupported,   &unsupported,    &unsupported,   &unsupported,
+            ];
+
+            // Bits are ~U(1),A(1),S(1)
+            // where U is the unsigned flag, A is the accumulate flag and S is the set flags flag
+            void delegate(int)[] multiplyLongInstructions = [
                 &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
                 &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
             ];
 
-            string genInstructionTemplateTable(string instruction, int bitCount) {
+            string genInstructionTemplateTable(string instruction, int bitCount, int offset = 0) {
                 auto s = "[";
                 foreach (i; 0 .. 1 << bitCount) {
                     if (i % 4 == 0) {
                         s ~= "\n";
                     }
-                    s ~= "&" ~ instruction ~ "!(" ~ i.to!string ~ "),";
+                    s ~= "&" ~ instruction ~ "!(" ~ (i + offset).to!string ~ "),";
                 }
                 s ~= "\n]";
                 return s;
             }
 
-            // Bits are I(1),P(1),U(1),B(1),W(1),L(1)
-            // where I is not immediate, P is pre-increment, U is up-increment, B is byte quantity, W is write back
-            // and L is load
-            mixin ("singleDataTransferInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 6) ~ ";");
+            // Bits are P(1),U(1),B(1),W(1),L(1)
+            // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
+            mixin ("void delegate(int)[] singleDataTransferImmediateInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5) ~ ";");
 
-            // Bits are P(1),U(1),I(1),W(1),L(1),S(1),H(1)
-            // where P is pre-increment, U is up-increment, I is immediate, W is write back and L is load,
-            // S is signed and H is halfword
-            string getHalfwordAndSignedDataTransferInstructionTable() {
+            // Bits are P(1),U(1),B(1),W(1),L(1)
+            // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
+            mixin ("void delegate(int)[] singleDataTransferRegisterInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5, 32) ~ ";");
+
+            string getHalfwordAndSignedDataTransferInstructionTable(bool immediate) {
                 auto s = "[";
-                foreach (i; 0 .. 128) {
+                foreach (i; 0 .. 64) {
                     if (i % 4 == 0) {
                         s ~= "\n";
                     }
+                    // Insert the I bit just before P(1),U(1)
+                    int code = (i & 0x30) << 1 | (immediate & 1) << 4 | i & 0xF;
                     // If L, then there is no opCode for ~S and ~H; otherwise only opCode for ~S and H exists
-                    if (i.checkBit(2) ? i.getBits(0, 1) == 0 : i.getBits(0, 1) != 1) {
+                    if (code.checkBit(2) ? (code & 0b11) == 0 : (code & 0b11) != 1) {
                         s ~= "&unsupported, ";
-                    } else if (!i.checkBit(6) && i.checkBit(3)) {
+                    } else if (!code.checkBit(6) && code.checkBit(3)) {
                         // If post-increment, then write-back is always enabled and W should be 0
                         s ~= "&unsupported, ";
                     } else {
-                        s ~= "&halfwordAndSignedDataTransfer!(" ~ i.to!string ~ "), ";
+                        s ~= "&halfwordAndSignedDataTransfer!(" ~ code.to!string ~ "), ";
                     }
                 }
                 s ~= "\n]";
                 return s;
             }
 
-            mixin ("halfwordAndSignedDataTransferInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable() ~ ";");
-            // Swap instructions also go in the halfwordAndSignedDataTransferInstructions table
-            halfwordAndSignedDataTransferInstructions[0b1000000] = &singleDataSwap!(false);
-            halfwordAndSignedDataTransferInstructions[0b1010000] = &singleDataSwap!(true);
+            // Bits are P(1),U(1),W(1),L(1),S(1),H(1)
+            // where P is pre-increment, U is up-increment, W is write back and L is load, S is signed and H is halfword
+            mixin ("void delegate(int)[] halfwordAndSignedDataTransferRegisterInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(false) ~ ";");
+            mixin ("void delegate(int)[] halfwordAndSignedDataTransferImmediateInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(true) ~ ";");
+
+            // Bits are B(1)
+            // where B is byte quantity
+            void delegate(int)[] singleDataSwapInstructions = [
+                &singleDataSwapInt, &singleDataSwapByte,
+            ];
 
             // Bits are P(1),U(1),S(1),W(1),L(1)
             // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
-            mixin ("blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
+            mixin ("void delegate(int)[] blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
 
-            auto merger = new TableMerger(7, &unsupported);
-            merger.addSubTable("0ttttt0", dataProcessingRegisterImmediateInstructions);
-            merger.addSubTable("0ttttt1", dataProcessingRegisterInstructions);
-            merger.addSubTable("1tttttd", dataProcessingImmediateInstructions);
-            merger.addSubTable("110t10d", psrTransferImmediateInstructions);
-            merger.addSubTable("010tt00", psrTransferRegisterInstructions);
+            auto merger = new TableMerger(12, &unsupported);
+            merger.addSubTable("000tttttddd0", dataProcessingRegisterImmediateInstructions);
+            merger.addSubTable("000ttttt0dd1", dataProcessingRegisterInstructions);
+            merger.addSubTable("001tttttdddd", dataProcessingImmediateInstructions);
+            merger.addSubTable("00110t10dddd", psrTransferImmediateInstructions);
+            merger.addSubTable("00010tt00000", psrTransferRegisterInstructions);
+            merger.addSubTable("000000tt1001", multiplyIntInstructions);
+            merger.addSubTable("00001ttt1001", multiplyLongInstructions);
+            merger.addSubTable("010tttttdddd", singleDataTransferImmediateInstructions);
+            merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
+            merger.addSubTable("000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions);
+            merger.addSubTable("000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions);
+            merger.addSubTable("00010t001001", singleDataSwapInstructions);
+            merger.addSubTable("100tttttdddd", blockDataTransferInstructions);
+
             dataProcessingInstructions = merger.getTable();
         }
 
         private static class TableMerger {
             private void delegate(int)[] table;
-            private void delegate(int) defaultInstruction;
+            private void delegate(int) nullInstruction;
 
-            private this(int bitCount, void delegate(int) defaultInstruction) {
+            private this(int bitCount, void delegate(int) nullInstruction) {
                 table = new void delegate(int)[1 << bitCount];
-                this.defaultInstruction = defaultInstruction;
-                // Fill with default instruction
+                this.nullInstruction = nullInstruction;
+                // Fill with the null instruction
                 foreach (i, t; table) {
-                    table[i] = defaultInstruction;
+                    table[i] = nullInstruction;
                 }
             }
 
@@ -349,7 +366,7 @@ public class ARM7TDMI {
                     }
                 }
                 if (1 << tableBitCount != table.length) {
-                    throw new Exception("Wrong number of sub-table");
+                    throw new Exception("Wrong number of sub-table bits");
                 }
                 // Enumerate combinations generated by the bit string
                 // 0 and 1 literals, d for don't care, t for table
@@ -374,6 +391,10 @@ public class ARM7TDMI {
                     // Now for every combination of table bits create the
                     // final value and assign the pointer in the table
                     foreach (tableBitValue; 0 .. 1 << tableBitCount) {
+                        // Ignore null instructions
+                        if (table[tableBitValue] is nullInstruction) {
+                            continue;
+                        }
                         int index = intermediary;
                         int tc = tableBitCount - 1;
                         foreach (int i, b; bits) {
@@ -383,7 +404,7 @@ public class ARM7TDMI {
                             }
                         }
                         // Check if there's a conflict first
-                        if (this.table[index] !is defaultInstruction) {
+                        if (this.table[index] !is nullInstruction) {
                             throw new Exception("The table conflicts with a previously added one");
                         }
                         this.table[index] = table[tableBitValue];
@@ -904,7 +925,7 @@ public class ARM7TDMI {
         private alias dataProcessingMVNSRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessing(int instruction) {
-            int code = getBits(instruction, 20, 25) << 1 | getBit(instruction, 4);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
             dataProcessingInstructions[code](instruction);
         }
 
@@ -977,7 +998,7 @@ public class ARM7TDMI {
         private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
 
         private void psrTransfer(int instruction) {
-            int code = getBits(instruction, 20, 25) << 1 | getBit(instruction, 4);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
             dataProcessingInstructions[code](instruction);
         }
 
@@ -1090,8 +1111,8 @@ public class ARM7TDMI {
         private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
 
         private void multiplyAndMultiplyAccumulate(int instruction) {
-            int code = getBits(instruction, 20, 23);
-            multiplyInstructions[code](instruction);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void singleDataTransfer(byte flags)(int instruction) {
@@ -1160,8 +1181,8 @@ public class ARM7TDMI {
         }
 
         private void singleDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 25);
-            singleDataTransferInstructions[code](instruction);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void halfwordAndSignedDataTransfer(byte flags)(int instruction) {
@@ -1239,8 +1260,8 @@ public class ARM7TDMI {
         }
 
         private void halfwordAndSignedDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 24) << 2 | getBits(instruction, 5, 6);
-            halfwordAndSignedDataTransferInstructions[code](instruction);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            dataProcessingInstructions[code](instruction);
         }
 
         private static string genBlockDataTransferOperation(bool preIncr, bool load) {
@@ -1309,8 +1330,8 @@ public class ARM7TDMI {
         }
 
         private void blockDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 24);
-            blockDataTransferInstructions[code](instruction);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void singleDataSwap(bool byteQty)(int instruction) {
@@ -1335,9 +1356,12 @@ public class ARM7TDMI {
             }
         }
 
+        private alias singleDataSwapInt = singleDataSwap!false;
+        private alias singleDataSwapByte = singleDataSwap!true;
+
         private void singleDataSwap(int instruction) {
-            int code = getBits(instruction, 20, 24) << 2 | getBits(instruction, 5, 6);
-            halfwordAndSignedDataTransferInstructions[code](instruction);
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            dataProcessingInstructions[code](instruction);
         }
 
         private void softwareInterrupt(int instruction) {
