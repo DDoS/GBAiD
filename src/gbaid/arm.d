@@ -196,26 +196,51 @@ public class ARM7TDMI {
         private void delegate(int)[] blockDataTransferInstructions;
 
         private this() {
-            // Bits are I(1),OpCode(4),S(1)
-            // where I is the immediate flag and S the set flags flag
-            dataProcessingInstructions = [
-                &registerOp2AND,  &registerOp2ANDS,  &registerOp2EOR,     &registerOp2EORS,
-                &registerOp2SUB,  &registerOp2SUBS,  &registerOp2RSB,     &registerOp2RSBS,
-                &registerOp2ADD,  &registerOp2ADDS,  &registerOp2ADC,     &registerOp2ADCS,
-                &registerOp2SBC,  &registerOp2SBCS,  &registerOp2RSC,     &registerOp2RSCS,
-                &cpsrRead,        &registerOp2TST,   &cpsrWriteRegister,  &registerOp2TEQ,
-                &spsrRead,        &registerOp2CMP,   &spsrWriteRegister,  &registerOp2CMN,
-                &registerOp2ORR,  &registerOp2ORRS,  &registerOp2MOV,     &registerOp2MOVS,
-                &registerOp2BIC,  &registerOp2BICS,  &registerOp2MVN,     &registerOp2MVNS,
-                &immediateOp2AND, &immediateOp2ANDS, &immediateOp2EOR,    &immediateOp2EORS,
-                &immediateOp2SUB, &immediateOp2SUBS, &immediateOp2RSB,    &immediateOp2RSBS,
-                &immediateOp2ADD, &immediateOp2ADDS, &immediateOp2ADC,    &immediateOp2ADCS,
-                &immediateOp2SBC, &immediateOp2SBCS, &immediateOp2RSC,    &immediateOp2RSCS,
-                &unsupported,     &immediateOp2TST,  &cpsrWriteImmediate, &immediateOp2TEQ,
-                &unsupported,     &immediateOp2CMP,  &spsrWriteImmediate, &immediateOp2CMN,
-                &immediateOp2ORR, &immediateOp2ORRS, &immediateOp2MOV,    &immediateOp2MOVS,
-                &immediateOp2BIC, &immediateOp2BICS, &immediateOp2MVN,    &immediateOp2MVNS,
+            // Bits are OpCode(4),S(1)
+            // where S is the set flags flag
+            void delegate(int)[] dataProcessingRegisterImmediateInstructions = [
+                &dataProcessingANDRegisterImmediate,  &dataProcessingANDSRegisterImmediate,  &dataProcessingEORRegisterImmediate,     &dataProcessingEORSRegisterImmediate,
+                &dataProcessingSUBRegisterImmediate,  &dataProcessingSUBSRegisterImmediate,  &dataProcessingRSBRegisterImmediate,     &dataProcessingRSBSRegisterImmediate,
+                &dataProcessingADDRegisterImmediate,  &dataProcessingADDSRegisterImmediate,  &dataProcessingADCRegisterImmediate,     &dataProcessingADCSRegisterImmediate,
+                &dataProcessingSBCRegisterImmediate,  &dataProcessingSBCSRegisterImmediate,  &dataProcessingRSCRegisterImmediate,     &dataProcessingRSCSRegisterImmediate,
+                &unsupported,                         &dataProcessingTSTRegisterImmediate,   &unsupported,                            &dataProcessingTEQRegisterImmediate,
+                &unsupported,                         &dataProcessingCMPRegisterImmediate,   &unsupported,                            &dataProcessingCMNRegisterImmediate,
+                &dataProcessingORRRegisterImmediate,  &dataProcessingORRSRegisterImmediate,  &dataProcessingMOVRegisterImmediate,     &dataProcessingMOVSRegisterImmediate,
+                &dataProcessingBICRegisterImmediate,  &dataProcessingBICSRegisterImmediate,  &dataProcessingMVNRegisterImmediate,     &dataProcessingMVNSRegisterImmediate,
             ];
+            void delegate(int)[] dataProcessingRegisterInstructions = [
+                &dataProcessingANDRegister,  &dataProcessingANDSRegister,  &dataProcessingEORRegister,     &dataProcessingEORSRegister,
+                &dataProcessingSUBRegister,  &dataProcessingSUBSRegister,  &dataProcessingRSBRegister,     &dataProcessingRSBSRegister,
+                &dataProcessingADDRegister,  &dataProcessingADDSRegister,  &dataProcessingADCRegister,     &dataProcessingADCSRegister,
+                &dataProcessingSBCRegister,  &dataProcessingSBCSRegister,  &dataProcessingRSCRegister,     &dataProcessingRSCSRegister,
+                &unsupported,                &dataProcessingTSTRegister,   &unsupported,                   &dataProcessingTEQRegister,
+                &unsupported,                &dataProcessingCMPRegister,   &unsupported,                   &dataProcessingCMNRegister,
+                &dataProcessingORRRegister,  &dataProcessingORRSRegister,  &dataProcessingMOVRegister,     &dataProcessingMOVSRegister,
+                &dataProcessingBICRegister,  &dataProcessingBICSRegister,  &dataProcessingMVNRegister,     &dataProcessingMVNSRegister,
+            ];
+            void delegate(int)[] dataProcessingImmediateInstructions = [
+                &dataProcessingANDImmediate, &dataProcessingANDSImmediate, &dataProcessingEORImmediate,    &dataProcessingEORSImmediate,
+                &dataProcessingSUBImmediate, &dataProcessingSUBSImmediate, &dataProcessingRSBImmediate,    &dataProcessingRSBSImmediate,
+                &dataProcessingADDImmediate, &dataProcessingADDSImmediate, &dataProcessingADCImmediate,    &dataProcessingADCSImmediate,
+                &dataProcessingSBCImmediate, &dataProcessingSBCSImmediate, &dataProcessingRSCImmediate,    &dataProcessingRSCSImmediate,
+                &unsupported,                &dataProcessingTSTImmediate,  &unsupported,                   &dataProcessingTEQImmediate,
+                &unsupported,                &dataProcessingCMPImmediate,  &unsupported,                   &dataProcessingCMNImmediate,
+                &dataProcessingORRImmediate, &dataProcessingORRSImmediate, &dataProcessingMOVImmediate,    &dataProcessingMOVSImmediate,
+                &dataProcessingBICImmediate, &dataProcessingBICSImmediate, &dataProcessingMVNImmediate,    &dataProcessingMVNSImmediate,
+            ];
+
+            // Bits are P(1)
+            // where P is the SPSR flag
+            void delegate(int)[] psrTransferImmediateInstructions = [
+                &cpsrWriteImmediate, &spsrWriteImmediate,
+            ];
+
+            // Bits are P(1),~L(1)
+            // where P is the SPSR flag and L is load
+            void delegate(int)[] psrTransferRegisterInstructions = [
+                &cpsrRead, &cpsrWriteRegister, &spsrRead, &spsrWriteRegister,
+            ];
+
             // Bits are L(1),~U(1),A(1),S(1)
             // where L is the long flag, U is the unsigned flag, A is the accumulate flag and S is the set flags flag
             multiplyInstructions = [
@@ -273,6 +298,98 @@ public class ARM7TDMI {
             // Bits are P(1),U(1),S(1),W(1),L(1)
             // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
             mixin ("blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
+
+            auto merger = new TableMerger(7, &unsupported);
+            merger.addSubTable("0ttttt0", dataProcessingRegisterImmediateInstructions);
+            merger.addSubTable("0ttttt1", dataProcessingRegisterInstructions);
+            merger.addSubTable("1tttttd", dataProcessingImmediateInstructions);
+            merger.addSubTable("110t10d", psrTransferImmediateInstructions);
+            merger.addSubTable("010tt00", psrTransferRegisterInstructions);
+            dataProcessingInstructions = merger.getTable();
+        }
+
+        private static class TableMerger {
+            private void delegate(int)[] table;
+            private void delegate(int) defaultInstruction;
+
+            private this(int bitCount, void delegate(int) defaultInstruction) {
+                table = new void delegate(int)[1 << bitCount];
+                this.defaultInstruction = defaultInstruction;
+                // Fill with default instruction
+                foreach (i, t; table) {
+                    table[i] = defaultInstruction;
+                }
+            }
+
+            private void delegate(int)[] getTable() {
+                return table;
+            }
+
+            private void addSubTable(string bits, void delegate(int)[] table) {
+                int bitCount = cast(int) bits.length;
+                if (1 << bitCount != this.table.length) {
+                    throw new Exception("Wrong number of table bits");
+                }
+                // Count don't cares and table bits (and validate bit types)
+                int dontCareCount = 0;
+                int tableBitCount = 0;
+                foreach (b; bits) {
+                    switch (b) {
+                        case '0':
+                        case '1':
+                            break;
+                        case 'd':
+                            dontCareCount++;
+                            break;
+                        case 't':
+                            tableBitCount++;
+                            break;
+                        default:
+                            throw new Exception("Unknown bit type: '" ~ b ~ "'");
+                    }
+                }
+                if (1 << tableBitCount != table.length) {
+                    throw new Exception("Wrong number of sub-table");
+                }
+                // Enumerate combinations generated by the bit string
+                // 0 and 1 literals, d for don't care, t for table
+                // Start with all the 1 literals, which won't change
+                int fixed = 0;
+                foreach (int i, b; bits) {
+                    if (b == '1') {
+                        fixed.setBit(bitCount - 1 - i, 1);
+                    }
+                }
+                // Now for every combination of don't cares create an
+                // intermediary value, which is only missing table bits
+                foreach (dontCareValue; 0 .. 1 << dontCareCount) {
+                    int intermediary = fixed;
+                    int dc = dontCareCount - 1;
+                    foreach (int i, b; bits) {
+                        if (b == 'd') {
+                            intermediary.setBit(bitCount - 1 - i, dontCareValue.getBit(dc));
+                            dc--;
+                        }
+                    }
+                    // Now for every combination of table bits create the
+                    // final value and assign the pointer in the table
+                    foreach (tableBitValue; 0 .. 1 << tableBitCount) {
+                        int index = intermediary;
+                        int tc = tableBitCount - 1;
+                        foreach (int i, b; bits) {
+                            if (b == 't') {
+                                index.setBit(bitCount - 1 - i, tableBitValue.getBit(tc));
+                                tc--;
+                            }
+                        }
+                        // Check if there's a conflict first
+                        if (this.table[index] !is defaultInstruction) {
+                            throw new Exception("The table conflicts with a previously added one");
+                        }
+                        this.table[index] = table[tableBitValue];
+                    }
+                }
+            }
         }
 
         protected Set getSet() {
@@ -394,7 +511,7 @@ public class ARM7TDMI {
             }
         }
 
-        private mixin template decodeOp2Immediate() {
+        private mixin template decodeOpDataProcessingImmediate() {
             // Decode
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
@@ -405,14 +522,26 @@ public class ARM7TDMI {
             int carry = shift == 0 ? getFlag(CPSRFlag.C) : getBit(op2, 31);
         }
 
-        private mixin template decodeOp2Register() {
+        private mixin template decodeOpDataProcessingRegisterImmediate() {
+            mixin decodeOpDataProcessingRegister!true;
+        }
+
+        private mixin template decodeOpDataProcessingRegister() {
+            mixin decodeOpDataProcessingRegister!false;
+        }
+
+        private mixin template decodeOpDataProcessingRegister(bool immediateShift) {
             // Decode
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
             int op1 = getRegister(rn);
             // Get op2
             int shiftSrc = getBit(instruction, 4);
-            int shift = shiftSrc ? getRegister(getBits(instruction, 8, 11)) & 0xFF : getBits(instruction, 7, 11);
+            static if (immediateShift) {
+                int shift = getBits(instruction, 7, 11);
+            } else {
+                int shift = getRegister(getBits(instruction, 8, 11));
+            }
             int shiftType = getBits(instruction, 5, 6);
             int carry;
             int op2 = applyShift(shiftType, shift, cast(bool) shiftSrc, getRegister(instruction & 0b1111), carry);
@@ -434,10 +563,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2AND = dataProcessingAND!(decodeOp2Immediate, false);
-        private alias immediateOp2ANDS = dataProcessingAND!(decodeOp2Immediate, true);
-        private alias registerOp2AND = dataProcessingAND!(decodeOp2Register, false);
-        private alias registerOp2ANDS = dataProcessingAND!(decodeOp2Register, true);
+        private alias dataProcessingANDImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingANDSImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingANDRegister = dataProcessingAND!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingANDRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingANDSRegister = dataProcessingAND!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingANDSRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingEOR(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -455,10 +586,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2EOR = dataProcessingEOR!(decodeOp2Immediate, false);
-        private alias immediateOp2EORS = dataProcessingEOR!(decodeOp2Immediate, true);
-        private alias registerOp2EOR = dataProcessingEOR!(decodeOp2Register, false);
-        private alias registerOp2EORS = dataProcessingEOR!(decodeOp2Register, true);
+        private alias dataProcessingEORImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingEORSImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingEORRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingEORRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingEORSRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingEORSRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingSUB(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -477,10 +610,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2SUB = dataProcessingSUB!(decodeOp2Immediate, false);
-        private alias immediateOp2SUBS = dataProcessingSUB!(decodeOp2Immediate, true);
-        private alias registerOp2SUB = dataProcessingSUB!(decodeOp2Register, false);
-        private alias registerOp2SUBS = dataProcessingSUB!(decodeOp2Register, true);
+        private alias dataProcessingSUBImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingSUBSImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingSUBRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingSUBRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingSUBSRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingSUBSRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingRSB(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -499,10 +634,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2RSB = dataProcessingRSB!(decodeOp2Immediate, false);
-        private alias immediateOp2RSBS = dataProcessingRSB!(decodeOp2Immediate, true);
-        private alias registerOp2RSB = dataProcessingRSB!(decodeOp2Register, false);
-        private alias registerOp2RSBS = dataProcessingRSB!(decodeOp2Register, true);
+        private alias dataProcessingRSBImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingRSBSImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingRSBRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingRSBRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingRSBSRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingRSBSRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingADD(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -521,10 +658,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2ADD = dataProcessingADD!(decodeOp2Immediate, false);
-        private alias immediateOp2ADDS = dataProcessingADD!(decodeOp2Immediate, true);
-        private alias registerOp2ADD = dataProcessingADD!(decodeOp2Register, false);
-        private alias registerOp2ADDS = dataProcessingADD!(decodeOp2Register, true);
+        private alias dataProcessingADDImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingADDSImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingADDRegister = dataProcessingADD!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingADDRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingADDSRegister = dataProcessingADD!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingADDSRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingADC(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -544,10 +683,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2ADC = dataProcessingADC!(decodeOp2Immediate, false);
-        private alias immediateOp2ADCS = dataProcessingADC!(decodeOp2Immediate, true);
-        private alias registerOp2ADC = dataProcessingADC!(decodeOp2Register, false);
-        private alias registerOp2ADCS = dataProcessingADC!(decodeOp2Register, true);
+        private alias dataProcessingADCImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingADCSImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingADCRegister = dataProcessingADC!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingADCRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingADCSRegister = dataProcessingADC!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingADCSRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingSBC(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -567,10 +708,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2SBC = dataProcessingSBC!(decodeOp2Immediate, false);
-        private alias immediateOp2SBCS = dataProcessingSBC!(decodeOp2Immediate, true);
-        private alias registerOp2SBC = dataProcessingSBC!(decodeOp2Register, false);
-        private alias registerOp2SBCS = dataProcessingSBC!(decodeOp2Register, true);
+        private alias dataProcessingSBCImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingSBCSImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingSBCRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingSBCRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingSBCSRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingSBCSRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingRSC(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -590,10 +733,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2RSC = dataProcessingRSC!(decodeOp2Immediate, false);
-        private alias immediateOp2RSCS = dataProcessingRSC!(decodeOp2Immediate, true);
-        private alias registerOp2RSC = dataProcessingRSC!(decodeOp2Register, false);
-        private alias registerOp2RSCS = dataProcessingRSC!(decodeOp2Register, true);
+        private alias dataProcessingRSCImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingRSCSImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingRSCRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingRSCRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingRSCSRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingRSCSRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingTST(alias decodeOperands)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -608,8 +753,9 @@ public class ARM7TDMI {
             setDataProcessingFlags(rd, res, overflow, carry);
         }
 
-        private alias immediateOp2TST = dataProcessingTST!decodeOp2Immediate;
-        private alias registerOp2TST = dataProcessingTST!decodeOp2Register;
+        private alias dataProcessingTSTImmediate = dataProcessingTST!decodeOpDataProcessingImmediate;
+        private alias dataProcessingTSTRegister = dataProcessingTST!(decodeOpDataProcessingRegister);
+        private alias dataProcessingTSTRegisterImmediate = dataProcessingTST!(decodeOpDataProcessingRegisterImmediate);
         // TODO: what does the P varient do?
 
         private void dataProcessingTEQ(alias decodeOperands)(int instruction) {
@@ -625,8 +771,9 @@ public class ARM7TDMI {
             setDataProcessingFlags(rd, res, overflow, carry);
         }
 
-        private alias immediateOp2TEQ = dataProcessingTEQ!decodeOp2Immediate;
-        private alias registerOp2TEQ = dataProcessingTEQ!decodeOp2Register;
+        private alias dataProcessingTEQImmediate = dataProcessingTEQ!decodeOpDataProcessingImmediate;
+        private alias dataProcessingTEQRegister = dataProcessingTEQ!(decodeOpDataProcessingRegister);
+        private alias dataProcessingTEQRegisterImmediate = dataProcessingTEQ!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingCMP(alias decodeOperands)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -642,8 +789,9 @@ public class ARM7TDMI {
             setDataProcessingFlags(rd, res, overflow, carry);
         }
 
-        private alias immediateOp2CMP = dataProcessingCMP!decodeOp2Immediate;
-        private alias registerOp2CMP = dataProcessingCMP!decodeOp2Register;
+        private alias dataProcessingCMPImmediate = dataProcessingCMP!decodeOpDataProcessingImmediate;
+        private alias dataProcessingCMPRegister = dataProcessingCMP!(decodeOpDataProcessingRegister);
+        private alias dataProcessingCMPRegisterImmediate = dataProcessingCMP!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingCMN(alias decodeOperands)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -659,8 +807,9 @@ public class ARM7TDMI {
             setDataProcessingFlags(rd, res, overflow, carry);
         }
 
-        private alias immediateOp2CMN = dataProcessingCMN!decodeOp2Immediate;
-        private alias registerOp2CMN = dataProcessingCMN!decodeOp2Register;
+        private alias dataProcessingCMNImmediate = dataProcessingCMN!decodeOpDataProcessingImmediate;
+        private alias dataProcessingCMNRegister = dataProcessingCMN!(decodeOpDataProcessingRegister);
+        private alias dataProcessingCMNRegisterImmediate = dataProcessingCMN!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingORR(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -678,10 +827,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2ORR = dataProcessingORR!(decodeOp2Immediate, false);
-        private alias immediateOp2ORRS = dataProcessingORR!(decodeOp2Immediate, true);
-        private alias registerOp2ORR = dataProcessingORR!(decodeOp2Register, false);
-        private alias registerOp2ORRS = dataProcessingORR!(decodeOp2Register, true);
+        private alias dataProcessingORRImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingORRSImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingORRRegister = dataProcessingORR!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingORRRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingORRSRegister = dataProcessingORR!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingORRSRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingMOV(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -699,10 +850,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2MOV = dataProcessingMOV!(decodeOp2Immediate, false);
-        private alias immediateOp2MOVS = dataProcessingMOV!(decodeOp2Immediate, true);
-        private alias registerOp2MOV = dataProcessingMOV!(decodeOp2Register, false);
-        private alias registerOp2MOVS = dataProcessingMOV!(decodeOp2Register, true);
+        private alias dataProcessingMOVImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingMOVSImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingMOVRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingMOVRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingMOVSRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingMOVSRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingBIC(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -720,10 +873,12 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2BIC = dataProcessingBIC!(decodeOp2Immediate, false);
-        private alias immediateOp2BICS = dataProcessingBIC!(decodeOp2Immediate, true);
-        private alias registerOp2BIC = dataProcessingBIC!(decodeOp2Register, false);
-        private alias registerOp2BICS = dataProcessingBIC!(decodeOp2Register, true);
+        private alias dataProcessingBICImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingBICSImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingBICRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingBICRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingBICSRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingBICSRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingMVN(alias decodeOperands, bool setFlags)(int instruction) {
             if (!checkCondition(getConditionBits(instruction))) {
@@ -741,13 +896,15 @@ public class ARM7TDMI {
             }
         }
 
-        private alias immediateOp2MVN = dataProcessingMVN!(decodeOp2Immediate, false);
-        private alias immediateOp2MVNS = dataProcessingMVN!(decodeOp2Immediate, true);
-        private alias registerOp2MVN = dataProcessingMVN!(decodeOp2Register, false);
-        private alias registerOp2MVNS = dataProcessingMVN!(decodeOp2Register, true);
+        private alias dataProcessingMVNImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, false);
+        private alias dataProcessingMVNSImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, true);
+        private alias dataProcessingMVNRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, false);
+        private alias dataProcessingMVNRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, false);
+        private alias dataProcessingMVNSRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, true);
+        private alias dataProcessingMVNSRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessing(int instruction) {
-            int code = getBits(instruction, 20, 25);
+            int code = getBits(instruction, 20, 25) << 1 | getBit(instruction, 4);
             dataProcessingInstructions[code](instruction);
         }
 
@@ -820,7 +977,7 @@ public class ARM7TDMI {
         private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
 
         private void psrTransfer(int instruction) {
-            int code = getBits(instruction, 20, 25);
+            int code = getBits(instruction, 20, 25) << 1 | getBit(instruction, 4);
             dataProcessingInstructions[code](instruction);
         }
 
