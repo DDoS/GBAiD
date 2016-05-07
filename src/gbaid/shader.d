@@ -272,6 +272,7 @@ void main() {
 }
 `;
 
+// TODO: this is slightly wrong
 public enum string BICUBIC_UPSCALE_FRAGMENT_SHADER_SOURCE =
 `
 // See: http://www.paulinternet.nl/?page=bicubic

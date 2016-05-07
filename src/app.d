@@ -73,6 +73,7 @@ public void main(string[] args) {
         } else {
             save = null;
             writeln("Save file not found, using new save");
+            // TODO: save under the given name
         }
     }
 
