@@ -189,11 +189,11 @@ public class ARM7TDMI {
     }
 
     private class ARMPipeline : Pipeline {
-        private void delegate(int)[] dataProcessingInstructions;
+        private void delegate(int)[] instructionTable;
 
         private this() {
             // Bits are OpCode(4),S(1)
-            // where S is the set flags flag
+            // where S is set flags
             void delegate(int)[] dataProcessingRegisterImmediateInstructions = [
                 &dataProcessingANDRegisterImmediate,  &dataProcessingANDSRegisterImmediate,  &dataProcessingEORRegisterImmediate,     &dataProcessingEORSRegisterImmediate,
                 &dataProcessingSUBRegisterImmediate,  &dataProcessingSUBSRegisterImmediate,  &dataProcessingRSBRegisterImmediate,     &dataProcessingRSBSRegisterImmediate,
@@ -226,25 +226,25 @@ public class ARM7TDMI {
             ];
 
             // Bits are P(1)
-            // where P is the SPSR flag
+            // where P is use SPSR
             void delegate(int)[] psrTransferImmediateInstructions = [
                 &cpsrWriteImmediate, &spsrWriteImmediate,
             ];
 
             // Bits are P(1),~L(1)
-            // where P is the SPSR flag and L is the load flag
+            // where P is use SPSR and L is load
             void delegate(int)[] psrTransferRegisterInstructions = [
                 &cpsrRead, &cpsrWriteRegister, &spsrRead, &spsrWriteRegister,
             ];
 
             // Bits are A(1),S(1)
-            // where A is the accumulate flag and S is the set flags flag
+            // where A is accumulate and S is set flags
             void delegate(int)[] multiplyIntInstructions = [
                 &multiplyMUL,   &multiplyMULS,   &multiplyMLA,   &multiplyMLAS,
             ];
 
             // Bits are ~U(1),A(1),S(1)
-            // where U is the unsigned flag, A is the accumulate flag and S is the set flags flag
+            // where U is unsigned, A is accumulate and S is set flags
             void delegate(int)[] multiplyLongInstructions = [
                 &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
                 &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
@@ -307,22 +307,58 @@ public class ARM7TDMI {
             // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
             mixin ("void delegate(int)[] blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
 
+            // Bits are L(1)
+            // where L is link
+            void delegate(int)[] branchAndBranchWithLinkInstructions = [
+                &branch, &branchAndLink,
+            ];
+
+            /*
+                The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#arminstructionsummary
+
+                |..3 ..................2 ..................1 ..................0|
+                |1_0_9_8_7_6_5_4_3_2_1_0_9_8_7_6_5_4_3_2_1_0_9_8_7_6_5_4_3_2_1_0|
+                |_Cond__|0_0_0|___Op__|S|__Rn___|__Rd___|__Shift__|Typ|0|__Rm___| DataProc
+                |_Cond__|0_0_0|___Op__|S|__Rn___|__Rd___|__Rs___|0|Typ|1|__Rm___| DataProc
+                |_Cond__|0_0_1|___Op__|S|__Rn___|__Rd___|_Shift_|___Immediate___| DataProc
+                |_Cond__|0_0_1_1_0|P|1|0|_Field_|__Rd___|_Shift_|___Immediate___| PSR Imm
+                |_Cond__|0_0_0_1_0|P|L|0|_Field_|__Rd___|0_0_0_0|0_0_0_0|__Rm___| PSR Reg
+                |_Cond__|0_0_0_1_0_0_1_0_1_1_1_1_1_1_1_1_1_1_1_1|0_0|L|1|__Rn___| BX,BLX
+                |_Cond__|0_0_0_0_0_0|A|S|__Rd___|__Rn___|__Rs___|1_0_0_1|__Rm___| Multiply
+                |_Cond__|0_0_0_0_1|U|A|S|_RdHi__|_RdLo__|__Rs___|1_0_0_1|__Rm___| MulLong
+                |_Cond__|0_0_0_1_0|B|0_0|__Rn___|__Rd___|0_0_0_0|1_0_0_1|__Rm___| TransSwp12
+                |_Cond__|0_0_0|P|U|0|W|L|__Rn___|__Rd___|0_0_0_0|1|S|H|1|__Rm___| TransReg10
+                |_Cond__|0_0_0|P|U|1|W|L|__Rn___|__Rd___|OffsetH|1|S|H|1|OffsetL| TransImm10
+                |_Cond__|0_1_0|P|U|B|W|L|__Rn___|__Rd___|_________Offset________| TransImm9
+                |_Cond__|0_1_1|P|U|B|W|L|__Rn___|__Rd___|__Shift__|Typ|0|__Rm___| TransReg9
+                |_Cond__|1_0_0|P|U|S|W|L|__Rn___|__________Register_List________| BlockTrans
+                |_Cond__|1_0_1|L|___________________Offset______________________| B,BL,BLX
+                |_Cond__|1_1_1_1|_____________Ignored_by_Processor______________| SWI
+
+                The op code is the concatenation of bits 20 to 27 with bits 4 to 7
+                For some instructions some of these bits are not used, hence the need for don't cares
+                Anything not covered by the table must raise an UNDEFINED interrupt
+            */
+
             auto merger = new TableMerger(12, &unsupported);
             merger.addSubTable("000tttttddd0", dataProcessingRegisterImmediateInstructions);
             merger.addSubTable("000ttttt0dd1", dataProcessingRegisterInstructions);
             merger.addSubTable("001tttttdddd", dataProcessingImmediateInstructions);
             merger.addSubTable("00110t10dddd", psrTransferImmediateInstructions);
             merger.addSubTable("00010tt00000", psrTransferRegisterInstructions);
+            merger.addSubTable("000100100001", &branchAndExchange);
             merger.addSubTable("000000tt1001", multiplyIntInstructions);
             merger.addSubTable("00001ttt1001", multiplyLongInstructions);
-            merger.addSubTable("010tttttdddd", singleDataTransferImmediateInstructions);
-            merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
+            merger.addSubTable("00010t001001", singleDataSwapInstructions);
             merger.addSubTable("000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions);
             merger.addSubTable("000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions);
-            merger.addSubTable("00010t001001", singleDataSwapInstructions);
+            merger.addSubTable("010tttttdddd", singleDataTransferImmediateInstructions);
+            merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
             merger.addSubTable("100tttttdddd", blockDataTransferInstructions);
+            merger.addSubTable("101tdddddddd", branchAndBranchWithLinkInstructions);
+            merger.addSubTable("1111dddddddd", &softwareInterrupt);
 
-            dataProcessingInstructions = merger.getTable();
+            instructionTable = merger.getTable();
         }
 
         private static class TableMerger {
@@ -342,7 +378,7 @@ public class ARM7TDMI {
                 return table;
             }
 
-            private void addSubTable(string bits, void delegate(int)[] table) {
+            private void addSubTable(string bits, void delegate(int)[] table...) {
                 int bitCount = cast(int) bits.length;
                 if (1 << bitCount != this.table.length) {
                     throw new Exception("Wrong number of table bits");
@@ -427,43 +463,11 @@ public class ARM7TDMI {
         }
 
         protected override void execute(int instruction) {
-            if (checkBits(instruction, 0b00001111111111111111111111010000, 0b00000001001011111111111100010000)) {
-                branchAndExchange(instruction);
-            } else if (checkBits(instruction, 0b00001111101100000000000000000000, 0b00000011001000000000000000000000)) {
-                psrTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001111100100000000111111110000, 0b00000001000000000000000000000000)) {
-                psrTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000000000000000000000000000000)) {
-                dataProcessing(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000010010000, 0b00000000000000000000000000010000)) {
-                dataProcessing(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00000010000000000000000000000000)) {
-                dataProcessing(instruction);
-            } else if (checkBits(instruction, 0b00001111110000000000000011110000, 0b00000000000000000000000010010000)) {
-                multiplyAndMultiplyAccumulate(instruction);
-            } else if (checkBits(instruction, 0b00001111100000000000000011110000, 0b00000000100000000000000010010000)) {
-                multiplyAndMultiplyAccumulate(instruction);
-            } else if (checkBits(instruction, 0b00001111101100000000111111110000, 0b00000001000000000000000010010000)) {
-                singleDataSwap(instruction);
-            } else if (checkBits(instruction, 0b00001110010000000000111110010000, 0b00000000000000000000000010010000)) {
-                halfwordAndSignedDataTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110010000000000000010010000, 0b00000000010000000000000010010000)) {
-                halfwordAndSignedDataTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00000100000000000000000000000000)) {
-                singleDataTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000110000000000000000000000000)) {
-                singleDataTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000010000, 0b00000110000000000000000000010000)) {
-                undefined(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00001000000000000000000000000000)) {
-                blockDataTransfer(instruction);
-            } else if (checkBits(instruction, 0b00001110000000000000000000000000, 0b00001010000000000000000000000000)) {
-                branchAndBranchWithLink(instruction);
-            } else if (checkBits(instruction, 0b00001111000000000000000000000000, 0b00001111000000000000000000000000)) {
-                softwareInterrupt(instruction);
-            } else {
-                unsupported(instruction);
+            if (!checkCondition(getConditionBits(instruction))) {
+                return;
             }
+            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+            instructionTable[code](instruction);
         }
 
         protected override uint getPCIncrement() {
@@ -475,9 +479,6 @@ public class ARM7TDMI {
         }
 
         private void branchAndExchange(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "BX");
             int address = getRegister(instruction & 0xF);
             if (address & 0b1) { // TODO: check this condition
@@ -486,19 +487,7 @@ public class ARM7TDMI {
             setRegister(Register.PC, address & ~1);
         }
 
-        private void branchAndBranchWithLink(int instruction) {
-            int opCode = getBit(instruction, 24);
-            if (opCode) {
-                branchAndLink(instruction);
-            } else {
-                branch(instruction);
-            }
-        }
-
         private void branch(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "B");
             int offset = instruction & 0xFFFFFF;
             // sign extend the offset
@@ -509,9 +498,6 @@ public class ARM7TDMI {
         }
 
         private void branchAndLink(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "BL");
             int offset = instruction & 0xFFFFFF;
             // sign extend the offset
@@ -569,9 +555,6 @@ public class ARM7TDMI {
         }
 
         private void dataProcessingAND(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "AND");
             mixin decodeOperands;
             // Operation
@@ -592,9 +575,6 @@ public class ARM7TDMI {
         private alias dataProcessingANDSRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingEOR(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "EOR");
             mixin decodeOperands;
             // Operation
@@ -615,9 +595,6 @@ public class ARM7TDMI {
         private alias dataProcessingEORSRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingSUB(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SUB");
             mixin decodeOperands;
             // Operation
@@ -639,9 +616,6 @@ public class ARM7TDMI {
         private alias dataProcessingSUBSRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingRSB(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "RSB");
             mixin decodeOperands;
             // Operation
@@ -663,9 +637,6 @@ public class ARM7TDMI {
         private alias dataProcessingRSBSRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingADD(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "ADD");
             mixin decodeOperands;
             // Operation
@@ -687,9 +658,6 @@ public class ARM7TDMI {
         private alias dataProcessingADDSRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingADC(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "ADC");
             mixin decodeOperands;
             // Operation
@@ -712,9 +680,6 @@ public class ARM7TDMI {
         private alias dataProcessingADCSRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingSBC(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SBC");
             mixin decodeOperands;
             // Operation
@@ -737,9 +702,6 @@ public class ARM7TDMI {
         private alias dataProcessingSBCSRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingRSC(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "RSC");
             mixin decodeOperands;
             // Operation
@@ -762,9 +724,6 @@ public class ARM7TDMI {
         private alias dataProcessingRSCSRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingTST(alias decodeOperands)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "TST");
             mixin decodeOperands;
             // Operation
@@ -780,9 +739,6 @@ public class ARM7TDMI {
         // TODO: what does the P varient do?
 
         private void dataProcessingTEQ(alias decodeOperands)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "TEQ");
             mixin decodeOperands;
             // Operation
@@ -797,9 +753,6 @@ public class ARM7TDMI {
         private alias dataProcessingTEQRegisterImmediate = dataProcessingTEQ!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingCMP(alias decodeOperands)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "CMP");
             mixin decodeOperands;
             // Operation
@@ -815,9 +768,6 @@ public class ARM7TDMI {
         private alias dataProcessingCMPRegisterImmediate = dataProcessingCMP!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingCMN(alias decodeOperands)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "CMN");
             mixin decodeOperands;
             // Operation
@@ -833,9 +783,6 @@ public class ARM7TDMI {
         private alias dataProcessingCMNRegisterImmediate = dataProcessingCMN!(decodeOpDataProcessingRegisterImmediate);
 
         private void dataProcessingORR(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "ORR");
             mixin decodeOperands;
             // Operation
@@ -856,9 +803,6 @@ public class ARM7TDMI {
         private alias dataProcessingORRSRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingMOV(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MOV");
             mixin decodeOperands;
             // Operation
@@ -879,9 +823,6 @@ public class ARM7TDMI {
         private alias dataProcessingMOVSRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingBIC(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "BIC");
             mixin decodeOperands;
             // Operation
@@ -902,9 +843,6 @@ public class ARM7TDMI {
         private alias dataProcessingBICSRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, true);
 
         private void dataProcessingMVN(alias decodeOperands, bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MVN");
             mixin decodeOperands;
             // Operation
@@ -923,11 +861,6 @@ public class ARM7TDMI {
         private alias dataProcessingMVNRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, false);
         private alias dataProcessingMVNSRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, true);
         private alias dataProcessingMVNSRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessing(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
 
         private mixin template decodeOpPrsrImmediate() {
             int op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
@@ -952,18 +885,12 @@ public class ARM7TDMI {
         }
 
         private void cpsrRead(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MRS");
             int rd = getBits(instruction, 12, 15);
             setRegister(rd, getRegister(Register.CPSR));
         }
 
         private void cpsrWrite(alias decodeOperand)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MSR");
             mixin decodeOperand;
             int mask = getPsrMask(instruction) & (0xF0000000 | (getMode() != Mode.USER ? 0xCF : 0));
@@ -975,18 +902,12 @@ public class ARM7TDMI {
         private alias cpsrWriteRegister = cpsrWrite!decodeOpPrsrRegister;
 
         private void spsrRead(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MRS");
             int rd = getBits(instruction, 12, 15);
             setRegister(rd, getRegister(Register.SPSR));
         }
 
         private void spsrWrite(alias decodeOperand)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MSR");
             mixin decodeOperand;
             int mask = getPsrMask(instruction) & 0xF00000EF;
@@ -996,11 +917,6 @@ public class ARM7TDMI {
 
         private alias spsrWriteImmediate = spsrWrite!decodeOpPrsrImmediate;
         private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
-
-        private void psrTransfer(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
 
         private void setMultiplyIntResult(bool setFlags)(int rd, int res) {
             setRegister(rd, res);
@@ -1026,9 +942,6 @@ public class ARM7TDMI {
         }
 
         private void multiplyInt(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MUL");
             mixin decodeOpMultiply;
             int res = op1 * op2;
@@ -1039,9 +952,6 @@ public class ARM7TDMI {
         private alias multiplyMULS = multiplyInt!(true);
 
         private void multiplyAccumulateInt(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "MLA");
             mixin decodeOpMultiply;
             int op3 = getRegister(getBits(instruction, 12, 15));
@@ -1053,9 +963,6 @@ public class ARM7TDMI {
         private alias multiplyMLAS = multiplyAccumulateInt!(true);
 
         private void multiplyLongUnsigned(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "UMULL");
             mixin decodeOpMultiply;
             int rn = getBits(instruction, 12, 15);
@@ -1067,9 +974,6 @@ public class ARM7TDMI {
         private alias multiplyUMULLS = multiplyLongUnsigned!(true);
 
         private void multiplyAccumulateLongUnsigned(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "UMLAL");
             mixin decodeOpMultiply;
             int rn = getBits(instruction, 12, 15);
@@ -1082,9 +986,6 @@ public class ARM7TDMI {
         private alias multiplyUMLALS = multiplyAccumulateLongUnsigned!(true);
 
         private void multiplyLongSigned(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SMULL");
             mixin decodeOpMultiply;
             int rn = getBits(instruction, 12, 15);
@@ -1096,9 +997,6 @@ public class ARM7TDMI {
         private alias multiplySMULLS = multiplyLongSigned!(true);
 
         private void multiplyAccumulateLongSigned(bool setFlags)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SMLAL");
             mixin decodeOpMultiply;
             int rn = getBits(instruction, 12, 15);
@@ -1110,11 +1008,6 @@ public class ARM7TDMI {
         private alias multiplySMLAL = multiplyAccumulateLongSigned!(false);
         private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
 
-        private void multiplyAndMultiplyAccumulate(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
-
         private void singleDataTransfer(byte flags)(int instruction) {
             singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
                     flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(instruction);
@@ -1122,9 +1015,6 @@ public class ARM7TDMI {
 
         private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
                     bool writeBack, bool load)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             // TODO: what does NoPrivilege do?
             // Decode operands
             int rn = getBits(instruction, 16, 19);
@@ -1180,11 +1070,6 @@ public class ARM7TDMI {
             }
         }
 
-        private void singleDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
-
         private void halfwordAndSignedDataTransfer(byte flags)(int instruction) {
             halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
                     flags.checkBit(3), flags.checkBit(2), flags.getBit(1), flags.getBit(0))(instruction);
@@ -1192,9 +1077,6 @@ public class ARM7TDMI {
 
         private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
                     bool writeBack, bool load, bool signed, bool half)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             // Decode operands
             int rn = getBits(instruction, 16, 19);
             int rd = getBits(instruction, 12, 15);
@@ -1259,11 +1141,6 @@ public class ARM7TDMI {
             }
         }
 
-        private void halfwordAndSignedDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
-
         private static string genBlockDataTransferOperation(bool preIncr, bool load) {
             auto memoryOp = load ? "setRegister(mode, i, memory.getInt(address));\n" :
                     "memory.setInt(address, getRegister(mode, i));\n";
@@ -1284,9 +1161,6 @@ public class ARM7TDMI {
 
         private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
                     bool writeBack, bool load)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             static if (load) {
                 debug (outputInstructions) logInstruction(instruction, "LDM");
             } else {
@@ -1329,15 +1203,7 @@ public class ARM7TDMI {
             }
         }
 
-        private void blockDataTransfer(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
-
         private void singleDataSwap(bool byteQty)(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SWP");
             // Decode operands
             int rn = getBits(instruction, 16, 19);
@@ -1359,15 +1225,7 @@ public class ARM7TDMI {
         private alias singleDataSwapInt = singleDataSwap!false;
         private alias singleDataSwapByte = singleDataSwap!true;
 
-        private void singleDataSwap(int instruction) {
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            dataProcessingInstructions[code](instruction);
-        }
-
         private void softwareInterrupt(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
             debug (outputInstructions) logInstruction(instruction, "SWI");
             setRegister(Mode.SUPERVISOR, Register.SPSR, getRegister(Register.CPSR));
             setFlag(CPSRFlag.I, 1);
@@ -1377,10 +1235,7 @@ public class ARM7TDMI {
         }
 
         private void undefined(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
-                return;
-            }
-            debug (outputInstructions) logInstruction(instruction, "UNDEFINED");
+            debug (outputInstructions) logInstruction(instruction, "UND");
             setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
             setFlag(CPSRFlag.I, 1);
             setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 4);
