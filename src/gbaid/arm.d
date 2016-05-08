@@ -1204,6 +1204,34 @@ public class ARM7TDMI {
                 &unsupported,                                            &unsupported,
             ];
 
+            // Bits are OpCode(2)
+            void delegate(int)[] loadAndStoreWithRegisterOffsetInstructions = [
+                &loadAndStoreWithRegisterOffsetSTR, &loadAndStoreWithRegisterOffsetSTRB,
+                &loadAndStoreWithRegisterOffsetLDR, &loadAndStoreWithRegisterOffsetLDRB,
+            ];
+
+            // Bits are OpCode(2)
+            void delegate(int)[] loadAndStoreSignExtentedByteAndHalfwordInstructions = [
+                &loadAndStoreSignExtentedByteAndHalfwordSTRH, &loadAndStoreSignExtentedByteAndHalfwordLDSB,
+                &loadAndStoreSignExtentedByteAndHalfwordLDRH, &loadAndStoreSignExtentedByteAndHalfwordLDSH,
+            ];
+
+            // Bits are OpCode(2)
+            void delegate(int)[] loadAndStoreWithImmediateOffsetInstructions = [
+                &loadAndStoreWithImmediateOffsetSTR,  &loadAndStoreWithImmediateOffsetLDR,
+                &loadAndStoreWithImmediateOffsetSTRB, &loadAndStoreWithImmediateOffsetLDRB,
+            ];
+
+            // Bits are OpCode(1)
+            void delegate(int)[] loadAndStoreHalfWordInstructions = [
+                &loadAndStoreHalfWordSTRH, &loadAndStoreHalfWordLDRH,
+            ];
+
+            // Bits are OpCode(1)
+            void delegate(int)[] loadAndStoreSPRelativeInstructions = [
+                &loadAndStoreSPRelative!false, &loadAndStoreSPRelative!true,
+            ];
+
             /*
 
                 The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
@@ -1229,7 +1257,7 @@ public class ARM7TDMI {
                 _18_|_1___1___1___0___0_|________________Offset_____________________|B
                 _19_|_1___1___1___1_|_H_|______________Offset_Low/High______________|BL,BLX
 
-                The op code is the concatenation of bits 6 to 15
+                The op code is bits 6 to 15
                 For some instructions some of these bits are not used, hence the need for don't cares
                 Anything not covered by the table must raise an UNDEFINED interrupt
 
@@ -1241,6 +1269,12 @@ public class ARM7TDMI {
             merger.addSubTable("001ttddddd", moveCompareAddAndSubtractImmediateInstructions);
             merger.addSubTable("010000tttt", aluOperationsInstructions);
             merger.addSubTable("010001tttt", hiRegisterOperationsAndBranchExchangeInstructions);
+            merger.addSubTable("01001ddddd", &loadPCRelative);
+            merger.addSubTable("0101tt0ddd", loadAndStoreWithRegisterOffsetInstructions);
+            merger.addSubTable("0101tt1ddd", loadAndStoreSignExtentedByteAndHalfwordInstructions);
+            merger.addSubTable("011ttddddd", loadAndStoreWithImmediateOffsetInstructions);
+            merger.addSubTable("1000tddddd", loadAndStoreHalfWordInstructions);
+            merger.addSubTable("1001tddddd", loadAndStoreSPRelativeInstructions);
 
             instructionTable = merger.getTable();
         }
@@ -1590,119 +1624,154 @@ public class ARM7TDMI {
         }
 
         private void loadPCRelative(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDR");
             int rd = getBits(instruction, 8, 10);
             int offset = (instruction & 0xFF) * 4;
             int pc = getRegister(Register.PC);
             int address = (pc & ~3) + offset;
-            debug (outputInstructions) logInstruction(instruction, "LDR");
             setRegister(rd, rotateRead(address, memory.getInt(address)));
         }
 
-        private void loadAndStoreWithRegisterOffset(int instruction) {
-            int opCode = getBits(instruction, 10, 11);
+        private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
             int offset = getRegister(getBits(instruction, 6, 8));
             int base = getRegister(getBits(instruction, 3, 5));
             int rd = instruction & 0b111;
             int address = base + offset;
-            final switch (opCode) {
-                case 0:
-                    debug (outputInstructions) logInstruction(instruction, "STR");
-                    memory.setInt(address, getRegister(rd));
-                    break;
-                case 1:
-                    debug (outputInstructions) logInstruction(instruction, "STRB");
-                    memory.setByte(address, cast(byte) getRegister(rd));
-                    break;
-                case 2:
-                    debug (outputInstructions) logInstruction(instruction, "LDR");
-                    setRegister(rd, rotateRead(address, memory.getInt(address)));
-                    break;
-                case 3:
-                    debug (outputInstructions) logInstruction(instruction, "LDRB");
-                    setRegister(rd, memory.getByte(address) & 0xFF);
-                    break;
-            }
+        }
+
+        private void loadAndStoreWithRegisterOffsetSTR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STR");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            memory.setInt(address, getRegister(rd));
+        }
+
+        private void loadAndStoreWithRegisterOffsetSTRB(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STRB");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            memory.setByte(address, cast(byte) getRegister(rd));
+        }
+
+        private void loadAndStoreWithRegisterOffsetLDR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDR");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            setRegister(rd, rotateRead(address, memory.getInt(address)));
+        }
+
+        private void loadAndStoreWithRegisterOffsetLDRB(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDRB");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            setRegister(rd, memory.getByte(address) & 0xFF);
+        }
+
+        private void loadAndStoreWithRegisterOffset(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private void loadAndStoreSignExtentedByteAndHalfwordSTRH(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STRH");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            memory.setShort(address, cast(short) getRegister(rd));
+        }
+
+        private void loadAndStoreSignExtentedByteAndHalfwordLDSB(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDSB");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            setRegister(rd, memory.getByte(address));
+        }
+
+        private void loadAndStoreSignExtentedByteAndHalfwordLDRH(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDRH");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            setRegister(rd, rotateRead(address, memory.getShort(address)));
+        }
+
+        private void loadAndStoreSignExtentedByteAndHalfwordLDSH(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDSH");
+            mixin decodeOpLoadAndStoreWithRegisterOffset;
+            setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
         }
 
         private void loadAndStoreSignExtentedByteAndHalfword(int instruction) {
-            int opCode = getBits(instruction, 10, 11);
-            int offset = getRegister(getBits(instruction, 6, 8));
-            int base = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            int address = base + offset;
-            final switch (opCode) {
-                case 0:
-                    debug (outputInstructions) logInstruction(instruction, "STRH");
-                    memory.setShort(address, cast(short) getRegister(rd));
-                    break;
-                case 1:
-                    debug (outputInstructions) logInstruction(instruction, "LDSB");
-                    setRegister(rd, memory.getByte(address));
-                    break;
-                case 2:
-                    debug (outputInstructions) logInstruction(instruction, "LDRH");
-                    setRegister(rd, rotateRead(address, memory.getShort(address)));
-                    break;
-                case 3:
-                    debug (outputInstructions) logInstruction(instruction, "LDSH");
-                    setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
-                    break;
-            }
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
-        private void loadAndStoreWithImmediateOffset(int instruction) {
-            int opCode = getBits(instruction, 11, 12);
+        private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
             int offset = getBits(instruction, 6, 10);
             int base = getRegister(getBits(instruction, 3, 5));
             int rd = instruction & 0b111;
-            final switch (opCode) {
-                case 0:
-                    debug (outputInstructions) logInstruction(instruction, "STR");
-                    memory.setInt(base + offset * 4, getRegister(rd));
-                    break;
-                case 1:
-                    debug (outputInstructions) logInstruction(instruction, "LDR");
-                    int address = base + offset * 4;
-                    setRegister(rd, rotateRead(address, memory.getInt(address)));
-                    break;
-                case 2:
-                    debug (outputInstructions) logInstruction(instruction, "STRB");
-                    memory.setByte(base + offset, cast(byte) getRegister(rd));
-                    break;
-                case 3:
-                    debug (outputInstructions) logInstruction(instruction, "LDRB");
-                    setRegister(rd, memory.getByte(base + offset) & 0xFF);
-            }
+        }
+
+        private void loadAndStoreWithImmediateOffsetSTR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STR");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset * 4;
+            memory.setInt(address, getRegister(rd));
+        }
+
+        private void loadAndStoreWithImmediateOffsetLDR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDR");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset * 4;
+            setRegister(rd, rotateRead(address, memory.getInt(address)));
+        }
+
+        private void loadAndStoreWithImmediateOffsetSTRB(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STRB");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset;
+            memory.setByte(address, cast(byte) getRegister(rd));
+        }
+
+        private void loadAndStoreWithImmediateOffsetLDRB(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDRB");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset;
+            setRegister(rd, memory.getByte(address) & 0xFF);
+        }
+
+        private void loadAndStoreWithImmediateOffset(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private void loadAndStoreHalfWordLDRH(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LDRH");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset * 2;
+            setRegister(rd, rotateRead(address, memory.getShort(address)));
+        }
+
+        private void loadAndStoreHalfWordSTRH(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "STRH");
+            mixin decodeOpLoadAndStoreWithImmediateOffset;
+            int address = base + offset * 2;
+            memory.setShort(address, cast(short) getRegister(rd));
         }
 
         private void loadAndStoreHalfWord(int instruction) {
-            int opCode = getBit(instruction, 11);
-            int offset = getBits(instruction, 6, 10) * 2;
-            int base = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            int address = base + offset;
-            if (opCode) {
-                debug (outputInstructions) logInstruction(instruction, "LDRH");
-                setRegister(rd, rotateRead(address, memory.getShort(address)));
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "STRH");
-                memory.setShort(address, cast(short) getRegister(rd));
-            }
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
-        private void loadAndStoreSPRelative(int instruction) {
-            int opCode = getBit(instruction, 11);
+        private void loadAndStoreSPRelative(bool load)(int instruction) {
             int rd = getBits(instruction, 8, 10);
             int offset = (instruction & 0xFF) * 4;
             int sp = getRegister(Register.SP);
             int address = sp + offset;
-            if (opCode) {
+            static if (load) {
                 debug (outputInstructions) logInstruction(instruction, "LDR");
                 setRegister(rd, rotateRead(address, memory.getInt(address)));
             } else {
                 debug (outputInstructions) logInstruction(instruction, "STR");
                 memory.setInt(address, getRegister(rd));
             }
+        }
+
+        private void loadAndStoreSPRelative(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         private void getRelativeAddresss(int instruction) {
