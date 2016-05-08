@@ -1182,6 +1182,28 @@ public class ARM7TDMI {
                 &moveCompareAddAndSubtractImmediateADD, &moveCompareAddAndSubtractImmediateSUB,
             ];
 
+            // Bits are OpCode(4)
+            void delegate(int)[] aluOperationsInstructions = [
+                &aluOperationsAND, &aluOperationsEOR, &aluOperationsLSL, &aluOperationsLSR,
+                &aluOperationsASR, &aluOperationsADC, &aluOperationsSBC, &aluOperationsROR,
+                &aluOperationsTST, &aluOperationsNEG, &aluOperationsCMP, &aluOperationsCMN,
+                &aluOperationsORR, &aluOperationsMUL, &aluOperationsBIC, &aluOperationsMVN,
+            ];
+
+
+            // Bits are OpCode(2),HD(1),HS(1)
+            // where HD is high destination and HS is high source
+            void delegate(int)[] hiRegisterOperationsAndBranchExchangeInstructions = [
+                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeADD!(false, true),
+                &hiRegisterOperationsAndBranchExchangeADD!(true, false), &hiRegisterOperationsAndBranchExchangeADD!(true, true),
+                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeCMP!(false, true),
+                &hiRegisterOperationsAndBranchExchangeCMP!(true, false), &hiRegisterOperationsAndBranchExchangeCMP!(true, true),
+                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeMOV!(false, true),
+                &hiRegisterOperationsAndBranchExchangeMOV!(true, false), &hiRegisterOperationsAndBranchExchangeMOV!(true, true),
+                &hiRegisterOperationsAndBranchExchangeBX!(false, false), &hiRegisterOperationsAndBranchExchangeBX!(false, true),
+                &unsupported,                                            &unsupported,
+            ];
+
             /*
 
                 The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
@@ -1217,6 +1239,8 @@ public class ARM7TDMI {
             merger.addSubTable("000ttddddd", moveShiftedRegisterInstructions);
             merger.addSubTable("00011ttddd", addAndSubtractInstructions);
             merger.addSubTable("001ttddddd", moveCompareAddAndSubtractImmediateInstructions);
+            merger.addSubTable("010000tttt", aluOperationsInstructions);
+            merger.addSubTable("010001tttt", hiRegisterOperationsAndBranchExchangeInstructions);
 
             instructionTable = merger.getTable();
         }
@@ -1390,169 +1414,179 @@ public class ARM7TDMI {
             instructionTable[code](instruction);
         }
 
-        private void aluOperations(int instruction) {
-            int opCode = getBits(instruction, 6, 9);
+        private mixin template decodeOpAluOperations() {
             int op2 = getRegister(getBits(instruction, 3, 5));
             int rd = instruction & 0b111;
             int op1 = getRegister(rd);
-            final switch (opCode) {
-                case 0x0:
-                    // AND
-                    debug (outputInstructions) logInstruction(instruction, "AND");
-                    int res = op1 & op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
-                case 0x1:
-                    // EOR
-                    debug (outputInstructions) logInstruction(instruction, "EOR");
-                    int res = op1 ^ op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
-                case 0x2:
-                    // LSL
-                    debug (outputInstructions) logInstruction(instruction, "LSL");
-                    int carry;
-                    int res = applyShift(0, op2 & 0xFF, true, op1, carry);
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0, carry);
-                    break;
-                case 0x3:
-                    // LSR
-                    debug (outputInstructions) logInstruction(instruction, "LSR");
-                    int carry;
-                    int res = applyShift(1, op2 & 0xFF, true, op1, carry);
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0, carry);
-                    break;
-                case 0x4:
-                    // ASR
-                    debug (outputInstructions) logInstruction(instruction, "ASR");
-                    int carry;
-                    int res = applyShift(2, op2 & 0xFF, true, op1, carry);
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0, carry);
-                    break;
-                case 0x5:
-                    // ADC
-                    debug (outputInstructions) logInstruction(instruction, "ADC");
-                    int carry = getFlag(CPSRFlag.C);
-                    int tmp = op1 + op2;
-                    int res = tmp + carry;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0,
-                        carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res),
-                        overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
-                    break;
-                case 0x6:
-                    // SBC
-                    debug (outputInstructions) logInstruction(instruction, "SBC");
-                    int carry = getFlag(CPSRFlag.C);
-                    int tmp = op1 - op2;
-                    int res = tmp - !carry;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0,
-                        !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res),
-                        overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
-                    break;
-                case 0x7:
-                    // ROR
-                    debug (outputInstructions) logInstruction(instruction, "ROR");
-                    int carry;
-                    int res = applyShift(3, op2 & 0xFF, true, op1, carry);
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0, carry);
-                    break;
-                case 0x8:
-                    // TST
-                    debug (outputInstructions) logInstruction(instruction, "TST");
-                    int v = op1 & op2;
-                    setAPSRFlags(v < 0, v == 0);
-                    break;
-                case 0x9:
-                    // NEG
-                    debug (outputInstructions) logInstruction(instruction, "NEG");
-                    int res = 0 - op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
-                    break;
-                case 0xA:
-                    // CMP
-                    debug (outputInstructions) logInstruction(instruction, "CMP");
-                    int v = op1 - op2;
-                    setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
-                    break;
-                case 0xB:
-                    // CMN
-                    debug (outputInstructions) logInstruction(instruction, "CMN");
-                    int v = op1 + op2;
-                    setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
-                    break;
-                case 0xC:
-                    // ORR
-                    debug (outputInstructions) logInstruction(instruction, "ORR");
-                    int res = op1 | op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
-                case 0xD:
-                    // MUL
-                    debug (outputInstructions) logInstruction(instruction, "MUL");
-                    int res = op1 * op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
-                case 0xE:
-                    // BIC
-                    debug (outputInstructions) logInstruction(instruction, "BIC");
-                    int res = op1 & ~op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
-                case 0xF:
-                    // MNV
-                    debug (outputInstructions) logInstruction(instruction, "MNV");
-                    int res = ~op2;
-                    setRegister(rd, res);
-                    setAPSRFlags(res < 0, res == 0);
-                    break;
+        }
+
+        private void aluOperationsAND(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "AND");
+            mixin decodeOpAluOperations;
+            int res = op1 & op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperationsEOR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "EOR");
+            mixin decodeOpAluOperations;
+            int res = op1 ^ op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperationsShift(int type)(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "LSL");
+            mixin decodeOpAluOperations;
+            int carry;
+            int res = applyShift(type, op2 & 0xFF, true, op1, carry);
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0, carry);
+        }
+
+        private alias aluOperationsLSL = aluOperationsShift!0;
+        private alias aluOperationsLSR = aluOperationsShift!1;
+        private alias aluOperationsASR = aluOperationsShift!2;
+        private alias aluOperationsROR = aluOperationsShift!3;
+
+        private void aluOperationsADC(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "ADC");
+            mixin decodeOpAluOperations;
+            int carry = getFlag(CPSRFlag.C);
+            int tmp = op1 + op2;
+            int res = tmp + carry;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0,
+                carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res),
+                overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
+        }
+
+        private void aluOperationsSBC(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "SBC");
+            mixin decodeOpAluOperations;
+            int carry = getFlag(CPSRFlag.C);
+            int tmp = op1 - op2;
+            int res = tmp - !carry;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0,
+                !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res),
+                overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
+        }
+
+        private void aluOperationsTST(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "TST");
+            mixin decodeOpAluOperations;
+            int v = op1 & op2;
+            setAPSRFlags(v < 0, v == 0);
+        }
+
+        private void aluOperationsNEG(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "NEG");
+            mixin decodeOpAluOperations;
+            int res = 0 - op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
+        }
+
+        private void aluOperationsCMP(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "CMP");
+            mixin decodeOpAluOperations;
+            int v = op1 - op2;
+            setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+        }
+
+        private void aluOperationsCMN(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "CMN");
+            mixin decodeOpAluOperations;
+            int v = op1 + op2;
+            setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
+        }
+
+        private void aluOperationsORR(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "ORR");
+            mixin decodeOpAluOperations;
+            int res = op1 | op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperationsMUL(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "MUL");
+            mixin decodeOpAluOperations;
+            int res = op1 * op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperationsBIC(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "BIC");
+            mixin decodeOpAluOperations;
+            int res = op1 & ~op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperationsMVN(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "MNV");
+            mixin decodeOpAluOperations;
+            int res = ~op2;
+            setRegister(rd, res);
+            setAPSRFlags(res < 0, res == 0);
+        }
+
+        private void aluOperations(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
+            static if (highSource) {
+                int rs = getBits(instruction, 3, 5) | 0b1000;
+            } else {
+                int rs = getBits(instruction, 3, 5);
+            }
+            static if (highDestination) {
+                int rd = instruction & 0b111 | 0b1000;
+            } else {
+                int rd = instruction & 0b111;
             }
         }
 
-        private void hiRegisterOperationsAndBranchExchange(int instruction) {
-            int opCode = getBits(instruction, 8, 9);
-            int rs = getBits(instruction, 3, 6);
-            int rd = instruction & 0b111 | getBit(instruction, 7) << 3;
-            final switch (opCode) {
-                case 0:
-                    // ADD
-                    debug (outputInstructions) logInstruction(instruction, "ADD");
-                    setRegister(rd, getRegister(rd) + getRegister(rs));
-                    break;
-                case 1:
-                    // CMP
-                    debug (outputInstructions) logInstruction(instruction, "CMP");
-                    int op1 = getRegister(rd);
-                    int op2 = getRegister(rs);
-                    int v = op1 - op2;
-                    setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
-                    break;
-                case 2:
-                    // MOV
-                    debug (outputInstructions) logInstruction(instruction, "MOV");
-                    setRegister(rd, getRegister(rs));
-                    break;
-                case 3:
-                    // BX
-                    debug (outputInstructions) logInstruction(instruction, "BX");
-                    int address = getRegister(rs);
-                    if (!(address & 0b1)) {
-                        setFlag(CPSRFlag.T, Set.ARM);
-                    }
-                    setRegister(Register.PC, address & ~1);
-                    break;
+        private void hiRegisterOperationsAndBranchExchangeADD(bool highDestination, bool highSource)(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "ADD");
+            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
+            setRegister(rd, getRegister(rd) + getRegister(rs));
+        }
+
+        private void hiRegisterOperationsAndBranchExchangeCMP(bool highDestination, bool highSource)(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "CMP");
+            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
+            int op1 = getRegister(rd);
+            int op2 = getRegister(rs);
+            int v = op1 - op2;
+            setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+        }
+
+        private void hiRegisterOperationsAndBranchExchangeMOV(bool highDestination, bool highSource)(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "MOV");
+            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
+            setRegister(rd, getRegister(rs));
+        }
+
+        private void hiRegisterOperationsAndBranchExchangeBX(bool highDestination, bool highSource)(int instruction) {
+            debug (outputInstructions) logInstruction(instruction, "BX");
+            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
+            int address = getRegister(rs);
+            if (!(address & 0b1)) {
+                setFlag(CPSRFlag.T, Set.ARM);
             }
+            setRegister(Register.PC, address & ~1);
+        }
+
+        private void hiRegisterOperationsAndBranchExchange(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         private void loadPCRelative(int instruction) {
