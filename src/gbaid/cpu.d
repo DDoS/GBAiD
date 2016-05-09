@@ -9,6 +9,7 @@ import std.conv;
 import std.string;
 
 import gbaid.memory;
+import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
@@ -18,7 +19,7 @@ public class ARM7TDMI {
     private HaltTask haltTask;
     private Thread thread;
     private bool running = false;
-    private int[37] registers = new int[37];
+    private Registers registers;
     private Mode mode = Mode.SYSTEM;
     private bool haltSignal = false;
     private bool irqSignal = false;
@@ -27,10 +28,10 @@ public class ARM7TDMI {
     private Pipeline pipeline;
     private int instruction;
     private int decoded;
-    private bool branchSignal = false;
 
     public this(Memory memory) {
         this.memory = memory;
+        registers = new Registers();
         armPipeline = new ARMPipeline();
         thumbPipeline = new THUMBPipeline();
         pipeline = armPipeline;
@@ -84,7 +85,7 @@ public class ARM7TDMI {
     }
 
     public int getProgramCounter() {
-        return getRegister(Register.PC) - 2 * pipeline.getPCIncrement();
+        return registers.getExecutedPC();
     }
 
     public int getPreFetch() {
@@ -98,15 +99,15 @@ public class ARM7TDMI {
     private void run() {
         try {
             // initialize the stack pointers
-            setRegister(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
-            setRegister(Mode.IRQ, Register.SP, 0x3007FA0);
-            setRegister(Mode.USER, Register.SP, 0x3007F00);
+            registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
+            registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
+            registers.set(Mode.USER, Register.SP, 0x3007F00);
             // initialize to ARM in system mode
-            setFlag(CPSRFlag.T, Set.ARM);
-            setMode(Mode.SYSTEM);
+            registers.setFlag(CPSRFlag.T, Set.ARM);
+            registers.setMode(Mode.SYSTEM);
             updateModeAndSet();
             // set first instruction
-            setRegister(Register.PC, entryPointAddress);
+            registers.set(Register.PC, entryPointAddress);
             // branch to instruction
             branch();
             // start ticking
@@ -115,24 +116,25 @@ public class ARM7TDMI {
                     branchIRQ();
                 }
                 tick();
+                //registers.dumpInstructions(1);
                 while (haltSignal) {
                     if (!haltTask()) {
                         Thread.yield();
                     }
                 }
                 updateModeAndSet();
-                if (branchSignal) {
+                if (registers.wasPCModified()) {
                     branch();
                 } else {
-                    pipeline.incrementPC();
+                    registers.incrementPC();
                 }
             }
         } catch (Exception ex) {
             writeln("ARM CPU encountered an exception, thread stopping...");
             writeln("Exception: ", ex.msg);
             debug (outputInstructions) {
-                dumpInstructions();
-                dumpRegisters();
+                registers.dumpInstructions();
+                registers.dumpRegisters();
             }
         }
     }
@@ -140,13 +142,12 @@ public class ARM7TDMI {
     private void branch() {
         // fetch first instruction
         instruction = pipeline.fetch();
-        pipeline.incrementPC();
+        registers.incrementPC();
         // fetch second and decode first
         int nextInstruction = pipeline.fetch();
         decoded = pipeline.decode(instruction);
         instruction = nextInstruction;
-        pipeline.incrementPC();
-        branchSignal = false;
+        registers.incrementPC();
     }
 
     private void tick() {
@@ -161,20 +162,20 @@ public class ARM7TDMI {
     }
 
     private void updateModeAndSet() {
-        mode = getMode();
-        pipeline = getFlag(CPSRFlag.T) ? thumbPipeline : armPipeline;
+        mode = registers.getMode();
+        pipeline = registers.getFlag(CPSRFlag.T) ? thumbPipeline : armPipeline;
     }
 
     private void branchIRQ() {
-        if (getFlag(CPSRFlag.I)) {
+        if (registers.getFlag(CPSRFlag.I)) {
             return;
         }
-        setRegister(Mode.IRQ, Register.SPSR, getRegister(Register.CPSR));
-        setFlag(CPSRFlag.I, 1);
-        setFlag(CPSRFlag.T, Set.ARM);
-        setRegister(Mode.IRQ, Register.LR, getRegister(Register.PC) - pipeline.getPCIncrement() * 2 + 4);
-        setRegister(Register.PC, 0x18);
-        setMode(Mode.IRQ);
+        registers.set(Mode.IRQ, Register.SPSR, registers.get(Register.CPSR));
+        registers.setFlag(CPSRFlag.I, 1);
+        registers.set(Mode.IRQ, Register.LR, registers.getExecutedPC() + 4);
+        registers.setFlag(CPSRFlag.T, Set.ARM);
+        registers.set(Register.PC, 0x18);
+        registers.setMode(Mode.IRQ);
         updateModeAndSet();
         branch();
     }
@@ -184,181 +185,13 @@ public class ARM7TDMI {
         protected int fetch();
         protected int decode(int instruction);
         protected void execute(int instruction);
-        protected uint getPCIncrement();
-        protected void incrementPC();
     }
 
     private class ARMPipeline : Pipeline {
-        private void delegate(int)[] instructionTable;
+        private void function(Registers, Memory, int)[] instructionTable;
 
         private this() {
-            // Bits are OpCode(4),S(1)
-            // where S is set flags
-            void delegate(int)[] dataProcessingRegisterImmediateInstructions = [
-                &dataProcessingANDRegisterImmediate,  &dataProcessingANDSRegisterImmediate,  &dataProcessingEORRegisterImmediate,     &dataProcessingEORSRegisterImmediate,
-                &dataProcessingSUBRegisterImmediate,  &dataProcessingSUBSRegisterImmediate,  &dataProcessingRSBRegisterImmediate,     &dataProcessingRSBSRegisterImmediate,
-                &dataProcessingADDRegisterImmediate,  &dataProcessingADDSRegisterImmediate,  &dataProcessingADCRegisterImmediate,     &dataProcessingADCSRegisterImmediate,
-                &dataProcessingSBCRegisterImmediate,  &dataProcessingSBCSRegisterImmediate,  &dataProcessingRSCRegisterImmediate,     &dataProcessingRSCSRegisterImmediate,
-                &unsupported,                         &dataProcessingTSTRegisterImmediate,   &unsupported,                            &dataProcessingTEQRegisterImmediate,
-                &unsupported,                         &dataProcessingCMPRegisterImmediate,   &unsupported,                            &dataProcessingCMNRegisterImmediate,
-                &dataProcessingORRRegisterImmediate,  &dataProcessingORRSRegisterImmediate,  &dataProcessingMOVRegisterImmediate,     &dataProcessingMOVSRegisterImmediate,
-                &dataProcessingBICRegisterImmediate,  &dataProcessingBICSRegisterImmediate,  &dataProcessingMVNRegisterImmediate,     &dataProcessingMVNSRegisterImmediate,
-            ];
-            void delegate(int)[] dataProcessingRegisterInstructions = [
-                &dataProcessingANDRegister,  &dataProcessingANDSRegister,  &dataProcessingEORRegister,     &dataProcessingEORSRegister,
-                &dataProcessingSUBRegister,  &dataProcessingSUBSRegister,  &dataProcessingRSBRegister,     &dataProcessingRSBSRegister,
-                &dataProcessingADDRegister,  &dataProcessingADDSRegister,  &dataProcessingADCRegister,     &dataProcessingADCSRegister,
-                &dataProcessingSBCRegister,  &dataProcessingSBCSRegister,  &dataProcessingRSCRegister,     &dataProcessingRSCSRegister,
-                &unsupported,                &dataProcessingTSTRegister,   &unsupported,                   &dataProcessingTEQRegister,
-                &unsupported,                &dataProcessingCMPRegister,   &unsupported,                   &dataProcessingCMNRegister,
-                &dataProcessingORRRegister,  &dataProcessingORRSRegister,  &dataProcessingMOVRegister,     &dataProcessingMOVSRegister,
-                &dataProcessingBICRegister,  &dataProcessingBICSRegister,  &dataProcessingMVNRegister,     &dataProcessingMVNSRegister,
-            ];
-            void delegate(int)[] dataProcessingImmediateInstructions = [
-                &dataProcessingANDImmediate, &dataProcessingANDSImmediate, &dataProcessingEORImmediate,    &dataProcessingEORSImmediate,
-                &dataProcessingSUBImmediate, &dataProcessingSUBSImmediate, &dataProcessingRSBImmediate,    &dataProcessingRSBSImmediate,
-                &dataProcessingADDImmediate, &dataProcessingADDSImmediate, &dataProcessingADCImmediate,    &dataProcessingADCSImmediate,
-                &dataProcessingSBCImmediate, &dataProcessingSBCSImmediate, &dataProcessingRSCImmediate,    &dataProcessingRSCSImmediate,
-                &unsupported,                &dataProcessingTSTImmediate,  &unsupported,                   &dataProcessingTEQImmediate,
-                &unsupported,                &dataProcessingCMPImmediate,  &unsupported,                   &dataProcessingCMNImmediate,
-                &dataProcessingORRImmediate, &dataProcessingORRSImmediate, &dataProcessingMOVImmediate,    &dataProcessingMOVSImmediate,
-                &dataProcessingBICImmediate, &dataProcessingBICSImmediate, &dataProcessingMVNImmediate,    &dataProcessingMVNSImmediate,
-            ];
-
-            // Bits are P(1)
-            // where P is use SPSR
-            void delegate(int)[] psrTransferImmediateInstructions = [
-                &cpsrWriteImmediate, &spsrWriteImmediate,
-            ];
-
-            // Bits are P(1),~L(1)
-            // where P is use SPSR and L is load
-            void delegate(int)[] psrTransferRegisterInstructions = [
-                &cpsrRead, &cpsrWriteRegister, &spsrRead, &spsrWriteRegister,
-            ];
-
-            // Bits are A(1),S(1)
-            // where A is accumulate and S is set flags
-            void delegate(int)[] multiplyIntInstructions = [
-                &multiplyMUL,   &multiplyMULS,   &multiplyMLA,   &multiplyMLAS,
-            ];
-
-            // Bits are ~U(1),A(1),S(1)
-            // where U is unsigned, A is accumulate and S is set flags
-            void delegate(int)[] multiplyLongInstructions = [
-                &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
-                &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
-            ];
-
-            string genInstructionTemplateTable(string instruction, int bitCount, int offset = 0) {
-                auto s = "[";
-                foreach (i; 0 .. 1 << bitCount) {
-                    if (i % 4 == 0) {
-                        s ~= "\n";
-                    }
-                    s ~= "&" ~ instruction ~ "!(" ~ (i + offset).to!string ~ "),";
-                }
-                s ~= "\n]";
-                return s;
-            }
-
-            // Bits are P(1),U(1),B(1),W(1),L(1)
-            // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
-            mixin ("void delegate(int)[] singleDataTransferImmediateInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5) ~ ";");
-
-            // Bits are P(1),U(1),B(1),W(1),L(1)
-            // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
-            mixin ("void delegate(int)[] singleDataTransferRegisterInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5, 32) ~ ";");
-
-            string getHalfwordAndSignedDataTransferInstructionTable(bool immediate) {
-                auto s = "[";
-                foreach (i; 0 .. 64) {
-                    if (i % 4 == 0) {
-                        s ~= "\n";
-                    }
-                    // Insert the I bit just before P(1),U(1)
-                    int code = (i & 0x30) << 1 | (immediate & 1) << 4 | i & 0xF;
-                    // If L, then there is no opCode for ~S and ~H; otherwise only opCode for ~S and H exists
-                    if (code.checkBit(2) ? (code & 0b11) == 0 : (code & 0b11) != 1) {
-                        s ~= "&unsupported, ";
-                    } else if (!code.checkBit(6) && code.checkBit(3)) {
-                        // If post-increment, then write-back is always enabled and W should be 0
-                        s ~= "&unsupported, ";
-                    } else {
-                        s ~= "&halfwordAndSignedDataTransfer!(" ~ code.to!string ~ "), ";
-                    }
-                }
-                s ~= "\n]";
-                return s;
-            }
-
-            // Bits are P(1),U(1),W(1),L(1),S(1),H(1)
-            // where P is pre-increment, U is up-increment, W is write back and L is load, S is signed and H is halfword
-            mixin ("void delegate(int)[] halfwordAndSignedDataTransferRegisterInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(false) ~ ";");
-            mixin ("void delegate(int)[] halfwordAndSignedDataTransferImmediateInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(true) ~ ";");
-
-            // Bits are B(1)
-            // where B is byte quantity
-            void delegate(int)[] singleDataSwapInstructions = [
-                &singleDataSwapInt, &singleDataSwapByte,
-            ];
-
-            // Bits are P(1),U(1),S(1),W(1),L(1)
-            // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
-            mixin ("void delegate(int)[] blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
-
-            // Bits are L(1)
-            // where L is link
-            void delegate(int)[] branchAndBranchWithLinkInstructions = [
-                &branch, &branchAndLink,
-            ];
-
-            /*
-                The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#arminstructionsummary
-
-                |..3 ..................2 ..................1 ..................0|
-                |1_0_9_8_7_6_5_4_3_2_1_0_9_8_7_6_5_4_3_2_1_0_9_8_7_6_5_4_3_2_1_0|
-                |_Cond__|0_0_0|___Op__|S|__Rn___|__Rd___|__Shift__|Typ|0|__Rm___| DataProc
-                |_Cond__|0_0_0|___Op__|S|__Rn___|__Rd___|__Rs___|0|Typ|1|__Rm___| DataProc
-                |_Cond__|0_0_1|___Op__|S|__Rn___|__Rd___|_Shift_|___Immediate___| DataProc
-                |_Cond__|0_0_1_1_0|P|1|0|_Field_|__Rd___|_Shift_|___Immediate___| PSR Imm
-                |_Cond__|0_0_0_1_0|P|L|0|_Field_|__Rd___|0_0_0_0|0_0_0_0|__Rm___| PSR Reg
-                |_Cond__|0_0_0_1_0_0_1_0_1_1_1_1_1_1_1_1_1_1_1_1|0_0|L|1|__Rn___| BX,BLX
-                |_Cond__|0_0_0_0_0_0|A|S|__Rd___|__Rn___|__Rs___|1_0_0_1|__Rm___| Multiply
-                |_Cond__|0_0_0_0_1|U|A|S|_RdHi__|_RdLo__|__Rs___|1_0_0_1|__Rm___| MulLong
-                |_Cond__|0_0_0_1_0|B|0_0|__Rn___|__Rd___|0_0_0_0|1_0_0_1|__Rm___| TransSwp12
-                |_Cond__|0_0_0|P|U|0|W|L|__Rn___|__Rd___|0_0_0_0|1|S|H|1|__Rm___| TransReg10
-                |_Cond__|0_0_0|P|U|1|W|L|__Rn___|__Rd___|OffsetH|1|S|H|1|OffsetL| TransImm10
-                |_Cond__|0_1_0|P|U|B|W|L|__Rn___|__Rd___|_________Offset________| TransImm9
-                |_Cond__|0_1_1|P|U|B|W|L|__Rn___|__Rd___|__Shift__|Typ|0|__Rm___| TransReg9
-                |_Cond__|1_0_0|P|U|S|W|L|__Rn___|__________Register_List________| BlockTrans
-                |_Cond__|1_0_1|L|___________________Offset______________________| B,BL,BLX
-                |_Cond__|1_1_1_1|_____________Ignored_by_Processor______________| SWI
-
-                The op code is the concatenation of bits 20 to 27 with bits 4 to 7
-                For some instructions some of these bits are not used, hence the need for don't cares
-                Anything not covered by the table must raise an UNDEFINED interrupt
-            */
-
-            auto merger = new TableMerger(12, &unsupported);
-            merger.addSubTable("000tttttddd0", dataProcessingRegisterImmediateInstructions);
-            merger.addSubTable("000ttttt0dd1", dataProcessingRegisterInstructions);
-            merger.addSubTable("001tttttdddd", dataProcessingImmediateInstructions);
-            merger.addSubTable("00110t10dddd", psrTransferImmediateInstructions);
-            merger.addSubTable("00010tt00000", psrTransferRegisterInstructions);
-            merger.addSubTable("000100100001", &branchAndExchange);
-            merger.addSubTable("000000tt1001", multiplyIntInstructions);
-            merger.addSubTable("00001ttt1001", multiplyLongInstructions);
-            merger.addSubTable("00010t001001", singleDataSwapInstructions);
-            merger.addSubTable("000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions);
-            merger.addSubTable("000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions);
-            merger.addSubTable("010tttttdddd", singleDataTransferImmediateInstructions);
-            merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
-            merger.addSubTable("100tttttdddd", blockDataTransferInstructions);
-            merger.addSubTable("101tdddddddd", branchAndBranchWithLinkInstructions);
-            merger.addSubTable("1111dddddddd", &softwareInterrupt);
-
-            instructionTable = merger.getTable();
+            instructionTable = genARMTable();
         }
 
         protected Set getSet() {
@@ -366,7 +199,7 @@ public class ARM7TDMI {
         }
 
         protected override int fetch() {
-            return memory.getInt(getRegister(Register.PC));
+            return memory.getInt(registers.get(Register.PC));
         }
 
         protected override int decode(int instruction) {
@@ -375,955 +208,19 @@ public class ARM7TDMI {
         }
 
         protected override void execute(int instruction) {
-            if (!checkCondition(getConditionBits(instruction))) {
+            if (!registers.checkCondition(getConditionBits(instruction))) {
                 return;
             }
             int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            instructionTable[code](instruction);
-        }
-
-        protected override uint getPCIncrement() {
-            return 4;
-        }
-
-        protected override void incrementPC() {
-            registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
-        }
-
-        private void branchAndExchange(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "BX");
-            int address = getRegister(instruction & 0xF);
-            if (address & 0b1) { // TODO: check this condition
-                setFlag(CPSRFlag.T, Set.THUMB);
-            }
-            setRegister(Register.PC, address & ~1);
-        }
-
-        private void branch(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "B");
-            int offset = instruction & 0xFFFFFF;
-            // sign extend the offset
-            offset <<= 8;
-            offset >>= 8;
-            int pc = getRegister(Register.PC);
-            setRegister(Register.PC, pc + offset * 4);
-        }
-
-        private void branchAndLink(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "BL");
-            int offset = instruction & 0xFFFFFF;
-            // sign extend the offset
-            offset <<= 8;
-            offset >>= 8;
-            int pc = getRegister(Register.PC);
-            setRegister(Register.LR, pc - 4);
-            setRegister(Register.PC, pc + offset * 4);
-        }
-
-        private void setDataProcessingFlags(int rd, int res, int overflow, int carry) {
-            int zero = res == 0;
-            int negative = res < 0;
-            if (rd == Register.PC) {
-                setRegister(Register.CPSR, getRegister(Register.SPSR));
-            } else {
-                setAPSRFlags(negative, zero, carry, overflow);
-            }
-        }
-
-        private mixin template decodeOpDataProcessingImmediate() {
-            // Decode
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int op1 = getRegister(rn);
-            // Get op2
-            int shift = getBits(instruction, 8, 11) * 2;
-            int op2 = rotateRight(instruction & 0xFF, shift);
-            int carry = shift == 0 ? getFlag(CPSRFlag.C) : getBit(op2, 31);
-        }
-
-        private mixin template decodeOpDataProcessingRegisterImmediate() {
-            mixin decodeOpDataProcessingRegister!true;
-        }
-
-        private mixin template decodeOpDataProcessingRegister() {
-            mixin decodeOpDataProcessingRegister!false;
-        }
-
-        private mixin template decodeOpDataProcessingRegister(bool immediateShift) {
-            // Decode
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int op1 = getRegister(rn);
-            // Get op2
-            int shiftSrc = getBit(instruction, 4);
-            static if (immediateShift) {
-                int shift = getBits(instruction, 7, 11);
-            } else {
-                int shift = getRegister(getBits(instruction, 8, 11));
-            }
-            int shiftType = getBits(instruction, 5, 6);
-            int carry;
-            int op2 = applyShift(shiftType, shift, cast(bool) shiftSrc, getRegister(instruction & 0b1111), carry);
-        }
-
-        private void dataProcessingAND(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "AND");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 & op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingANDImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingANDSImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingANDRegister = dataProcessingAND!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingANDRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingANDSRegister = dataProcessingAND!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingANDSRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingEOR(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "EOR");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 ^ op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingEORImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingEORSImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingEORRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingEORRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingEORSRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingEORSRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingSUB(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SUB");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 - op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = overflowedSub(op1, op2, res);
-                carry = !borrowedSub(op1, op2, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingSUBImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingSUBSImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingSUBRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingSUBRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingSUBSRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingSUBSRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingRSB(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "RSB");
-            mixin decodeOperands;
-            // Operation
-            int res = op2 - op1;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = overflowedSub(op2, op1, res);
-                carry = !borrowedSub(op2, op1, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingRSBImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingRSBSImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingRSBRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingRSBRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingRSBSRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingRSBSRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingADD(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ADD");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 + op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = overflowedAdd(op1, op2, res);
-                carry = carriedAdd(op1, op2, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingADDImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingADDSImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingADDRegister = dataProcessingADD!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingADDRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingADDSRegister = dataProcessingADD!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingADDSRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingADC(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ADC");
-            mixin decodeOperands;
-            // Operation
-            int tmp = op1 + op2;
-            int res = tmp + carry;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) { // TODO: check if this is correct
-                int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
-                carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingADCImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingADCSImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingADCRegister = dataProcessingADC!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingADCRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingADCSRegister = dataProcessingADC!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingADCSRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingSBC(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SBC");
-            mixin decodeOperands;
-            // Operation
-            int tmp = op1 - op2;
-            int res = tmp - !carry; // TODO: check if this is correct
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) { // TODO: check if this is correct
-                int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
-                carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingSBCImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingSBCSImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingSBCRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingSBCRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingSBCSRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingSBCSRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingRSC(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "RSC");
-            mixin decodeOperands;
-            // Operation
-            int tmp = op2 - op1;
-            int res = tmp - !carry; // TODO: check if this is correct
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) { // TODO: check if this is correct
-                int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
-                carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingRSCImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingRSCSImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingRSCRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingRSCRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingRSCSRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingRSCSRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingTST(alias decodeOperands)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "TST");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 & op2;
-            // Flag updates
-            int overflow = getFlag(CPSRFlag.V);
-            setDataProcessingFlags(rd, res, overflow, carry);
-        }
-
-        private alias dataProcessingTSTImmediate = dataProcessingTST!decodeOpDataProcessingImmediate;
-        private alias dataProcessingTSTRegister = dataProcessingTST!(decodeOpDataProcessingRegister);
-        private alias dataProcessingTSTRegisterImmediate = dataProcessingTST!(decodeOpDataProcessingRegisterImmediate);
-        // TODO: what does the P varient do?
-
-        private void dataProcessingTEQ(alias decodeOperands)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "TEQ");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 ^ op2;
-            // Flag updates
-            int overflow = getFlag(CPSRFlag.V);
-            setDataProcessingFlags(rd, res, overflow, carry);
-        }
-
-        private alias dataProcessingTEQImmediate = dataProcessingTEQ!decodeOpDataProcessingImmediate;
-        private alias dataProcessingTEQRegister = dataProcessingTEQ!(decodeOpDataProcessingRegister);
-        private alias dataProcessingTEQRegisterImmediate = dataProcessingTEQ!(decodeOpDataProcessingRegisterImmediate);
-
-        private void dataProcessingCMP(alias decodeOperands)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMP");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 - op2;
-            // Flag updates
-            int overflow = overflowedSub(op1, op2, res);
-            carry = !borrowedSub(op1, op2, res);
-            setDataProcessingFlags(rd, res, overflow, carry);
-        }
-
-        private alias dataProcessingCMPImmediate = dataProcessingCMP!decodeOpDataProcessingImmediate;
-        private alias dataProcessingCMPRegister = dataProcessingCMP!(decodeOpDataProcessingRegister);
-        private alias dataProcessingCMPRegisterImmediate = dataProcessingCMP!(decodeOpDataProcessingRegisterImmediate);
-
-        private void dataProcessingCMN(alias decodeOperands)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMN");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 + op2;
-            // Flag updates
-            int overflow = overflowedAdd(op1, op2, res);
-            carry = carriedAdd(op1, op2, res);
-            setDataProcessingFlags(rd, res, overflow, carry);
-        }
-
-        private alias dataProcessingCMNImmediate = dataProcessingCMN!decodeOpDataProcessingImmediate;
-        private alias dataProcessingCMNRegister = dataProcessingCMN!(decodeOpDataProcessingRegister);
-        private alias dataProcessingCMNRegisterImmediate = dataProcessingCMN!(decodeOpDataProcessingRegisterImmediate);
-
-        private void dataProcessingORR(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ORR");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 | op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingORRImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingORRSImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingORRRegister = dataProcessingORR!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingORRRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingORRSRegister = dataProcessingORR!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingORRSRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingMOV(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MOV");
-            mixin decodeOperands;
-            // Operation
-            int res = op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingMOVImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingMOVSImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingMOVRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingMOVRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingMOVSRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingMOVSRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingBIC(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "BIC");
-            mixin decodeOperands;
-            // Operation
-            int res = op1 & ~op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingBICImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingBICSImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingBICRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingBICRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingBICSRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingBICSRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private void dataProcessingMVN(alias decodeOperands, bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MVN");
-            mixin decodeOperands;
-            // Operation
-            int res = ~op2;
-            setRegister(rd, res);
-            // Flag updates
-            static if (setFlags) {
-                int overflow = getFlag(CPSRFlag.V);
-                setDataProcessingFlags(rd, res, overflow, carry);
-            }
-        }
-
-        private alias dataProcessingMVNImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, false);
-        private alias dataProcessingMVNSImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, true);
-        private alias dataProcessingMVNRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, false);
-        private alias dataProcessingMVNRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, false);
-        private alias dataProcessingMVNSRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, true);
-        private alias dataProcessingMVNSRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, true);
-
-        private mixin template decodeOpPrsrImmediate() {
-            int op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
-        }
-
-        private mixin template decodeOpPrsrRegister() {
-            int op = getRegister(instruction & 0xF);
-        }
-
-        private int getPsrMask(int instruction) {
-            int mask = 0;
-            if (checkBit(instruction, 19)) {
-                // flags
-                mask |= 0xFF000000;
-            }
-            // status and extension can be ignored in ARMv4T
-            if (checkBit(instruction, 16)) {
-                // control
-                mask |= 0xFF;
-            }
-            return mask;
-        }
-
-        private void cpsrRead(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MRS");
-            int rd = getBits(instruction, 12, 15);
-            setRegister(rd, getRegister(Register.CPSR));
-        }
-
-        private void cpsrWrite(alias decodeOperand)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MSR");
-            mixin decodeOperand;
-            int mask = getPsrMask(instruction) & (0xF0000000 | (getMode() != Mode.USER ? 0xCF : 0));
-            int cpsr = getRegister(Register.CPSR);
-            setRegister(Register.CPSR, cpsr & ~mask | op & mask);
-        }
-
-        private alias cpsrWriteImmediate = cpsrWrite!decodeOpPrsrImmediate;
-        private alias cpsrWriteRegister = cpsrWrite!decodeOpPrsrRegister;
-
-        private void spsrRead(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MRS");
-            int rd = getBits(instruction, 12, 15);
-            setRegister(rd, getRegister(Register.SPSR));
-        }
-
-        private void spsrWrite(alias decodeOperand)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MSR");
-            mixin decodeOperand;
-            int mask = getPsrMask(instruction) & 0xF00000EF;
-            int spsr = getRegister(Register.SPSR);
-            setRegister(Register.SPSR, spsr & ~mask | op & mask);
-        }
-
-        private alias spsrWriteImmediate = spsrWrite!decodeOpPrsrImmediate;
-        private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
-
-        private void setMultiplyIntResult(bool setFlags)(int rd, int res) {
-            setRegister(rd, res);
-            static if (setFlags) {
-                setAPSRFlags(res < 0, res == 0);
-            }
-        }
-
-        private void setMultiplyLongResult(bool setFlags)(int rd, int rn, long res) {
-            int resLo = cast(int) res;
-            int resHi = cast(int) (res >> 32);
-            setRegister(rn, resLo);
-            setRegister(rd, resHi);
-            static if (setFlags) {
-                setAPSRFlags(res < 0, res == 0);
-            }
-        }
-
-        private mixin template decodeOpMultiply() {
-            int rd = getBits(instruction, 16, 19);
-            int op2 = getRegister(getBits(instruction, 8, 11));
-            int op1 = getRegister(instruction & 0xF);
-        }
-
-        private void multiplyInt(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MUL");
-            mixin decodeOpMultiply;
-            int res = op1 * op2;
-            setMultiplyIntResult!setFlags(rd, res);
-        }
-
-        private alias multiplyMUL = multiplyInt!(false);
-        private alias multiplyMULS = multiplyInt!(true);
-
-        private void multiplyAccumulateInt(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MLA");
-            mixin decodeOpMultiply;
-            int op3 = getRegister(getBits(instruction, 12, 15));
-            int res = op1 * op2 + op3;
-            setMultiplyIntResult!setFlags(rd, res);
-        }
-
-        private alias multiplyMLA = multiplyAccumulateInt!(false);
-        private alias multiplyMLAS = multiplyAccumulateInt!(true);
-
-        private void multiplyLongUnsigned(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "UMULL");
-            mixin decodeOpMultiply;
-            int rn = getBits(instruction, 12, 15);
-            ulong res = ucast(op1) * ucast(op2);
-            setMultiplyLongResult!setFlags(rd, rn, res);
-        }
-
-        private alias multiplyUMULL = multiplyLongUnsigned!(false);
-        private alias multiplyUMULLS = multiplyLongUnsigned!(true);
-
-        private void multiplyAccumulateLongUnsigned(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "UMLAL");
-            mixin decodeOpMultiply;
-            int rn = getBits(instruction, 12, 15);
-            ulong op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
-            ulong res = ucast(op1) * ucast(op2) + op3;
-            setMultiplyLongResult!setFlags(rd, rn, res);
-        }
-
-        private alias multiplyUMLAL = multiplyAccumulateLongUnsigned!(false);
-        private alias multiplyUMLALS = multiplyAccumulateLongUnsigned!(true);
-
-        private void multiplyLongSigned(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SMULL");
-            mixin decodeOpMultiply;
-            int rn = getBits(instruction, 12, 15);
-            long res = cast(long) op1 * cast(long) op2;
-            setMultiplyLongResult!setFlags(rd, rn, res);
-        }
-
-        private alias multiplySMULL = multiplyLongSigned!(false);
-        private alias multiplySMULLS = multiplyLongSigned!(true);
-
-        private void multiplyAccumulateLongSigned(bool setFlags)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SMLAL");
-            mixin decodeOpMultiply;
-            int rn = getBits(instruction, 12, 15);
-            long op3 = ucast(getRegister(rd)) << 32 | ucast(getRegister(rn));
-            long res = cast(long) op1 * cast(long) op2 + op3;
-            setMultiplyLongResult!setFlags(rd, rn, res);
-        }
-
-        private alias multiplySMLAL = multiplyAccumulateLongSigned!(false);
-        private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
-
-        private void singleDataTransfer(byte flags)(int instruction) {
-            singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
-                    flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(instruction);
-        }
-
-        private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
-                    bool writeBack, bool load)(int instruction) {
-            // TODO: what does NoPrivilege do?
-            // Decode operands
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            static if (notImmediate) {
-                int shift = getBits(instruction, 7, 11);
-                int shiftType = getBits(instruction, 5, 6);
-                int carry;
-                int offset = applyShift(shiftType, shift, false, getRegister(instruction & 0b1111), carry);
-            } else {
-                int offset = instruction & 0xFFF;
-            }
-            int address = getRegister(rn);
-            // Do pre-increment if needed
-            static if (preIncr) {
-                static if (upIncr) {
-                    address += offset;
-                } else {
-                    address -= offset;
-                }
-            }
-            // Read or write memory
-            static if (load) {
-                static if (byteQty) {
-                    debug (outputInstructions) logInstruction(instruction, "LDRB");
-                    setRegister(rd, memory.getByte(address) & 0xFF);
-                } else {
-                    debug (outputInstructions) logInstruction(instruction, "LDR");
-                    setRegister(rd, rotateRead(address, memory.getInt(address)));
-                }
-            } else {
-                static if (byteQty) {
-                    debug (outputInstructions) logInstruction(instruction, "STRB");
-                    memory.setByte(address, cast(byte) getRegister(rd)); // TODO: check if this is correct
-                } else {
-                    debug (outputInstructions) logInstruction(instruction, "STR");
-                    memory.setInt(address, getRegister(rd));
-                }
-            }
-            // Do post-increment and write back if needed
-            static if (preIncr) {
-                static if (writeBack) {
-                    setRegister(rn, address);
-                }
-            } else {
-                static if (upIncr) {
-                    address += offset;
-                } else {
-                    address -= offset;
-                }
-                // Always do write back in post increment
-                setRegister(rn, address);
-            }
-        }
-
-        private void halfwordAndSignedDataTransfer(byte flags)(int instruction) {
-            halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
-                    flags.checkBit(3), flags.checkBit(2), flags.getBit(1), flags.getBit(0))(instruction);
-        }
-
-        private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
-                    bool writeBack, bool load, bool signed, bool half)(int instruction) {
-            // Decode operands
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            static if (immediate) {
-                int upperOffset = getBits(instruction, 8, 11);
-                int lowerOffset = instruction & 0xF;
-                int offset = upperOffset << 4 | lowerOffset;
-            } else {
-                int offset = getRegister(instruction & 0xF);
-            }
-            int address = getRegister(rn);
-            // Do pre-increment if needed
-            static if (preIncr) {
-                static if (upIncr) {
-                    address += offset;
-                } else {
-                    address -= offset;
-                }
-            }
-            // Read or write memory
-            static if (load) {
-                static if (half) {
-                    static if (signed) {
-                        debug (outputInstructions) logInstruction(instruction, "LDRSH");
-                        setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
-                    } else {
-                        debug (outputInstructions) logInstruction(instruction, "LDRH");
-                        setRegister(rd, rotateRead(address, memory.getShort(address)));
-                    }
-                } else {
-                    static if (signed) {
-                        debug (outputInstructions) logInstruction(instruction, "LDRSB");
-                        setRegister(rd, memory.getByte(address));
-                    } else {
-                        static assert (0);
-                    }
-                }
-            } else {
-                static if (half && !signed) {
-                    debug (outputInstructions) logInstruction(instruction, "STRH");
-                    memory.setShort(address, cast(short) getRegister(rd));
-                } else {
-                    static assert (0);
-                }
-            }
-            // Do post-increment and write back if needed
-            static if (preIncr) {
-                static if (writeBack) {
-                    setRegister(rn, address);
-                }
-            } else {
-                static if (upIncr) {
-                    address += offset;
-                } else {
-                    address -= offset;
-                }
-                // Always do write back in post increment, the flag should be 0
-                static if (writeBack) {
-                    static assert (0);
-                }
-                setRegister(rn, address);
-            }
-        }
-
-        private static string genBlockDataTransferOperation(bool preIncr, bool load) {
-            auto memoryOp = load ? "setRegister(mode, i, memory.getInt(address));\n" :
-                    "memory.setInt(address, getRegister(mode, i));\n";
-            string incr = "address += 4;\n";
-            auto singleOp = preIncr ? incr ~ memoryOp : memoryOp ~ incr;
-            return
-                `foreach (i; 0 .. 16) {
-                    if (checkBit(registerList, i)) {
-                        ` ~ singleOp ~ `
-                    }
-                }`;
-        }
-
-        private void blockDataTransfer(byte flags)(int instruction) {
-            blockDataTransfer!(flags.checkBit(4), flags.checkBit(3), flags.checkBit(2),
-                    flags.checkBit(1), flags.checkBit(0))(instruction);
-        }
-
-        private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
-                    bool writeBack, bool load)(int instruction) {
-            static if (load) {
-                debug (outputInstructions) logInstruction(instruction, "LDM");
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "STM");
-            }
-            // Decode operands
-            int rn = getBits(instruction, 16, 19);
-            int registerList = instruction & 0xFFFF;
-            // Force user mode or restore PSR flag
-            static if (loadPSR) {
-                Mode mode = Mode.USER;
-                static if (load) {
-                    if (checkBit(registerList, 15)) {
-                        setRegister(Register.CPSR, getRegister(Register.SPSR));
-                        mode = this.outer.mode;
-                    }
-                }
-            } else {
-                Mode mode = this.outer.mode;
-            }
-            // Memory transfer
-            int baseAddress = getRegister(rn);
-            int address;
-            static if (upIncr) {
-                address = baseAddress;
-                mixin (genBlockDataTransferOperation(preIncr, load));
-            } else {
-                baseAddress -= 4 * bitCount(registerList);
-                address = baseAddress;
-                // Load order is always in increasing memory order, even when
-                // using down-increment. This means we use bit counting to find
-                // the final address and use up-increments instead. This
-                // does reverse the pre-increment behaviour though
-                mixin (genBlockDataTransferOperation(!preIncr, load));
-                // The address to write back is the corrected base
-                address = baseAddress;
-            }
-            static if (writeBack) {
-                setRegister(mode, rn, address);
-            }
-        }
-
-        private void singleDataSwap(bool byteQty)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SWP");
-            // Decode operands
-            int rn = getBits(instruction, 16, 19);
-            int rd = getBits(instruction, 12, 15);
-            int rm = instruction & 0xF;
-            int address = getRegister(rn);
-            // Do memory swap
-            static if (byteQty) {
-                int b = memory.getByte(address) & 0xFF;
-                memory.setByte(address, cast(byte) getRegister(rm));
-                setRegister(rd, b);
-            } else {
-                int w = rotateRead(address, memory.getInt(address));
-                memory.setInt(address, getRegister(rm));
-                setRegister(rd, w);
-            }
-        }
-
-        private alias singleDataSwapInt = singleDataSwap!false;
-        private alias singleDataSwapByte = singleDataSwap!true;
-
-        private void softwareInterrupt(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SWI");
-            setRegister(Mode.SUPERVISOR, Register.SPSR, getRegister(Register.CPSR));
-            setFlag(CPSRFlag.I, 1);
-            setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 4);
-            setRegister(Register.PC, 0x8);
-            setMode(Mode.SUPERVISOR);
-        }
-
-        private void undefined(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "UND");
-            setRegister(Mode.UNDEFINED, Register.SPSR, getRegister(Register.CPSR));
-            setFlag(CPSRFlag.I, 1);
-            setRegister(Mode.UNDEFINED, Register.LR, getRegister(Register.PC) - 4);
-            setRegister(Register.PC, 0x4);
-            setMode(Mode.UNDEFINED);
-        }
-
-        private void unsupported(int instruction) {
-            throw new UnsupportedARMInstructionException(getRegister(Register.PC) - 8, instruction);
+            instructionTable[code](registers, memory, instruction);
         }
     }
 
     private class THUMBPipeline : Pipeline {
-        private void delegate(int)[] instructionTable;
+        private void function(Registers, Memory, int)[] instructionTable;
 
         private this() {
-            // Bits are OpCode(2)
-            void delegate(int)[] moveShiftedRegisterInstructions = [
-                &moveShiftedRegisterLSL, &moveShiftedRegisterLSR, &moveShiftedRegisterASR, &unsupported,
-            ];
-
-            // Bits are I(1),S(1)
-            // where I is immediate and S is subtract
-            void delegate(int)[] addAndSubtractInstructions = [
-                &addAndSubtract!(false, false), &addAndSubtract!(false, true),
-                &addAndSubtract!(true, false),  &addAndSubtract!(true, true),
-            ];
-
-            // Bits are OpCode(2)
-            void delegate(int)[] moveCompareAddAndSubtractImmediateInstructions = [
-                &moveCompareAddAndSubtractImmediateMOV, &moveCompareAddAndSubtractImmediateCMP,
-                &moveCompareAddAndSubtractImmediateADD, &moveCompareAddAndSubtractImmediateSUB,
-            ];
-
-            // Bits are OpCode(4)
-            void delegate(int)[] aluOperationsInstructions = [
-                &aluOperationsAND, &aluOperationsEOR, &aluOperationsLSL, &aluOperationsLSR,
-                &aluOperationsASR, &aluOperationsADC, &aluOperationsSBC, &aluOperationsROR,
-                &aluOperationsTST, &aluOperationsNEG, &aluOperationsCMP, &aluOperationsCMN,
-                &aluOperationsORR, &aluOperationsMUL, &aluOperationsBIC, &aluOperationsMVN,
-            ];
-
-
-            // Bits are OpCode(2),HD(1),HS(1)
-            // where HD is high destination and HS is high source
-            void delegate(int)[] hiRegisterOperationsAndBranchExchangeInstructions = [
-                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeADD!(false, true),
-                &hiRegisterOperationsAndBranchExchangeADD!(true, false), &hiRegisterOperationsAndBranchExchangeADD!(true, true),
-                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeCMP!(false, true),
-                &hiRegisterOperationsAndBranchExchangeCMP!(true, false), &hiRegisterOperationsAndBranchExchangeCMP!(true, true),
-                &unsupported,                                            &hiRegisterOperationsAndBranchExchangeMOV!(false, true),
-                &hiRegisterOperationsAndBranchExchangeMOV!(true, false), &hiRegisterOperationsAndBranchExchangeMOV!(true, true),
-                &hiRegisterOperationsAndBranchExchangeBX!(false, false), &hiRegisterOperationsAndBranchExchangeBX!(false, true),
-                &unsupported,                                            &unsupported,
-            ];
-
-            // Bits are OpCode(2)
-            void delegate(int)[] loadAndStoreWithRegisterOffsetInstructions = [
-                &loadAndStoreWithRegisterOffsetSTR, &loadAndStoreWithRegisterOffsetSTRB,
-                &loadAndStoreWithRegisterOffsetLDR, &loadAndStoreWithRegisterOffsetLDRB,
-            ];
-
-            // Bits are OpCode(2)
-            void delegate(int)[] loadAndStoreSignExtentedByteAndHalfwordInstructions = [
-                &loadAndStoreSignExtentedByteAndHalfwordSTRH, &loadAndStoreSignExtentedByteAndHalfwordLDSB,
-                &loadAndStoreSignExtentedByteAndHalfwordLDRH, &loadAndStoreSignExtentedByteAndHalfwordLDSH,
-            ];
-
-            // Bits are OpCode(2)
-            void delegate(int)[] loadAndStoreWithImmediateOffsetInstructions = [
-                &loadAndStoreWithImmediateOffsetSTR,  &loadAndStoreWithImmediateOffsetLDR,
-                &loadAndStoreWithImmediateOffsetSTRB, &loadAndStoreWithImmediateOffsetLDRB,
-            ];
-
-            // Bits are OpCode(1)
-            void delegate(int)[] loadAndStoreHalfWordInstructions = [
-                &loadAndStoreHalfWordSTRH, &loadAndStoreHalfWordLDRH,
-            ];
-
-            // Bits are OpCode(1)
-            void delegate(int)[] loadAndStoreSPRelativeInstructions = [
-                &loadAndStoreSPRelative!false, &loadAndStoreSPRelative!true,
-            ];
-
-            // Bits are OpCode(1)
-            void delegate(int)[] getRelativeAddresssInstructions = [
-                &getRelativeAddresss!false, &getRelativeAddresss!true,
-            ];
-
-            // Bits are S(1)
-            // where S is subtract
-            void delegate(int)[] addOffsetToStackPointerInstructions = [
-                &addOffsetToStackPointer!false, &addOffsetToStackPointer!true,
-            ];
-
-            // Bits are Pop(1),R(1)
-            // where Pop is pop of the stack and R is include PC or LR
-            void delegate(int)[] pushAndPopRegistersInstructions = [
-                &pushAndPopRegisters!(false, false), &pushAndPopRegisters!(false, true),
-                &pushAndPopRegisters!(true, false),  &pushAndPopRegisters!(true, true),
-            ];
-
-            // Bits are L(1)
-            // where L is load
-            void delegate(int)[] multipleLoadAndStoreInstructions = [
-                &multipleLoadAndStore!false, &multipleLoadAndStore!true,
-            ];
-
-            // Bits are C(4)
-            // where C is condition code
-            void delegate(int)[] conditionalBranchInstructions = [
-                &conditionalBranch!0,  &conditionalBranch!1,  &conditionalBranch!2,  &conditionalBranch!3,
-                &conditionalBranch!4,  &conditionalBranch!5,  &conditionalBranch!6,  &conditionalBranch!7,
-                &conditionalBranch!8,  &conditionalBranch!9,  &conditionalBranch!10, &conditionalBranch!11,
-                &conditionalBranch!12, &conditionalBranch!13, &unsupported,          &unsupported,
-            ];
-
-            // Bits are H(1)
-            // where H is high
-            void delegate(int)[] longBranchWithLinkInstructions = [
-                &longBranchWithLink!false, &longBranchWithLink!true,
-            ];
-
-            /*
-
-                The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
-
-                Form|_15|_14|_13|_12|_11|_10|_9_|_8_|_7_|_6_|_5_|_4_|_3_|_2_|_1_|_0_|
-                __1_|_0___0___0_|__Op___|_______Offset______|____Rs_____|____Rd_____|Shifted
-                __2_|_0___0___0___1___1_|_I,_Op_|___Rn/nn___|____Rs_____|____Rd_____|ADD/SUB
-                __3_|_0___0___1_|__Op___|____Rd_____|_____________Offset____________|Immedi.
-                __4_|_0___1___0___0___0___0_|______Op_______|____Rs_____|____Rd_____|AluOp
-                __5_|_0___1___0___0___0___1_|__Op___|Hd_|Hs_|____Rs_____|____Rd_____|HiReg/BX
-                __6_|_0___1___0___0___1_|____Rd_____|_____________Word______________|LDR PC
-                __7_|_0___1___0___1_|__Op___|_0_|___Ro______|____Rb_____|____Rd_____|LDR/STR
-                __8_|_0___1___0___1_|__Op___|_1_|___Ro______|____Rb_____|____Rd_____|LDR/STR{H/SB/SH}
-                __9_|_0___1___1_|__Op___|_______Offset______|____Rb_____|____Rd_____|LDR/STR{B}
-                _10_|_1___0___0___0_|Op_|_______Offset______|____Rb_____|____Rd_____|LDRH/STRH
-                _11_|_1___0___0___1_|Op_|____Rd_____|_____________Word______________|LDR/STR SP
-                _12_|_1___0___1___0_|Op_|____Rd_____|_____________Word______________|ADD PC/SP
-                _13_|_1___0___1___1___0___0___0___0_|_S_|___________Word____________|ADD SP,nn
-                _14_|_1___0___1___1_|Op_|_1___0_|_R_|____________Rlist______________|PUSH/POP
-                _15_|_1___1___0___0_|Op_|____Rb_____|____________Rlist______________|STM/LDM
-                _16_|_1___1___0___1_|_____Cond______|_________Signed_Offset_________|B{cond}
-                _17_|_1___1___0___1___1___1___1___1_|___________User_Data___________|SWI
-                _18_|_1___1___1___0___0_|________________Offset_____________________|B
-                _19_|_1___1___1___1_|_H_|______________Offset_Low/High______________|BL,BLX
-
-                The op code is bits 6 to 15
-                For some instructions some of these bits are not used, hence the need for don't cares
-                Anything not covered by the table must raise an UNDEFINED interrupt
-
-            */
-
-            auto merger = new TableMerger(10, &unsupported);
-            merger.addSubTable("000ttddddd", moveShiftedRegisterInstructions);
-            merger.addSubTable("00011ttddd", addAndSubtractInstructions);
-            merger.addSubTable("001ttddddd", moveCompareAddAndSubtractImmediateInstructions);
-            merger.addSubTable("010000tttt", aluOperationsInstructions);
-            merger.addSubTable("010001tttt", hiRegisterOperationsAndBranchExchangeInstructions);
-            merger.addSubTable("01001ddddd", &loadPCRelative);
-            merger.addSubTable("0101tt0ddd", loadAndStoreWithRegisterOffsetInstructions);
-            merger.addSubTable("0101tt1ddd", loadAndStoreSignExtentedByteAndHalfwordInstructions);
-            merger.addSubTable("011ttddddd", loadAndStoreWithImmediateOffsetInstructions);
-            merger.addSubTable("1000tddddd", loadAndStoreHalfWordInstructions);
-            merger.addSubTable("1001tddddd", loadAndStoreSPRelativeInstructions);
-            merger.addSubTable("1010tddddd", getRelativeAddresssInstructions);
-            merger.addSubTable("10110000td", addOffsetToStackPointerInstructions);
-            merger.addSubTable("1011t10tdd", pushAndPopRegistersInstructions);
-            merger.addSubTable("1100tddddd", multipleLoadAndStoreInstructions);
-            merger.addSubTable("1101ttttdd", conditionalBranchInstructions);
-            merger.addSubTable("11011111dd", &softwareInterrupt);
-            merger.addSubTable("11100ddddd", &unconditionalBranch);
-            merger.addSubTable("1111tddddd", longBranchWithLinkInstructions);
-
-            instructionTable = merger.getTable();
+            instructionTable = genTHUMBTable();
         }
 
         protected Set getSet() {
@@ -1331,7 +228,7 @@ public class ARM7TDMI {
         }
 
         protected override int fetch() {
-            return mirror(memory.getShort(getRegister(Register.PC)));
+            return mirror(memory.getShort(registers.get(Register.PC)));
         }
 
         protected override int decode(int instruction) {
@@ -1341,530 +238,94 @@ public class ARM7TDMI {
 
         protected override void execute(int instruction) {
             int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
+            instructionTable[code](registers, memory, instruction);
         }
+    }
+}
 
-        protected override uint getPCIncrement() {
-            return 2;
+public class Registers {
+    private int[37] registers = new int[37];
+    private bool modifiedPC = false;
+
+    public int get(int register) {
+        return get(getMode(), register);
+    }
+
+    public int get(Mode mode, int register) {
+        return registers[getRegisterIndex(mode, register)];
+    }
+
+    public void set(int register, int value) {
+        set(getMode(), register, value);
+    }
+
+    public void set(Mode mode, int register, int value) {
+        if (register == Register.PC) {
+            modifiedPC = true;
         }
+        registers[getRegisterIndex(mode, register)] = value;
+    }
 
-        protected override void incrementPC() {
-            registers[Register.PC] = (registers[Register.PC] & ~1) + 2;
-        }
+    public int getFlag(CPSRFlag flag) {
+        return getBit(registers[Register.CPSR], flag);
+    }
 
-        private void moveShiftedRegister(int shiftType)(int instruction) {
-            int shift = getBits(instruction, 6, 10);
-            int op = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            static if (shiftType == 0) {
-                debug (outputInstructions) logInstruction(instruction, "LSL");
-            } else static if (shiftType == 1) {
-                debug (outputInstructions) logInstruction(instruction, "LSR");
-            } else static if (shiftType == 2) {
-                debug (outputInstructions) logInstruction(instruction, "ASR");
-            } else {
-                static assert (0);
-            }
-            int carry;
-            op = applyShift(shiftType, shift, false, op, carry);
-            setRegister(rd, op);
-            setAPSRFlags(op < 0, op == 0, carry);
-        }
+    public void setFlag(CPSRFlag flag, int b) {
+        setBit(registers[Register.CPSR], flag, b);
+    }
 
-        private alias moveShiftedRegisterLSL = moveShiftedRegister!0;
-        private alias moveShiftedRegisterLSR = moveShiftedRegister!1;
-        private alias moveShiftedRegisterASR = moveShiftedRegister!2;
+    public void setAPSRFlags(int n, int z) {
+        setBits(registers[Register.CPSR], 30, 31, z | n << 1);
+    }
 
-        private void addAndSubtract(bool immediate, bool subtract)(int instruction) {
-            int rn = getBits(instruction, 6, 8);
-            static if (immediate) {
-                // immediate
-                int op2 = rn;
-            } else {
-                // register
-                int op2 = getRegister(rn);
-            }
-            int op1 = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            static if (subtract) {
-                // SUB
-                debug (outputInstructions) logInstruction(instruction, "SUB");
-                int res = op1 - op2;
-                int carry = !borrowedSub(op1, op2, res);
-                int overflow = overflowedSub(op1, op2, res);
-            } else {
-                // ADD
-                debug (outputInstructions) logInstruction(instruction, "ADD");
-                int res = op1 + op2;
-                int carry = carriedAdd(op1, op2, res);
-                int overflow = overflowedAdd(op1, op2, res);
-            }
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0, carry, overflow);
-        }
+    public void setAPSRFlags(int n, int z, int c) {
+        setBits(registers[Register.CPSR], 29, 31, c | z << 1 | n << 2);
+    }
 
-        private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
-            int rd = getBits(instruction, 8, 10);
-            int op2 = instruction & 0xFF;
-            static if (op1) {
-                int op1 = getRegister(rd);
-            }
-        }
+    public void setAPSRFlags(int n, int z, int c, int v) {
+        setBits(registers[Register.CPSR], 28, 31, v | c << 1 | z << 2 | n << 3);
+    }
 
-        private void moveCompareAddAndSubtractImmediateMOV(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MOV");
-            mixin decodeOpMoveCompareAddAndSubtractImmediate!false;
-            setRegister(rd, op2);
-            setAPSRFlags(op2 < 0, op2 == 0);
-        }
+    public Mode getMode() {
+        return cast(Mode) (registers[Register.CPSR] & 0b11111);
+    }
 
-        private void moveCompareAddAndSubtractImmediateCMP(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMP");
-            mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-            int v = op1 - op2;
-            setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
-        }
+    public void setMode(Mode mode) {
+        setBits(registers[Register.CPSR], 0, 4, mode);
+    }
 
-        private void moveCompareAddAndSubtractImmediateADD(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ADD");
-            mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-            int res = op1 + op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
-        }
+    public Set getSet() {
+        return cast(Set) registers[Register.CPSR].getBit(5);
+    }
 
-        private void moveCompareAddAndSubtractImmediateSUB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SUB");
-            mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-            int res = op1 - op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
-        }
-
-        private mixin template decodeOpAluOperations() {
-            int op2 = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            int op1 = getRegister(rd);
-        }
-
-        private void aluOperationsAND(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "AND");
-            mixin decodeOpAluOperations;
-            int res = op1 & op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private void aluOperationsEOR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "EOR");
-            mixin decodeOpAluOperations;
-            int res = op1 ^ op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private void aluOperationsShift(int type)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LSL");
-            mixin decodeOpAluOperations;
-            int carry;
-            int res = applyShift(type, op2 & 0xFF, true, op1, carry);
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0, carry);
-        }
-
-        private alias aluOperationsLSL = aluOperationsShift!0;
-        private alias aluOperationsLSR = aluOperationsShift!1;
-        private alias aluOperationsASR = aluOperationsShift!2;
-        private alias aluOperationsROR = aluOperationsShift!3;
-
-        private void aluOperationsADC(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ADC");
-            mixin decodeOpAluOperations;
-            int carry = getFlag(CPSRFlag.C);
-            int tmp = op1 + op2;
-            int res = tmp + carry;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0,
-                carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res),
-                overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
-        }
-
-        private void aluOperationsSBC(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SBC");
-            mixin decodeOpAluOperations;
-            int carry = getFlag(CPSRFlag.C);
-            int tmp = op1 - op2;
-            int res = tmp - !carry;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0,
-                !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res),
-                overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
-        }
-
-        private void aluOperationsTST(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "TST");
-            mixin decodeOpAluOperations;
-            int v = op1 & op2;
-            setAPSRFlags(v < 0, v == 0);
-        }
-
-        private void aluOperationsNEG(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "NEG");
-            mixin decodeOpAluOperations;
-            int res = 0 - op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
-        }
-
-        private void aluOperationsCMP(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMP");
-            mixin decodeOpAluOperations;
-            int v = op1 - op2;
-            setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
-        }
-
-        private void aluOperationsCMN(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMN");
-            mixin decodeOpAluOperations;
-            int v = op1 + op2;
-            setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
-        }
-
-        private void aluOperationsORR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ORR");
-            mixin decodeOpAluOperations;
-            int res = op1 | op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private void aluOperationsMUL(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MUL");
-            mixin decodeOpAluOperations;
-            int res = op1 * op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private void aluOperationsBIC(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "BIC");
-            mixin decodeOpAluOperations;
-            int res = op1 & ~op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private void aluOperationsMVN(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MNV");
-            mixin decodeOpAluOperations;
-            int res = ~op2;
-            setRegister(rd, res);
-            setAPSRFlags(res < 0, res == 0);
-        }
-
-        private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
-            static if (highSource) {
-                int rs = getBits(instruction, 3, 5) | 0b1000;
-            } else {
-                int rs = getBits(instruction, 3, 5);
-            }
-            static if (highDestination) {
-                int rd = instruction & 0b111 | 0b1000;
-            } else {
-                int rd = instruction & 0b111;
-            }
-        }
-
-        private void hiRegisterOperationsAndBranchExchangeADD(bool highDestination, bool highSource)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "ADD");
-            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
-            setRegister(rd, getRegister(rd) + getRegister(rs));
-        }
-
-        private void hiRegisterOperationsAndBranchExchangeCMP(bool highDestination, bool highSource)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "CMP");
-            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
-            int op1 = getRegister(rd);
-            int op2 = getRegister(rs);
-            int v = op1 - op2;
-            setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
-        }
-
-        private void hiRegisterOperationsAndBranchExchangeMOV(bool highDestination, bool highSource)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "MOV");
-            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
-            setRegister(rd, getRegister(rs));
-        }
-
-        private void hiRegisterOperationsAndBranchExchangeBX(bool highDestination, bool highSource)(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "BX");
-            mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
-            int address = getRegister(rs);
-            if (!(address & 0b1)) {
-                setFlag(CPSRFlag.T, Set.ARM);
-            }
-            setRegister(Register.PC, address & ~1);
-        }
-
-        private void loadPCRelative(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDR");
-            int rd = getBits(instruction, 8, 10);
-            int offset = (instruction & 0xFF) * 4;
-            int pc = getRegister(Register.PC);
-            int address = (pc & ~3) + offset;
-            setRegister(rd, rotateRead(address, memory.getInt(address)));
-        }
-
-        private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
-            int offset = getRegister(getBits(instruction, 6, 8));
-            int base = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-            int address = base + offset;
-        }
-
-        private void loadAndStoreWithRegisterOffsetSTR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STR");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            memory.setInt(address, getRegister(rd));
-        }
-
-        private void loadAndStoreWithRegisterOffsetSTRB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STRB");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            memory.setByte(address, cast(byte) getRegister(rd));
-        }
-
-        private void loadAndStoreWithRegisterOffsetLDR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDR");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            setRegister(rd, rotateRead(address, memory.getInt(address)));
-        }
-
-        private void loadAndStoreWithRegisterOffsetLDRB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDRB");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            setRegister(rd, memory.getByte(address) & 0xFF);
-        }
-
-        private void loadAndStoreSignExtentedByteAndHalfwordSTRH(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STRH");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            memory.setShort(address, cast(short) getRegister(rd));
-        }
-
-        private void loadAndStoreSignExtentedByteAndHalfwordLDSB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDSB");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            setRegister(rd, memory.getByte(address));
-        }
-
-        private void loadAndStoreSignExtentedByteAndHalfwordLDRH(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDRH");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            setRegister(rd, rotateRead(address, memory.getShort(address)));
-        }
-
-        private void loadAndStoreSignExtentedByteAndHalfwordLDSH(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDSH");
-            mixin decodeOpLoadAndStoreWithRegisterOffset;
-            setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
-        }
-
-        private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
-            int offset = getBits(instruction, 6, 10);
-            int base = getRegister(getBits(instruction, 3, 5));
-            int rd = instruction & 0b111;
-        }
-
-        private void loadAndStoreWithImmediateOffsetSTR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STR");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset * 4;
-            memory.setInt(address, getRegister(rd));
-        }
-
-        private void loadAndStoreWithImmediateOffsetLDR(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDR");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset * 4;
-            setRegister(rd, rotateRead(address, memory.getInt(address)));
-        }
-
-        private void loadAndStoreWithImmediateOffsetSTRB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STRB");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset;
-            memory.setByte(address, cast(byte) getRegister(rd));
-        }
-
-        private void loadAndStoreWithImmediateOffsetLDRB(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDRB");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset;
-            setRegister(rd, memory.getByte(address) & 0xFF);
-        }
-
-        private void loadAndStoreHalfWordLDRH(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "LDRH");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset * 2;
-            setRegister(rd, rotateRead(address, memory.getShort(address)));
-        }
-
-        private void loadAndStoreHalfWordSTRH(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "STRH");
-            mixin decodeOpLoadAndStoreWithImmediateOffset;
-            int address = base + offset * 2;
-            memory.setShort(address, cast(short) getRegister(rd));
-        }
-
-        private void loadAndStoreSPRelative(bool load)(int instruction) {
-            int rd = getBits(instruction, 8, 10);
-            int offset = (instruction & 0xFF) * 4;
-            int sp = getRegister(Register.SP);
-            int address = sp + offset;
-            static if (load) {
-                debug (outputInstructions) logInstruction(instruction, "LDR");
-                setRegister(rd, rotateRead(address, memory.getInt(address)));
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "STR");
-                memory.setInt(address, getRegister(rd));
-            }
-        }
-
-        private void getRelativeAddresss(bool stackPointer)(int instruction) {
-            int rd = getBits(instruction, 8, 10);
-            int offset = (instruction & 0xFF) * 4;
-            static if (stackPointer) {
-                debug (outputInstructions) logInstruction(instruction, "ADD");
-                setRegister(rd, getRegister(Register.SP) + offset);
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "ADD");
-                setRegister(rd, (getRegister(Register.PC) & ~3) + offset);
-            }
-        }
-
-        private void addOffsetToStackPointer(bool subtract)(int instruction) {
-            int offset = (instruction & 0x7F) * 4;
-            static if (subtract) {
-                debug (outputInstructions) logInstruction(instruction, "ADD");
-                setRegister(Register.SP, getRegister(Register.SP) - offset);
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "ADD");
-                setRegister(Register.SP, getRegister(Register.SP) + offset);
-            }
-        }
-
-        private void pushAndPopRegisters(bool pop, bool pcAndLR)(int instruction) {
-            int registerList = instruction & 0xFF;
-            int sp = getRegister(Register.SP);
-            static if (pop) {
-                debug (outputInstructions) logInstruction(instruction, "POP");
-                foreach (i; 0 .. 8) {
-                    if (checkBit(registerList, i)) {
-                        setRegister(i, memory.getInt(sp));
-                        sp += 4;
-                    }
-                }
-                static if (pcAndLR) {
-                    setRegister(Register.PC, memory.getInt(sp));
-                    sp += 4;
-                }
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "PUSH");
-                sp -= 4 * (bitCount(registerList) + pcAndLR);
-                int address = sp;
-                foreach (i; 0 .. 8) {
-                    if (checkBit(registerList, i)) {
-                        memory.setInt(address, getRegister(i));
-                        address += 4;
-                    }
-                }
-                static if (pcAndLR) {
-                    memory.setInt(address, getRegister(Register.LR));
-                }
-            }
-            setRegister(Register.SP, sp);
-        }
-
-        private void multipleLoadAndStore(bool load)(int instruction) {
-            int rb = getBits(instruction, 8, 10);
-            int registerList = instruction & 0xFF;
-            int address = getRegister(rb);
-            static if (load) {
-                debug (outputInstructions) logInstruction(instruction, "LDMIA");
-                foreach (i; 0 .. 8) {
-                    if (checkBit(registerList, i)) {
-                        setRegister(i, memory.getInt(address));
-                        address += 4;
-                    }
-                }
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "STMIA");
-                foreach (i; 0 .. 8) {
-                    if (checkBit(registerList, i)) {
-                        memory.setInt(address, getRegister(i));
-                        address += 4;
-                    }
-                }
-            }
-            setRegister(rb, address);
-        }
-
-        private void conditionalBranch(byte condition)(int instruction) {
-            if (!checkCondition(condition)) {
-                return;
-            }
-            debug (outputInstructions) logInstruction(instruction, "B");
-            int offset = instruction & 0xFF;
-            // sign extend the offset
-            offset <<= 24;
-            offset >>= 24;
-            setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
-        }
-
-        private void softwareInterrupt(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "SWI");
-            setRegister(Mode.SUPERVISOR, Register.SPSR, getRegister(Register.CPSR));
-            setFlag(CPSRFlag.I, 1);
-            setFlag(CPSRFlag.T, Set.ARM);
-            setRegister(Mode.SUPERVISOR, Register.LR, getRegister(Register.PC) - 2);
-            setRegister(Register.PC, 0x8);
-            setMode(Mode.SUPERVISOR);
-        }
-
-        private void unconditionalBranch(int instruction) {
-            debug (outputInstructions) logInstruction(instruction, "B");
-            int offset = instruction & 0x7FF;
-            // sign extend the offset
-            offset <<= 21;
-            offset >>= 21;
-            setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
-        }
-
-        private void longBranchWithLink(bool high)(int instruction) {
-            int offset = instruction & 0x7FF;
-            static if (high) {
-                debug (outputInstructions) logInstruction(instruction, "BL");
-                int address = getRegister(Register.LR) + (offset << 1);
-                setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
-                setRegister(Register.PC, address);
-            } else {
-                debug (outputInstructions) logInstruction(instruction, "BL_");
-                // sign extend the offset
-                offset <<= 21;
-                offset >>= 21;
-                setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
-            }
-        }
-
-        private void unsupported(int instruction) {
-            throw new UnsupportedTHUMBInstructionException(getRegister(Register.PC) - 4, instruction);
+    public void incrementPC() {
+        final switch (getSet()) with (Set) {
+            case ARM:
+                registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
+                break;
+            case THUMB:
+                registers[Register.PC] = (registers[Register.PC] & ~1) + 2;
+                break;
         }
     }
 
+    public int getExecutedPC() {
+        final switch (getSet()) with (Set) {
+            case ARM:
+                return registers[Register.PC] - 8;
+            case THUMB:
+                return registers[Register.PC] - 4;
+        }
+    }
+
+    public bool wasPCModified() {
+        auto value = modifiedPC;
+        modifiedPC = false;
+        return value;
+    }
+
     // TODO: use a template here (on registerShift)
-    private int applyShift(int shiftType, int shift, bool registerShift, int op, out int carry) {
+    public int applyShift(int shiftType, int shift, bool registerShift, int op, out int carry) {
         final switch (shiftType) {
             // LSL
             case 0:
@@ -1965,35 +426,7 @@ public class ARM7TDMI {
         }
     }
 
-    private int getFlag(CPSRFlag flag) {
-        return getBit(registers[Register.CPSR], flag);
-    }
-
-    private void setFlag(CPSRFlag flag, int b) {
-        setBit(registers[Register.CPSR], flag, b);
-    }
-
-    private void setAPSRFlags(int n, int z) {
-        setBits(registers[Register.CPSR], 30, 31, z | n << 1);
-    }
-
-    private void setAPSRFlags(int n, int z, int c) {
-        setBits(registers[Register.CPSR], 29, 31, c | z << 1 | n << 2);
-    }
-
-    private void setAPSRFlags(int n, int z, int c, int v) {
-        setBits(registers[Register.CPSR], 28, 31, v | c << 1 | z << 2 | n << 3);
-    }
-
-    private Mode getMode() {
-        return cast(Mode) (registers[Register.CPSR] & 0b11111);
-    }
-
-    private void setMode(Mode mode) {
-        setBits(registers[Register.CPSR], 0, 4, mode);
-    }
-
-    private bool checkCondition(int condition) {
+    public bool checkCondition(int condition) {
         int flags = registers[Register.CPSR];
         final switch (condition) {
             case 0x0:
@@ -2047,23 +480,71 @@ public class ARM7TDMI {
         }
     }
 
-    private int getRegister(int register) {
-        return getRegister(mode, register);
-    }
-
-    private int getRegister(Mode mode, int register) {
-        return registers[getRegisterIndex(mode, register)];
-    }
-
-    private void setRegister(int register, int value) {
-        setRegister(mode, register, value);
-    }
-
-    private void setRegister(Mode mode, int register, int value) {
-        if (register == Register.PC) {
-            branchSignal = true;
+    private int getRegisterIndex(Mode mode, int register) {
+        /*
+            R0 - R15: 0 - 15
+            CPSR: 16
+            R8_fiq - R14_fiq: 17 - 23
+            SPSR_fiq = 24
+            R13_svc - R14_svc = 25 - 26
+            SPSR_svc = 27
+            R13_abt - R14_abt = 28 - 29
+            SPSR_abt = 30
+            R13_irq - R14_irq = 31 - 32
+            SPSR_irq = 33
+            R13_und - R14_und = 34 - 35
+            SPSR_und = 36
+        */
+        final switch (mode) with (Mode) {
+            case USER:
+            case SYSTEM:
+                return register;
+            case FIQ:
+                switch (register) {
+                    case 8: .. case 14:
+                        return register + 9;
+                    case 17:
+                        return register + 7;
+                    default:
+                        return register;
+                }
+            case SUPERVISOR:
+                switch (register) {
+                    case 13: .. case 14:
+                        return register + 12;
+                    case 17:
+                        return register + 10;
+                    default:
+                        return register;
+                }
+            case ABORT:
+                switch (register) {
+                    case 13: .. case 14:
+                        return register + 15;
+                    case 17:
+                        return register + 13;
+                    default:
+                        return register;
+                }
+            case IRQ:
+                switch (register) {
+                    case 13: .. case 14:
+                        return register + 18;
+                    case 17:
+                        return register + 16;
+                    default:
+                        return register;
+                }
+            case UNDEFINED:
+                switch (register) {
+                    case 13: .. case 14:
+                        return register + 21;
+                    case 17:
+                        return register + 19;
+                    default:
+                        return register;
+                }
         }
-        registers[getRegisterIndex(mode, register)] = value;
     }
 
     debug (outputInstructions) {
@@ -2072,16 +553,16 @@ public class ARM7TDMI {
         private uint queueSize = 0;
         private uint index = 0;
 
-        private void logInstruction(int code, string mnemonic) {
-            logInstruction(getProgramCounter(), code, mnemonic);
+        public void logInstruction(int code, string mnemonic) {
+            logInstruction(getExecutedPC(), code, mnemonic);
         }
 
-        private void logInstruction(int address, int code, string mnemonic) {
-            Set set = pipeline.getSet();
+        public void logInstruction(int address, int code, string mnemonic) {
+            Set set = getSet();
             if (set == Set.THUMB) {
                 code &= 0xFFFF;
             }
-            lastInstructions[index].mode = mode;
+            lastInstructions[index].mode = getMode();
             lastInstructions[index].address = address;
             lastInstructions[index].code = code;
             lastInstructions[index].mnemonic = mnemonic;
@@ -2118,7 +599,7 @@ public class ARM7TDMI {
         public void dumpRegisters() {
             writefln("Dumping last known register states:");
             foreach (i; 0 .. 18) {
-                writefln("%-4s: %08x", cast(Register) i, getRegister(i));
+                writefln("%-4s: %08x", cast(Register) i, get(i));
             }
         }
 
@@ -2132,182 +613,12 @@ public class ARM7TDMI {
     }
 }
 
-private int getConditionBits(int instruction) {
-    return instruction >>> 28;
-}
+public class TableMerger {
+    private void function(Registers, Memory, int)[] table;
+    private void function(Registers, Memory, int) nullInstruction;
 
-private int rotateRead(int address, int value) {
-    return rotateRight(value, (address & 3) << 3);
-}
-
-private int rotateRead(int address, short value) {
-    return rotateRight(value & 0xFFFF, (address & 1) << 3);
-}
-
-private int rotateReadSigned(int address, short value) {
-    return value >> ((address & 1) << 3);
-}
-
-private int getRegisterIndex(Mode mode, int register) {
-    /*
-        R0 - R15: 0 - 15
-        CPSR: 16
-        R8_fiq - R14_fiq: 17 - 23
-        SPSR_fiq = 24
-        R13_svc - R14_svc = 25 - 26
-        SPSR_svc = 27
-        R13_abt - R14_abt = 28 - 29
-        SPSR_abt = 30
-        R13_irq - R14_irq = 31 - 32
-        SPSR_irq = 33
-        R13_und - R14_und = 34 - 35
-        SPSR_und = 36
-    */
-    final switch (mode) with (Mode) {
-        case USER:
-        case SYSTEM:
-            return register;
-        case FIQ:
-            switch (register) {
-                case 8: .. case 14:
-                    return register + 9;
-                case 17:
-                    return register + 7;
-                default:
-                    return register;
-            }
-        case SUPERVISOR:
-            switch (register) {
-                case 13: .. case 14:
-                    return register + 12;
-                case 17:
-                    return register + 10;
-                default:
-                    return register;
-            }
-        case ABORT:
-            switch (register) {
-                case 13: .. case 14:
-                    return register + 15;
-                case 17:
-                    return register + 13;
-                default:
-                    return register;
-            }
-        case IRQ:
-            switch (register) {
-                case 13: .. case 14:
-                    return register + 18;
-                case 17:
-                    return register + 16;
-                default:
-                    return register;
-            }
-        case UNDEFINED:
-            switch (register) {
-                case 13: .. case 14:
-                    return register + 21;
-                case 17:
-                    return register + 19;
-                default:
-                    return register;
-            }
-    }
-}
-
-private bool carriedAdd(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && negativeB || negativeA && !negativeC || negativeB && !negativeC;
-}
-
-private bool overflowedAdd(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && negativeB && !negativeC || !negativeA && !negativeB && negativeC;
-}
-
-private bool borrowedSub(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return (!negativeA || negativeB) && (!negativeA || negativeC) && (negativeB || negativeC);
-}
-
-private bool overflowedSub(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && !negativeB && !negativeC || !negativeA && negativeB && negativeC;
-}
-
-private enum Set {
-    ARM = 0,
-    THUMB = 1
-}
-
-private enum Mode {
-    USER = 16,
-    FIQ = 17,
-    IRQ = 18,
-    SUPERVISOR = 19,
-    ABORT = 23,
-    UNDEFINED = 27,
-    SYSTEM = 31
-}
-
-private enum Register {
-    R0 = 0,
-    R1 = 1,
-    R2 = 2,
-    R3 = 3,
-    R4 = 4,
-    R5 = 5,
-    R6 = 6,
-    R7 = 7,
-    R8 = 8,
-    R9 = 9,
-    R10 = 10,
-    R11 = 11,
-    R12 = 12,
-    SP = 13,
-    LR = 14,
-    PC = 15,
-    CPSR = 16,
-    SPSR = 17
-}
-
-private enum CPSRFlag {
-    N = 31,
-    Z = 30,
-    C = 29,
-    V = 28,
-    Q = 27,
-    I = 7,
-    F = 6,
-    T = 5,
-}
-
-public class UnsupportedARMInstructionException : Exception {
-    protected this(int address, int instruction) {
-        super(format("This ARM instruction is unsupported by the implementation\n%08x: %08x", address, instruction));
-    }
-}
-
-public class UnsupportedTHUMBInstructionException : Exception {
-    protected this(int address, int instruction) {
-        super(format("This THUMB instruction is unsupported by the implementation\n%08x: %04x", address, instruction & 0xFFFF));
-    }
-}
-
-private static class TableMerger {
-    private void delegate(int)[] table;
-    private void delegate(int) nullInstruction;
-
-    private this(int bitCount, void delegate(int) nullInstruction) {
-        table = new void delegate(int)[1 << bitCount];
+    public this(int bitCount, void function(Registers, Memory, int) nullInstruction) {
+        table = new void function(Registers, Memory, int)[1 << bitCount];
         this.nullInstruction = nullInstruction;
         // Fill with the null instruction
         foreach (i, t; table) {
@@ -2315,11 +626,11 @@ private static class TableMerger {
         }
     }
 
-    private void delegate(int)[] getTable() {
+    public void function(Registers, Memory, int)[] getTable() {
         return table;
     }
 
-    private void addSubTable(string bits, void delegate(int)[] table...) {
+    public void addSubTable(string bits, void function(Registers, Memory, int)[] table...) {
         int bitCount = cast(int) bits.length;
         if (1 << bitCount != this.table.length) {
             throw new Exception("Wrong number of table bits");
@@ -2388,4 +699,95 @@ private static class TableMerger {
             }
         }
     }
+}
+
+public int getConditionBits(int instruction) {
+    return instruction >>> 28;
+}
+
+public int rotateRead(int address, int value) {
+    return rotateRight(value, (address & 3) << 3);
+}
+
+public int rotateRead(int address, short value) {
+    return rotateRight(value & 0xFFFF, (address & 1) << 3);
+}
+
+public int rotateReadSigned(int address, short value) {
+    return value >> ((address & 1) << 3);
+}
+
+public bool carriedAdd(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && negativeB || negativeA && !negativeC || negativeB && !negativeC;
+}
+
+public bool overflowedAdd(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && negativeB && !negativeC || !negativeA && !negativeB && negativeC;
+}
+
+public bool borrowedSub(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return (!negativeA || negativeB) && (!negativeA || negativeC) && (negativeB || negativeC);
+}
+
+public bool overflowedSub(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && !negativeB && !negativeC || !negativeA && negativeB && negativeC;
+}
+
+public enum Set {
+    ARM = 0,
+    THUMB = 1
+}
+
+public enum Mode {
+    USER = 16,
+    FIQ = 17,
+    IRQ = 18,
+    SUPERVISOR = 19,
+    ABORT = 23,
+    UNDEFINED = 27,
+    SYSTEM = 31
+}
+
+public enum Register {
+    R0 = 0,
+    R1 = 1,
+    R2 = 2,
+    R3 = 3,
+    R4 = 4,
+    R5 = 5,
+    R6 = 6,
+    R7 = 7,
+    R8 = 8,
+    R9 = 9,
+    R10 = 10,
+    R11 = 11,
+    R12 = 12,
+    SP = 13,
+    LR = 14,
+    PC = 15,
+    CPSR = 16,
+    SPSR = 17
+}
+
+public enum CPSRFlag {
+    N = 31,
+    Z = 30,
+    C = 29,
+    V = 28,
+    Q = 27,
+    I = 7,
+    F = 6,
+    T = 5,
 }
