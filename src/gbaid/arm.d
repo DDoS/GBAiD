@@ -1340,47 +1340,8 @@ public class ARM7TDMI {
         }
 
         protected override void execute(int instruction) {
-            if (checkBits(instruction, 0b1111100000000000, 0b0001100000000000)) {
-                addAndSubtract(instruction);
-            } else if (checkBits(instruction, 0b1110000000000000, 0b0000000000000000)) {
-                moveShiftedRegister(instruction);
-            } else if (checkBits(instruction, 0b1110000000000000, 0b0010000000000000)) {
-                moveCompareAddAndSubtractImmediate(instruction);
-            } else if (checkBits(instruction, 0b1111110000000000, 0b0100000000000000)) {
-                aluOperations(instruction);
-            } else if (checkBits(instruction, 0b1111110000000000, 0b0100010000000000)) {
-                hiRegisterOperationsAndBranchExchange(instruction);
-            } else if (checkBits(instruction, 0b1111100000000000, 0b0100100000000000)) {
-                loadPCRelative(instruction);
-            } else if (checkBits(instruction, 0b1111001000000000, 0b0101000000000000)) {
-                loadAndStoreWithRegisterOffset(instruction);
-            } else if (checkBits(instruction, 0b1111001000000000, 0b0101001000000000)) {
-                loadAndStoreSignExtentedByteAndHalfword(instruction);
-            } else if (checkBits(instruction, 0b1110000000000000, 0b0110000000000000)) {
-                loadAndStoreWithImmediateOffset(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1000000000000000)) {
-                loadAndStoreHalfWord(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1001000000000000)) {
-                loadAndStoreSPRelative(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1010000000000000)) {
-                getRelativeAddresss(instruction);
-            } else if (checkBits(instruction, 0b1111111100000000, 0b1011000000000000)) {
-                addOffsetToStackPointer(instruction);
-            } else if (checkBits(instruction, 0b1111011000000000, 0b1011010000000000)) {
-                pushAndPopRegisters(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1100000000000000)) {
-                multipleLoadAndStore(instruction);
-            } else if (checkBits(instruction, 0b1111111100000000, 0b1101111100000000)) {
-                softwareInterrupt(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1101000000000000)) {
-                conditionalBranch(instruction);
-            } else if (checkBits(instruction, 0b1111100000000000, 0b1110000000000000)) {
-                unconditionalBranch(instruction);
-            } else if (checkBits(instruction, 0b1111000000000000, 0b1111000000000000)) {
-                longBranchWithLink(instruction);
-            } else {
-                unsupported(instruction);
-            }
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         protected override uint getPCIncrement() {
@@ -1414,11 +1375,6 @@ public class ARM7TDMI {
         private alias moveShiftedRegisterLSR = moveShiftedRegister!1;
         private alias moveShiftedRegisterASR = moveShiftedRegister!2;
 
-        private void moveShiftedRegister(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void addAndSubtract(bool immediate, bool subtract)(int instruction) {
             int rn = getBits(instruction, 6, 8);
             static if (immediate) {
@@ -1445,11 +1401,6 @@ public class ARM7TDMI {
             }
             setRegister(rd, res);
             setAPSRFlags(res < 0, res == 0, carry, overflow);
-        }
-
-        private void addAndSubtract(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
@@ -1488,11 +1439,6 @@ public class ARM7TDMI {
             int res = op1 - op2;
             setRegister(rd, res);
             setAPSRFlags(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
-        }
-
-        private void moveCompareAddAndSubtractImmediate(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private mixin template decodeOpAluOperations() {
@@ -1616,11 +1562,6 @@ public class ARM7TDMI {
             setAPSRFlags(res < 0, res == 0);
         }
 
-        private void aluOperations(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
             static if (highSource) {
                 int rs = getBits(instruction, 3, 5) | 0b1000;
@@ -1665,11 +1606,6 @@ public class ARM7TDMI {
             setRegister(Register.PC, address & ~1);
         }
 
-        private void hiRegisterOperationsAndBranchExchange(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void loadPCRelative(int instruction) {
             debug (outputInstructions) logInstruction(instruction, "LDR");
             int rd = getBits(instruction, 8, 10);
@@ -1710,11 +1646,6 @@ public class ARM7TDMI {
             setRegister(rd, memory.getByte(address) & 0xFF);
         }
 
-        private void loadAndStoreWithRegisterOffset(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void loadAndStoreSignExtentedByteAndHalfwordSTRH(int instruction) {
             debug (outputInstructions) logInstruction(instruction, "STRH");
             mixin decodeOpLoadAndStoreWithRegisterOffset;
@@ -1737,11 +1668,6 @@ public class ARM7TDMI {
             debug (outputInstructions) logInstruction(instruction, "LDSH");
             mixin decodeOpLoadAndStoreWithRegisterOffset;
             setRegister(rd, rotateReadSigned(address, memory.getShort(address)));
-        }
-
-        private void loadAndStoreSignExtentedByteAndHalfword(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
@@ -1778,11 +1704,6 @@ public class ARM7TDMI {
             setRegister(rd, memory.getByte(address) & 0xFF);
         }
 
-        private void loadAndStoreWithImmediateOffset(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void loadAndStoreHalfWordLDRH(int instruction) {
             debug (outputInstructions) logInstruction(instruction, "LDRH");
             mixin decodeOpLoadAndStoreWithImmediateOffset;
@@ -1795,11 +1716,6 @@ public class ARM7TDMI {
             mixin decodeOpLoadAndStoreWithImmediateOffset;
             int address = base + offset * 2;
             memory.setShort(address, cast(short) getRegister(rd));
-        }
-
-        private void loadAndStoreHalfWord(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private void loadAndStoreSPRelative(bool load)(int instruction) {
@@ -1816,11 +1732,6 @@ public class ARM7TDMI {
             }
         }
 
-        private void loadAndStoreSPRelative(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void getRelativeAddresss(bool stackPointer)(int instruction) {
             int rd = getBits(instruction, 8, 10);
             int offset = (instruction & 0xFF) * 4;
@@ -1833,11 +1744,6 @@ public class ARM7TDMI {
             }
         }
 
-        private void getRelativeAddresss(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void addOffsetToStackPointer(bool subtract)(int instruction) {
             int offset = (instruction & 0x7F) * 4;
             static if (subtract) {
@@ -1847,11 +1753,6 @@ public class ARM7TDMI {
                 debug (outputInstructions) logInstruction(instruction, "ADD");
                 setRegister(Register.SP, getRegister(Register.SP) + offset);
             }
-        }
-
-        private void addOffsetToStackPointer(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private void pushAndPopRegisters(bool pop, bool pcAndLR)(int instruction) {
@@ -1886,11 +1787,6 @@ public class ARM7TDMI {
             setRegister(Register.SP, sp);
         }
 
-        private void pushAndPopRegisters(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void multipleLoadAndStore(bool load)(int instruction) {
             int rb = getBits(instruction, 8, 10);
             int registerList = instruction & 0xFF;
@@ -1915,11 +1811,6 @@ public class ARM7TDMI {
             setRegister(rb, address);
         }
 
-        private void multipleLoadAndStore(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void conditionalBranch(byte condition)(int instruction) {
             if (!checkCondition(condition)) {
                 return;
@@ -1930,11 +1821,6 @@ public class ARM7TDMI {
             offset <<= 24;
             offset >>= 24;
             setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
-        }
-
-        private void conditionalBranch(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
         }
 
         private void softwareInterrupt(int instruction) {
@@ -1972,17 +1858,12 @@ public class ARM7TDMI {
             }
         }
 
-        private void longBranchWithLink(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](instruction);
-        }
-
         private void unsupported(int instruction) {
             throw new UnsupportedTHUMBInstructionException(getRegister(Register.PC) - 4, instruction);
         }
     }
 
-    // TODO: use a template here
+    // TODO: use a template here (on registerShift)
     private int applyShift(int shiftType, int shift, bool registerShift, int op, out int carry) {
         final switch (shiftType) {
             // LSL
