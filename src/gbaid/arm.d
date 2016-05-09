@@ -1256,6 +1256,21 @@ public class ARM7TDMI {
                 &multipleLoadAndStore!false, &multipleLoadAndStore!true,
             ];
 
+            // Bits are C(4)
+            // where C is condition code
+            void delegate(int)[] conditionalBranchInstructions = [
+                &conditionalBranch!0,  &conditionalBranch!1,  &conditionalBranch!2,  &conditionalBranch!3,
+                &conditionalBranch!4,  &conditionalBranch!5,  &conditionalBranch!6,  &conditionalBranch!7,
+                &conditionalBranch!8,  &conditionalBranch!9,  &conditionalBranch!10, &conditionalBranch!11,
+                &conditionalBranch!12, &conditionalBranch!13, &unsupported,          &unsupported,
+            ];
+
+            // Bits are H(1)
+            // where H is high
+            void delegate(int)[] longBranchWithLinkInstructions = [
+                &longBranchWithLink!false, &longBranchWithLink!true,
+            ];
+
             /*
 
                 The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
@@ -1303,6 +1318,10 @@ public class ARM7TDMI {
             merger.addSubTable("10110000td", addOffsetToStackPointerInstructions);
             merger.addSubTable("1011t10tdd", pushAndPopRegistersInstructions);
             merger.addSubTable("1100tddddd", multipleLoadAndStoreInstructions);
+            merger.addSubTable("1101ttttdd", conditionalBranchInstructions);
+            merger.addSubTable("11011111dd", &softwareInterrupt);
+            merger.addSubTable("11100ddddd", &unconditionalBranch);
+            merger.addSubTable("1111tddddd", longBranchWithLinkInstructions);
 
             instructionTable = merger.getTable();
         }
@@ -1901,8 +1920,8 @@ public class ARM7TDMI {
             instructionTable[code](instruction);
         }
 
-        private void conditionalBranch(int instruction) {
-            if (!checkCondition(getBits(instruction, 8, 11))) {
+        private void conditionalBranch(byte condition)(int instruction) {
+            if (!checkCondition(condition)) {
                 return;
             }
             debug (outputInstructions) logInstruction(instruction, "B");
@@ -1911,6 +1930,11 @@ public class ARM7TDMI {
             offset <<= 24;
             offset >>= 24;
             setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
+        }
+
+        private void conditionalBranch(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         private void softwareInterrupt(int instruction) {
@@ -1932,10 +1956,9 @@ public class ARM7TDMI {
             setRegister(Register.PC, getRegister(Register.PC) + offset * 2);
         }
 
-        private void longBranchWithLink(int instruction) {
-            int opCode = getBit(instruction, 11);
+        private void longBranchWithLink(bool high)(int instruction) {
             int offset = instruction & 0x7FF;
-            if (opCode) {
+            static if (high) {
                 debug (outputInstructions) logInstruction(instruction, "BL");
                 int address = getRegister(Register.LR) + (offset << 1);
                 setRegister(Register.LR, getRegister(Register.PC) - 2 | 1);
@@ -1947,6 +1970,11 @@ public class ARM7TDMI {
                 offset >>= 21;
                 setRegister(Register.LR, getRegister(Register.PC) + (offset << 12));
             }
+        }
+
+        private void longBranchWithLink(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         private void unsupported(int instruction) {
