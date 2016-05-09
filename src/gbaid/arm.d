@@ -1232,6 +1232,30 @@ public class ARM7TDMI {
                 &loadAndStoreSPRelative!false, &loadAndStoreSPRelative!true,
             ];
 
+            // Bits are OpCode(1)
+            void delegate(int)[] getRelativeAddresssInstructions = [
+                &getRelativeAddresss!false, &getRelativeAddresss!true,
+            ];
+
+            // Bits are S(1)
+            // where S is subtract
+            void delegate(int)[] addOffsetToStackPointerInstructions = [
+                &addOffsetToStackPointer!false, &addOffsetToStackPointer!true,
+            ];
+
+            // Bits are Pop(1),R(1)
+            // where Pop is pop of the stack and R is include PC or LR
+            void delegate(int)[] pushAndPopRegistersInstructions = [
+                &pushAndPopRegisters!(false, false), &pushAndPopRegisters!(false, true),
+                &pushAndPopRegisters!(true, false),  &pushAndPopRegisters!(true, true),
+            ];
+
+            // Bits are L(1)
+            // where L is load
+            void delegate(int)[] multipleLoadAndStoreInstructions = [
+                &multipleLoadAndStore!false, &multipleLoadAndStore!true,
+            ];
+
             /*
 
                 The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
@@ -1275,6 +1299,10 @@ public class ARM7TDMI {
             merger.addSubTable("011ttddddd", loadAndStoreWithImmediateOffsetInstructions);
             merger.addSubTable("1000tddddd", loadAndStoreHalfWordInstructions);
             merger.addSubTable("1001tddddd", loadAndStoreSPRelativeInstructions);
+            merger.addSubTable("1010tddddd", getRelativeAddresssInstructions);
+            merger.addSubTable("10110000td", addOffsetToStackPointerInstructions);
+            merger.addSubTable("1011t10tdd", pushAndPopRegistersInstructions);
+            merger.addSubTable("1100tddddd", multipleLoadAndStoreInstructions);
 
             instructionTable = merger.getTable();
         }
@@ -1774,11 +1802,10 @@ public class ARM7TDMI {
             instructionTable[code](instruction);
         }
 
-        private void getRelativeAddresss(int instruction) {
-            int opCode = getBit(instruction, 11);
+        private void getRelativeAddresss(bool stackPointer)(int instruction) {
             int rd = getBits(instruction, 8, 10);
             int offset = (instruction & 0xFF) * 4;
-            if (opCode) {
+            static if (stackPointer) {
                 debug (outputInstructions) logInstruction(instruction, "ADD");
                 setRegister(rd, getRegister(Register.SP) + offset);
             } else {
@@ -1787,10 +1814,14 @@ public class ARM7TDMI {
             }
         }
 
-        private void addOffsetToStackPointer(int instruction) {
-            int opCode = getBit(instruction, 7);
+        private void getRelativeAddresss(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private void addOffsetToStackPointer(bool subtract)(int instruction) {
             int offset = (instruction & 0x7F) * 4;
-            if (opCode) {
+            static if (subtract) {
                 debug (outputInstructions) logInstruction(instruction, "ADD");
                 setRegister(Register.SP, getRegister(Register.SP) - offset);
             } else {
@@ -1799,12 +1830,15 @@ public class ARM7TDMI {
             }
         }
 
-        private void pushAndPopRegisters(int instruction) {
-            int opCode = getBit(instruction, 11);
-            int pcAndLR = getBit(instruction, 8);
+        private void addOffsetToStackPointer(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private void pushAndPopRegisters(bool pop, bool pcAndLR)(int instruction) {
             int registerList = instruction & 0xFF;
             int sp = getRegister(Register.SP);
-            if (opCode) {
+            static if (pop) {
                 debug (outputInstructions) logInstruction(instruction, "POP");
                 foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
@@ -1812,14 +1846,13 @@ public class ARM7TDMI {
                         sp += 4;
                     }
                 }
-                if (pcAndLR) {
+                static if (pcAndLR) {
                     setRegister(Register.PC, memory.getInt(sp));
                     sp += 4;
                 }
             } else {
                 debug (outputInstructions) logInstruction(instruction, "PUSH");
-                int size = 4 * (bitCount(registerList) + pcAndLR);
-                sp -= size;
+                sp -= 4 * (bitCount(registerList) + pcAndLR);
                 int address = sp;
                 foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
@@ -1827,19 +1860,23 @@ public class ARM7TDMI {
                         address += 4;
                     }
                 }
-                if (pcAndLR) {
+                static if (pcAndLR) {
                     memory.setInt(address, getRegister(Register.LR));
                 }
             }
             setRegister(Register.SP, sp);
         }
 
-        private void multipleLoadAndStore(int instruction) {
-            int opCode = getBit(instruction, 11);
+        private void pushAndPopRegisters(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
+        }
+
+        private void multipleLoadAndStore(bool load)(int instruction) {
             int rb = getBits(instruction, 8, 10);
             int registerList = instruction & 0xFF;
             int address = getRegister(rb);
-            if (opCode) {
+            static if (load) {
                 debug (outputInstructions) logInstruction(instruction, "LDMIA");
                 foreach (i; 0 .. 8) {
                     if (checkBit(registerList, i)) {
@@ -1857,6 +1894,11 @@ public class ARM7TDMI {
                 }
             }
             setRegister(rb, address);
+        }
+
+        private void multipleLoadAndStore(int instruction) {
+            int code = getBits(instruction, 6, 15);
+            instructionTable[code](instruction);
         }
 
         private void conditionalBranch(int instruction) {
