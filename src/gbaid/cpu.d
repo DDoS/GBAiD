@@ -1,4 +1,4 @@
-module gbaid.arm;
+module gbaid.cpu;
 
 import core.thread;
 import core.sync.mutex;

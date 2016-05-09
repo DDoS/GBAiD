@@ -13,7 +13,7 @@ import std.algorithm;
 
 import derelict.sdl2.sdl;
 
-import gbaid.arm;
+import gbaid.cpu;
 import gbaid.graphics;
 import gbaid.memory;
 import gbaid.input;
