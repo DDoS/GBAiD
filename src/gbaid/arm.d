@@ -177,36 +177,6 @@ void function(Registers, Memory, int)[] genARMTable() {
     return merger.getTable();
 }
 
-private void branchAndExchange(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "BX");
-    int address = registers.get(instruction & 0xF);
-    if (address & 0b1) { // TODO: check this condition
-        registers.setFlag(CPSRFlag.T, Set.THUMB);
-    }
-    registers.set(Register.PC, address & ~1);
-}
-
-private void branch(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "B");
-    int offset = instruction & 0xFFFFFF;
-    // sign extend the offset
-    offset <<= 8;
-    offset >>= 8;
-    int pc = registers.get(Register.PC);
-    registers.set(Register.PC, pc + offset * 4);
-}
-
-private void branchAndLink(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "BL");
-    int offset = instruction & 0xFFFFFF;
-    // sign extend the offset
-    offset <<= 8;
-    offset >>= 8;
-    int pc = registers.get(Register.PC);
-    registers.set(Register.LR, pc - 4);
-    registers.set(Register.PC, pc + offset * 4);
-}
-
 private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
     int zero = res == 0;
     int negative = res < 0;
@@ -617,6 +587,15 @@ private void spsrWrite(alias decodeOperand)(Registers registers, Memory memory, 
 private alias spsrWriteImmediate = spsrWrite!decodeOpPrsrImmediate;
 private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
 
+private void branchAndExchange(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "BX");
+    int address = registers.get(instruction & 0xF);
+    if (address & 0b1) { // TODO: check this condition
+        registers.setFlag(CPSRFlag.T, Set.THUMB);
+    }
+    registers.set(Register.PC, address & ~1);
+}
+
 private void setMultiplyIntResult(bool setFlags)(Registers registers, int rd, int res) {
     registers.set(rd, res);
     static if (setFlags) {
@@ -707,67 +686,27 @@ private void multiplyAccumulateLongSigned(bool setFlags)(Registers registers, Me
 private alias multiplySMLAL = multiplyAccumulateLongSigned!(false);
 private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
 
-private void singleDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
-    singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
-            flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(registers, memory, instruction);
-}
-
-private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
-            bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
-    // TODO: what does NoPrivilege do?
+private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "SWP");
     // Decode operands
     int rn = getBits(instruction, 16, 19);
     int rd = getBits(instruction, 12, 15);
-    static if (notImmediate) {
-        int shift = getBits(instruction, 7, 11);
-        int shiftType = getBits(instruction, 5, 6);
-        int carry;
-        int offset = registers.applyShift(shiftType, shift, false, registers.get(instruction & 0b1111), carry);
-    } else {
-        int offset = instruction & 0xFFF;
-    }
+    int rm = instruction & 0xF;
     int address = registers.get(rn);
-    // Do pre-increment if needed
-    static if (preIncr) {
-        static if (upIncr) {
-            address += offset;
-        } else {
-            address -= offset;
-        }
-    }
-    // Read or write memory
-    static if (load) {
-        static if (byteQty) {
-            debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
-            registers.set(rd, memory.getByte(address) & 0xFF);
-        } else {
-            debug (outputInstructions) registers.logInstruction(instruction, "LDR");
-            registers.set(rd, rotateRead(address, memory.getInt(address)));
-        }
+    // Do memory swap
+    static if (byteQty) {
+        int b = memory.getByte(address) & 0xFF;
+        memory.setByte(address, cast(byte) registers.get(rm));
+        registers.set(rd, b);
     } else {
-        static if (byteQty) {
-            debug (outputInstructions) registers.logInstruction(instruction, "STRB");
-            memory.setByte(address, cast(byte) registers.get(rd)); // TODO: check if this is correct
-        } else {
-            debug (outputInstructions) registers.logInstruction(instruction, "STR");
-            memory.setInt(address, registers.get(rd));
-        }
-    }
-    // Do post-increment and write back if needed
-    static if (preIncr) {
-        static if (writeBack) {
-            registers.set(rn, address);
-        }
-    } else {
-        static if (upIncr) {
-            address += offset;
-        } else {
-            address -= offset;
-        }
-        // Always do write back in post increment
-        registers.set(rn, address);
+        int w = rotateRead(address, memory.getInt(address));
+        memory.setInt(address, registers.get(rm));
+        registers.set(rd, w);
     }
 }
+
+private alias singleDataSwapInt = singleDataSwap!false;
+private alias singleDataSwapByte = singleDataSwap!true;
 
 private void halfwordAndSignedDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
     halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
@@ -840,6 +779,68 @@ private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immed
     }
 }
 
+private void singleDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
+    singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
+            flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(registers, memory, instruction);
+}
+
+private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
+            bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
+    // TODO: what does NoPrivilege do?
+    // Decode operands
+    int rn = getBits(instruction, 16, 19);
+    int rd = getBits(instruction, 12, 15);
+    static if (notImmediate) {
+        int shift = getBits(instruction, 7, 11);
+        int shiftType = getBits(instruction, 5, 6);
+        int carry;
+        int offset = registers.applyShift(shiftType, shift, false, registers.get(instruction & 0b1111), carry);
+    } else {
+        int offset = instruction & 0xFFF;
+    }
+    int address = registers.get(rn);
+    // Do pre-increment if needed
+    static if (preIncr) {
+        static if (upIncr) {
+            address += offset;
+        } else {
+            address -= offset;
+        }
+    }
+    // Read or write memory
+    static if (load) {
+        static if (byteQty) {
+            debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
+            registers.set(rd, memory.getByte(address) & 0xFF);
+        } else {
+            debug (outputInstructions) registers.logInstruction(instruction, "LDR");
+            registers.set(rd, rotateRead(address, memory.getInt(address)));
+        }
+    } else {
+        static if (byteQty) {
+            debug (outputInstructions) registers.logInstruction(instruction, "STRB");
+            memory.setByte(address, cast(byte) registers.get(rd)); // TODO: check if this is correct
+        } else {
+            debug (outputInstructions) registers.logInstruction(instruction, "STR");
+            memory.setInt(address, registers.get(rd));
+        }
+    }
+    // Do post-increment and write back if needed
+    static if (preIncr) {
+        static if (writeBack) {
+            registers.set(rn, address);
+        }
+    } else {
+        static if (upIncr) {
+            address += offset;
+        } else {
+            address -= offset;
+        }
+        // Always do write back in post increment
+        registers.set(rn, address);
+    }
+}
+
 private static string genBlockDataTransferOperation(bool preIncr, bool load) {
     auto memoryOp = load ? "registers.set(mode, i, memory.getInt(address));\n" :
             "memory.setInt(address, registers.get(mode, i));\n";
@@ -902,27 +903,26 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     }
 }
 
-private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "SWP");
-    // Decode operands
-    int rn = getBits(instruction, 16, 19);
-    int rd = getBits(instruction, 12, 15);
-    int rm = instruction & 0xF;
-    int address = registers.get(rn);
-    // Do memory swap
-    static if (byteQty) {
-        int b = memory.getByte(address) & 0xFF;
-        memory.setByte(address, cast(byte) registers.get(rm));
-        registers.set(rd, b);
-    } else {
-        int w = rotateRead(address, memory.getInt(address));
-        memory.setInt(address, registers.get(rm));
-        registers.set(rd, w);
-    }
+private void branch(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "B");
+    int offset = instruction & 0xFFFFFF;
+    // sign extend the offset
+    offset <<= 8;
+    offset >>= 8;
+    int pc = registers.get(Register.PC);
+    registers.set(Register.PC, pc + offset * 4);
 }
 
-private alias singleDataSwapInt = singleDataSwap!false;
-private alias singleDataSwapByte = singleDataSwap!true;
+private void branchAndLink(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "BL");
+    int offset = instruction & 0xFFFFFF;
+    // sign extend the offset
+    offset <<= 8;
+    offset >>= 8;
+    int pc = registers.get(Register.PC);
+    registers.set(Register.LR, pc - 4);
+    registers.set(Register.PC, pc + offset * 4);
+}
 
 private void softwareInterrupt(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
