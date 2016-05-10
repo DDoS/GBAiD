@@ -31,15 +31,11 @@ void function(Registers, Memory, int)[] genARMTable() {
 
     // Bits are P(1)
     // where P is use SPSR
-    void function(Registers, Memory, int)[] psrTransferImmediateInstructions = [
-        &cpsrWriteImmediate, &spsrWriteImmediate,
-    ];
+    void function(Registers, Memory, int)[] psrTransferImmediateInstructions = genTable!(psrTransfer_Imm, 1, unsupported);
 
     // Bits are P(1),~L(1)
     // where P is use SPSR and L is load
-    void function(Registers, Memory, int)[] psrTransferRegisterInstructions = [
-        &cpsrRead, &cpsrWriteRegister, &spsrRead, &spsrWriteRegister,
-    ];
+    void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported);
 
     // Bits are A(1),S(1)
     // where A is accumulate and S is set flags
@@ -211,16 +207,6 @@ private void dataProcessing_RegShiftReg(int code)(Registers registers, Memory me
 
 private void dataProcessing_Imm(int code)(Registers registers, Memory memory, int instruction) {
     dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
-}
-
-private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
-    int zero = res == 0;
-    int negative = res < 0;
-    if (rd == Register.PC) {
-        registers.set(Register.CPSR, registers.get(Register.SPSR));
-    } else {
-        registers.setAPSRFlags(negative, zero, carry, overflow);
-    }
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(Registers registers, Memory memory, int instruction) {
@@ -436,12 +422,64 @@ private void dataProcessing(alias decodeOperands, int opCode, bool setFlags)(Reg
     static assert (0);
 }
 
-private mixin template decodeOpPrsrImmediate() {
+private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
+    int zero = res == 0;
+    int negative = res < 0;
+    if (rd == Register.PC) {
+        registers.set(Register.CPSR, registers.get(Register.SPSR));
+    } else {
+        registers.setAPSRFlags(negative, zero, carry, overflow);
+    }
+}
+
+private mixin template decodeOpPsrTransfer_Imm() {
     int op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
 }
 
-private mixin template decodeOpPrsrRegister() {
+private mixin template decodeOpPsrTransfer_Reg() {
     int op = registers.get(instruction & 0xF);
+}
+
+private void psrTransfer_Imm(int code)(Registers registers, Memory memory, int instruction) {
+    psrTransfer!(decodeOpPsrTransfer_Imm, code.checkBit(0), true)(registers, memory, instruction);
+}
+
+private void psrTransfer_Reg(int code)(Registers registers, Memory memory, int instruction) {
+    psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: false)(Registers registers, Memory memory, int instruction)
+        if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MRS");
+    int rd = getBits(instruction, 12, 15);
+    registers.set(rd, registers.get(Register.CPSR));
+}
+
+private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: true)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MSR");
+    mixin decodeOperand;
+    int mask = getPsrMask(instruction) & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xCF : 0));
+    int cpsr = registers.get(Register.CPSR);
+    registers.set(Register.CPSR, cpsr & ~mask | op & mask);
+}
+
+private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: false)(Registers registers, Memory memory, int instruction)
+        if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MRS");
+    int rd = getBits(instruction, 12, 15);
+    registers.set(rd, registers.get(Register.SPSR));
+}
+
+private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: true)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MSR");
+    mixin decodeOperand;
+    int mask = getPsrMask(instruction) & 0xF00000EF;
+    int spsr = registers.get(Register.SPSR);
+    registers.set(Register.SPSR, spsr & ~mask | op & mask);
+}
+
+private void psrTransfer(alias decodeOperands, bool useSPSR, bool notLoad)(Registers registers, Memory memory, int instruction) {
+    static assert (0);
 }
 
 private int getPsrMask(int instruction) {
@@ -457,40 +495,6 @@ private int getPsrMask(int instruction) {
     }
     return mask;
 }
-
-private void cpsrRead(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MRS");
-    int rd = getBits(instruction, 12, 15);
-    registers.set(rd, registers.get(Register.CPSR));
-}
-
-private void cpsrWrite(alias decodeOperand)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MSR");
-    mixin decodeOperand;
-    int mask = getPsrMask(instruction) & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xCF : 0));
-    int cpsr = registers.get(Register.CPSR);
-    registers.set(Register.CPSR, cpsr & ~mask | op & mask);
-}
-
-private alias cpsrWriteImmediate = cpsrWrite!decodeOpPrsrImmediate;
-private alias cpsrWriteRegister = cpsrWrite!decodeOpPrsrRegister;
-
-private void spsrRead(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MRS");
-    int rd = getBits(instruction, 12, 15);
-    registers.set(rd, registers.get(Register.SPSR));
-}
-
-private void spsrWrite(alias decodeOperand)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MSR");
-    mixin decodeOperand;
-    int mask = getPsrMask(instruction) & 0xF00000EF;
-    int spsr = registers.get(Register.SPSR);
-    registers.set(Register.SPSR, spsr & ~mask | op & mask);
-}
-
-private alias spsrWriteImmediate = spsrWrite!decodeOpPrsrImmediate;
-private alias spsrWriteRegister = spsrWrite!decodeOpPrsrRegister;
 
 private void branchAndExchange(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
