@@ -2,48 +2,46 @@ module gbaid.arm;
 
 import std.conv;
 import std.string;
+import std.traits;
 
 import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
-private template genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0) {
-    private void function(Registers, Memory, int)[] genTable() {
-        static if (index < (1 << bitCount)) {
-            static if (__traits(compiles, &instructionFamily!index)) {
-                void function(Registers, Memory, int) entry = &instructionFamily!index;
-            } else {
-                void function(Registers, Memory, int) entry = &unsupported;
-            }
-            return [entry] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
+private void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
+    static if (index < (1 << bitCount)) {
+        static if (hasUDA!(instructionFamily!index, "unsupported")) {
+            return [&unsupported] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
         } else {
-            return [];
+            return [&instructionFamily!index] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
         }
+    } else {
+        return [];
     }
 }
 
 void function(Registers, Memory, int)[] genARMTable() {
     // Bits are OpCode(4),S(1)
     // where S is set flags
-    void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = genTable!(dataProcessing_RegShiftImm, 5, unsupported);
-    void function(Registers, Memory, int)[] dataProcessingRegisterInstructions = genTable!(dataProcessing_RegShiftReg, 5, unsupported);
-    void function(Registers, Memory, int)[] dataProcessingImmediateInstructions = genTable!(dataProcessing_Imm, 5, unsupported);
+    void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = genTable!(dataProcessing_RegShiftImm, 5, unsupported)();
+    void function(Registers, Memory, int)[] dataProcessingRegisterInstructions = genTable!(dataProcessing_RegShiftReg, 5, unsupported)();
+    void function(Registers, Memory, int)[] dataProcessingImmediateInstructions = genTable!(dataProcessing_Imm, 5, unsupported)();
 
     // Bits are P(1)
     // where P is use SPSR
-    void function(Registers, Memory, int)[] psrTransferImmediateInstructions = genTable!(psrTransfer_Imm, 1, unsupported);
+    void function(Registers, Memory, int)[] psrTransferImmediateInstructions = genTable!(psrTransfer_Imm, 1, unsupported)();
 
     // Bits are P(1),~L(1)
     // where P is use SPSR and L is load
-    void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported);
+    void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported)();
 
     // Bits are A(1),S(1)
     // where A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyIntInstructions = genTable!(multiply_Int, 2, unsupported);
+    void function(Registers, Memory, int)[] multiplyIntInstructions = genTable!(multiply_Int, 2, unsupported)();
 
     // Bits are ~U(1),A(1),S(1)
     // where U is unsigned, A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyLongInstructions = genTable!(multiply_Long, 3, unsupported);
+    void function(Registers, Memory, int)[] multiplyLongInstructions = genTable!(multiply_Long, 3, unsupported)();
 
     string genInstructionTemplateTable(string instruction, int bitCount, int offset = 0) {
         auto s = "[";
@@ -192,17 +190,9 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     int op2 = registers.applyShift(shiftType, shift, cast(bool) shiftSrc, registers.get(instruction & 0b1111), carry);
 }
 
-private void dataProcessing_RegShiftImm(int code)(Registers registers, Memory memory, int instruction) {
-    dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
-}
-
-private void dataProcessing_RegShiftReg(int code)(Registers registers, Memory memory, int instruction) {
-    dataProcessing!(decodeOpDataProcessing_RegShiftReg, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
-}
-
-private void dataProcessing_Imm(int code)(Registers registers, Memory memory, int instruction) {
-    dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
-}
+private alias dataProcessing_RegShiftImm(int code) = dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0));
+private alias dataProcessing_RegShiftReg(int code) = dataProcessing!(decodeOpDataProcessing_RegShiftReg, code.getBits(1, 4), code.checkBit(0));
+private alias dataProcessing_Imm(int code) = dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0));
 
 private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
@@ -413,8 +403,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
     }
 }
 
+@("unsupported")
 private void dataProcessing(alias decodeOperands, int opCode, bool setFlags)(Registers registers, Memory memory, int instruction) {
-    static assert (0);
+    unsupported(registers, memory, instruction);
 }
 
 private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
@@ -435,13 +426,8 @@ private mixin template decodeOpPsrTransfer_Reg() {
     int op = registers.get(instruction & 0xF);
 }
 
-private void psrTransfer_Imm(int code)(Registers registers, Memory memory, int instruction) {
-    psrTransfer!(decodeOpPsrTransfer_Imm, code.checkBit(0), true)(registers, memory, instruction);
-}
-
-private void psrTransfer_Reg(int code)(Registers registers, Memory memory, int instruction) {
-    psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
-}
+private alias psrTransfer_Imm(int code) = psrTransfer!(decodeOpPsrTransfer_Imm, code.checkBit(0), true);
+private alias psrTransfer_Reg(int code) = psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0));
 
 private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: false)(Registers registers, Memory memory, int instruction)
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
@@ -473,6 +459,11 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: 
     registers.set(Register.SPSR, spsr & ~mask | op & mask);
 }
 
+@("unsupported")
+private void psrTransfer(alias decodeOperand, bool useSPSR, bool notLoad)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
+}
+
 private int getPsrMask(int instruction) {
     int mask = 0;
     if (checkBit(instruction, 19)) {
@@ -502,13 +493,8 @@ private mixin template decodeOpMultiply() {
     int op1 = registers.get(instruction & 0xF);
 }
 
-private void multiply_Int(int code)(Registers registers, Memory memory, int instruction) {
-    multiply!(false, false, code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
-}
-
-private void multiply_Long(int code)(Registers registers, Memory memory, int instruction) {
-    multiply!(true, code.checkBit(2), code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
-}
+private alias multiply_Int(int code) = multiply!(false, false, code.checkBit(1), code.checkBit(0));
+private alias multiply_Long(int code) = multiply!(true, code.checkBit(2), code.checkBit(1), code.checkBit(0));
 
 private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MUL");
@@ -557,6 +543,11 @@ private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate:
     long op3 = ucast(registers.get(rd)) << 32 | ucast(registers.get(rn));
     long res = cast(long) op1 * cast(long) op2 + op3;
     setMultiplyLongResult!setFlags(registers, rd, rn, res);
+}
+
+@("unsupported")
+private void multiply(bool long_, bool notUnsigned, bool accumulate, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
 }
 
 private void setMultiplyIntResult(bool setFlags)(Registers registers, int rd, int res) {
@@ -833,7 +824,7 @@ private void undefined(Registers registers, Memory memory, int instruction) {
 }
 
 private void unsupported(Registers registers, Memory memory, int instruction) {
-    throw new UnsupportedARMInstructionException(registers.get(Register.PC) - 8, instruction);
+    throw new UnsupportedARMInstructionException(registers.getExecutedPC(), instruction);
 }
 
 public class UnsupportedARMInstructionException : Exception {

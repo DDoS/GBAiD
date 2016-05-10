@@ -650,7 +650,7 @@ public class TableMerger {
                 }
                 // Check if there's a conflict first
                 if (this.table[index] !is nullInstruction) {
-                    throw new Exception("The table conflicts with a previously added one");
+                    throw new Exception("The entry in sub-table at " ~ tableBitValue.to!string ~ " conflicts with a previously added one");
                 }
                 this.table[index] = table[tableBitValue];
             }

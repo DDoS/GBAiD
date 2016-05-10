@@ -677,7 +677,7 @@ private void longBranchWithLink(bool high)(Registers registers, Memory memory, i
 }
 
 private void unsupported(Registers registers, Memory memory, int instruction) {
-    throw new UnsupportedTHUMBInstructionException(registers.get(Register.PC) - 4, instruction);
+    throw new UnsupportedTHUMBInstructionException(registers.getExecutedPC(), instruction);
 }
 
 public class UnsupportedTHUMBInstructionException : Exception {
