@@ -72,6 +72,34 @@ public int rotateRight(int i, int shift) {
     return i >>> shift | i << 32 - shift;
 }
 
+public bool carriedAdd(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && negativeB || negativeA && !negativeC || negativeB && !negativeC;
+}
+
+public bool overflowedAdd(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && negativeB && !negativeC || !negativeA && !negativeB && negativeC;
+}
+
+public bool borrowedSub(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return (!negativeA || negativeB) && (!negativeA || negativeC) && (negativeB || negativeC);
+}
+
+public bool overflowedSub(int a, int b, int c) {
+    int negativeA = a >> 31;
+    int negativeB = b >> 31;
+    int negativeC = c >> 31;
+    return negativeA && !negativeB && !negativeC || !negativeA && negativeB && negativeC;
+}
+
 public T getSafe(T)(T[] array, int index, T def) {
     if (index < 0 || index >= array.length) {
         return def;

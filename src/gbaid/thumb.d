@@ -644,10 +644,10 @@ private void conditionalBranch(byte condition)(Registers registers, Memory memor
 private void softwareInterrupt(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
-    registers.setFlag(CPSRFlag.I, 1);
-    registers.setFlag(CPSRFlag.T, Set.ARM);
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 2);
     registers.set(Register.PC, 0x8);
+    registers.setFlag(CPSRFlag.I, 1);
+    registers.setFlag(CPSRFlag.T, Set.ARM);
     registers.setMode(Mode.SUPERVISOR);
 }
 

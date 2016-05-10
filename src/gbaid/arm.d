@@ -927,18 +927,18 @@ private alias singleDataSwapByte = singleDataSwap!true;
 private void softwareInterrupt(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
-    registers.setFlag(CPSRFlag.I, 1);
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 4);
     registers.set(Register.PC, 0x8);
+    registers.setFlag(CPSRFlag.I, 1);
     registers.setMode(Mode.SUPERVISOR);
 }
 
 private void undefined(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UND");
     registers.set(Mode.UNDEFINED, Register.SPSR, registers.get(Register.CPSR));
-    registers.setFlag(CPSRFlag.I, 1);
     registers.set(Mode.UNDEFINED, Register.LR, registers.get(Register.PC) - 4);
     registers.set(Register.PC, 0x4);
+    registers.setFlag(CPSRFlag.I, 1);
     registers.setMode(Mode.UNDEFINED);
 }
 

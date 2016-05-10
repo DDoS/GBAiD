@@ -20,21 +20,18 @@ public class ARM7TDMI {
     private Thread thread;
     private bool running = false;
     private Registers registers;
-    private Mode mode = Mode.SYSTEM;
     private bool haltSignal = false;
     private bool irqSignal = false;
-    private Pipeline armPipeline;
-    private Pipeline thumbPipeline;
-    private Pipeline pipeline;
+    private void function(Registers, Memory, int)[] armInstructions;
+    private void function(Registers, Memory, int)[] thumbInstructions;
     private int instruction;
     private int decoded;
 
     public this(Memory memory) {
         this.memory = memory;
         registers = new Registers();
-        armPipeline = new ARMPipeline();
-        thumbPipeline = new THUMBPipeline();
-        pipeline = armPipeline;
+        armInstructions = genARMTable();
+        thumbInstructions = genTHUMBTable();
     }
 
     public void setEntryPointAddress(uint entryPointAddress) {
@@ -105,7 +102,6 @@ public class ARM7TDMI {
             // initialize to ARM in system mode
             registers.setFlag(CPSRFlag.T, Set.ARM);
             registers.setMode(Mode.SYSTEM);
-            updateModeAndSet();
             // set first instruction
             registers.set(Register.PC, entryPointAddress);
             // branch to instruction
@@ -122,7 +118,6 @@ public class ARM7TDMI {
                         Thread.yield();
                     }
                 }
-                updateModeAndSet();
                 if (registers.wasPCModified()) {
                     branch();
                 } else {
@@ -141,29 +136,54 @@ public class ARM7TDMI {
 
     private void branch() {
         // fetch first instruction
-        instruction = pipeline.fetch();
+        instruction = fetchInstruction();
         registers.incrementPC();
         // fetch second and decode first
-        int nextInstruction = pipeline.fetch();
-        decoded = pipeline.decode(instruction);
+        int nextInstruction = fetchInstruction();
+        decoded = decodeInstruction(instruction);
         instruction = nextInstruction;
         registers.incrementPC();
     }
 
     private void tick() {
         // fetch
-        int nextInstruction = pipeline.fetch();
+        int nextInstruction = fetchInstruction();
         // decode
-        int nextDecoded = pipeline.decode(instruction);
+        int nextDecoded = decodeInstruction(instruction);
         instruction = nextInstruction;
         // execute
-        pipeline.execute(decoded);
+        fetchInstruction(decoded);
         decoded = nextDecoded;
     }
 
-    private void updateModeAndSet() {
-        mode = registers.getMode();
-        pipeline = registers.getFlag(CPSRFlag.T) ? thumbPipeline : armPipeline;
+    private int fetchInstruction() {
+        final switch (registers.getSet()) {
+            case Set.ARM:
+                return memory.getInt(registers.get(Register.PC));
+            case Set.THUMB:
+                return mirror(memory.getShort(registers.get(Register.PC)));
+        }
+    }
+
+    private int decodeInstruction(int instruction) {
+        // Does nothing since this only helps if we execute fetch/decode and execute in parallel
+        return instruction;
+    }
+
+    private void fetchInstruction(int instruction) {
+        final switch (registers.getSet()) {
+            case Set.ARM:
+                if (!registers.checkCondition(instruction >>> 28)) {
+                    return;
+                }
+                int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+                armInstructions[code](registers, memory, instruction);
+                break;
+            case Set.THUMB:
+                int code = getBits(instruction, 6, 15);
+                thumbInstructions[code](registers, memory, instruction);
+                break;
+        }
     }
 
     private void branchIRQ() {
@@ -171,75 +191,12 @@ public class ARM7TDMI {
             return;
         }
         registers.set(Mode.IRQ, Register.SPSR, registers.get(Register.CPSR));
-        registers.setFlag(CPSRFlag.I, 1);
         registers.set(Mode.IRQ, Register.LR, registers.getExecutedPC() + 4);
-        registers.setFlag(CPSRFlag.T, Set.ARM);
         registers.set(Register.PC, 0x18);
+        registers.setFlag(CPSRFlag.I, 1);
+        registers.setFlag(CPSRFlag.T, Set.ARM);
         registers.setMode(Mode.IRQ);
-        updateModeAndSet();
         branch();
-    }
-
-    private interface Pipeline {
-        protected Set getSet();
-        protected int fetch();
-        protected int decode(int instruction);
-        protected void execute(int instruction);
-    }
-
-    private class ARMPipeline : Pipeline {
-        private void function(Registers, Memory, int)[] instructionTable;
-
-        private this() {
-            instructionTable = genARMTable();
-        }
-
-        protected Set getSet() {
-            return Set.ARM;
-        }
-
-        protected override int fetch() {
-            return memory.getInt(registers.get(Register.PC));
-        }
-
-        protected override int decode(int instruction) {
-            // Nothing to do
-            return instruction;
-        }
-
-        protected override void execute(int instruction) {
-            if (!registers.checkCondition(getConditionBits(instruction))) {
-                return;
-            }
-            int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-            instructionTable[code](registers, memory, instruction);
-        }
-    }
-
-    private class THUMBPipeline : Pipeline {
-        private void function(Registers, Memory, int)[] instructionTable;
-
-        private this() {
-            instructionTable = genTHUMBTable();
-        }
-
-        protected Set getSet() {
-            return Set.THUMB;
-        }
-
-        protected override int fetch() {
-            return mirror(memory.getShort(registers.get(Register.PC)));
-        }
-
-        protected override int decode(int instruction) {
-            // Nothing to do
-            return instruction;
-        }
-
-        protected override void execute(int instruction) {
-            int code = getBits(instruction, 6, 15);
-            instructionTable[code](registers, memory, instruction);
-        }
     }
 }
 
@@ -299,21 +256,21 @@ public class Registers {
     }
 
     public void incrementPC() {
-        final switch (getSet()) with (Set) {
-            case ARM:
+        final switch (getSet()) {
+            case Set.ARM:
                 registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
                 break;
-            case THUMB:
+            case Set.THUMB:
                 registers[Register.PC] = (registers[Register.PC] & ~1) + 2;
                 break;
         }
     }
 
     public int getExecutedPC() {
-        final switch (getSet()) with (Set) {
-            case ARM:
+        final switch (getSet()) {
+            case Set.ARM:
                 return registers[Register.PC] - 8;
-            case THUMB:
+            case Set.THUMB:
                 return registers[Register.PC] - 4;
         }
     }
@@ -585,11 +542,11 @@ public class Registers {
             }
             foreach (uint i; 0 .. amount) {
                 uint j = (i + start) % queueMaxSize;
-                final switch (lastInstructions[j].set) with (Set) {
-                    case ARM:
+                final switch (lastInstructions[j].set) {
+                    case Set.ARM:
                         writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
-                    case THUMB:
+                    case Set.THUMB:
                         writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
                 }
@@ -701,10 +658,6 @@ public class TableMerger {
     }
 }
 
-public int getConditionBits(int instruction) {
-    return instruction >>> 28;
-}
-
 public int rotateRead(int address, int value) {
     return rotateRight(value, (address & 3) << 3);
 }
@@ -715,34 +668,6 @@ public int rotateRead(int address, short value) {
 
 public int rotateReadSigned(int address, short value) {
     return value >> ((address & 1) << 3);
-}
-
-public bool carriedAdd(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && negativeB || negativeA && !negativeC || negativeB && !negativeC;
-}
-
-public bool overflowedAdd(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && negativeB && !negativeC || !negativeA && !negativeB && negativeC;
-}
-
-public bool borrowedSub(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return (!negativeA || negativeB) && (!negativeA || negativeC) && (negativeB || negativeC);
-}
-
-public bool overflowedSub(int a, int b, int c) {
-    int negativeA = a >> 31;
-    int negativeB = b >> 31;
-    int negativeC = c >> 31;
-    return negativeA && !negativeB && !negativeC || !negativeA && negativeB && negativeC;
 }
 
 public enum Set {
