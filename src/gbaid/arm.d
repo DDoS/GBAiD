@@ -39,16 +39,11 @@ void function(Registers, Memory, int)[] genARMTable() {
 
     // Bits are A(1),S(1)
     // where A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyIntInstructions = [
-        &multiplyMUL,   &multiplyMULS,   &multiplyMLA,   &multiplyMLAS,
-    ];
+    void function(Registers, Memory, int)[] multiplyIntInstructions = genTable!(multiply_Int, 2, unsupported);
 
     // Bits are ~U(1),A(1),S(1)
     // where U is unsigned, A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyLongInstructions = [
-        &multiplyUMULL, &multiplyUMULLS, &multiplyUMLAL, &multiplyUMLALS,
-        &multiplySMULL, &multiplySMULLS, &multiplySMLAL, &multiplySMLALS,
-    ];
+    void function(Registers, Memory, int)[] multiplyLongInstructions = genTable!(multiply_Long, 3, unsupported);
 
     string genInstructionTemplateTable(string instruction, int bitCount, int offset = 0) {
         auto s = "[";
@@ -478,10 +473,6 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: 
     registers.set(Register.SPSR, spsr & ~mask | op & mask);
 }
 
-private void psrTransfer(alias decodeOperands, bool useSPSR, bool notLoad)(Registers registers, Memory memory, int instruction) {
-    static assert (0);
-}
-
 private int getPsrMask(int instruction) {
     int mask = 0;
     if (checkBit(instruction, 19)) {
@@ -505,6 +496,69 @@ private void branchAndExchange(Registers registers, Memory memory, int instructi
     registers.set(Register.PC, address & ~1);
 }
 
+private mixin template decodeOpMultiply() {
+    int rd = getBits(instruction, 16, 19);
+    int op2 = registers.get(getBits(instruction, 8, 11));
+    int op1 = registers.get(instruction & 0xF);
+}
+
+private void multiply_Int(int code)(Registers registers, Memory memory, int instruction) {
+    multiply!(false, false, code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void multiply_Long(int code)(Registers registers, Memory memory, int instruction) {
+    multiply!(true, code.checkBit(2), code.checkBit(1), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MUL");
+    mixin decodeOpMultiply;
+    int res = op1 * op2;
+    setMultiplyIntResult!setFlags(registers, rd, res);
+}
+
+private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "MLA");
+    mixin decodeOpMultiply;
+    int op3 = registers.get(getBits(instruction, 12, 15));
+    int res = op1 * op2 + op3;
+    setMultiplyIntResult!setFlags(registers, rd, res);
+}
+
+private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "UMULL");
+    mixin decodeOpMultiply;
+    int rn = getBits(instruction, 12, 15);
+    ulong res = ucast(op1) * ucast(op2);
+    setMultiplyLongResult!setFlags(registers, rd, rn, res);
+}
+
+private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "UMLAL");
+    mixin decodeOpMultiply;
+    int rn = getBits(instruction, 12, 15);
+    ulong op3 = ucast(registers.get(rd)) << 32 | ucast(registers.get(rn));
+    ulong res = ucast(op1) * ucast(op2) + op3;
+    setMultiplyLongResult!setFlags(registers, rd, rn, res);
+}
+
+private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "SMULL");
+    mixin decodeOpMultiply;
+    int rn = getBits(instruction, 12, 15);
+    long res = cast(long) op1 * cast(long) op2;
+    setMultiplyLongResult!setFlags(registers, rd, rn, res);
+}
+
+private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "SMLAL");
+    mixin decodeOpMultiply;
+    int rn = getBits(instruction, 12, 15);
+    long op3 = ucast(registers.get(rd)) << 32 | ucast(registers.get(rn));
+    long res = cast(long) op1 * cast(long) op2 + op3;
+    setMultiplyLongResult!setFlags(registers, rd, rn, res);
+}
+
 private void setMultiplyIntResult(bool setFlags)(Registers registers, int rd, int res) {
     registers.set(rd, res);
     static if (setFlags) {
@@ -521,79 +575,6 @@ private void setMultiplyLongResult(bool setFlags)(Registers registers, int rd, i
         registers.setAPSRFlags(res < 0, res == 0);
     }
 }
-
-private mixin template decodeOpMultiply() {
-    int rd = getBits(instruction, 16, 19);
-    int op2 = registers.get(getBits(instruction, 8, 11));
-    int op1 = registers.get(instruction & 0xF);
-}
-
-private void multiplyInt(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MUL");
-    mixin decodeOpMultiply;
-    int res = op1 * op2;
-    setMultiplyIntResult!setFlags(registers, rd, res);
-}
-
-private alias multiplyMUL = multiplyInt!(false);
-private alias multiplyMULS = multiplyInt!(true);
-
-private void multiplyAccumulateInt(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "MLA");
-    mixin decodeOpMultiply;
-    int op3 = registers.get(getBits(instruction, 12, 15));
-    int res = op1 * op2 + op3;
-    setMultiplyIntResult!setFlags(registers, rd, res);
-}
-
-private alias multiplyMLA = multiplyAccumulateInt!(false);
-private alias multiplyMLAS = multiplyAccumulateInt!(true);
-
-private void multiplyLongUnsigned(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "UMULL");
-    mixin decodeOpMultiply;
-    int rn = getBits(instruction, 12, 15);
-    ulong res = ucast(op1) * ucast(op2);
-    setMultiplyLongResult!setFlags(registers, rd, rn, res);
-}
-
-private alias multiplyUMULL = multiplyLongUnsigned!(false);
-private alias multiplyUMULLS = multiplyLongUnsigned!(true);
-
-private void multiplyAccumulateLongUnsigned(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "UMLAL");
-    mixin decodeOpMultiply;
-    int rn = getBits(instruction, 12, 15);
-    ulong op3 = ucast(registers.get(rd)) << 32 | ucast(registers.get(rn));
-    ulong res = ucast(op1) * ucast(op2) + op3;
-    setMultiplyLongResult!setFlags(registers, rd, rn, res);
-}
-
-private alias multiplyUMLAL = multiplyAccumulateLongUnsigned!(false);
-private alias multiplyUMLALS = multiplyAccumulateLongUnsigned!(true);
-
-private void multiplyLongSigned(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "SMULL");
-    mixin decodeOpMultiply;
-    int rn = getBits(instruction, 12, 15);
-    long res = cast(long) op1 * cast(long) op2;
-    setMultiplyLongResult!setFlags(registers, rd, rn, res);
-}
-
-private alias multiplySMULL = multiplyLongSigned!(false);
-private alias multiplySMULLS = multiplyLongSigned!(true);
-
-private void multiplyAccumulateLongSigned(bool setFlags)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "SMLAL");
-    mixin decodeOpMultiply;
-    int rn = getBits(instruction, 12, 15);
-    long op3 = ucast(registers.get(rd)) << 32 | ucast(registers.get(rn));
-    long res = cast(long) op1 * cast(long) op2 + op3;
-    setMultiplyLongResult!setFlags(registers, rd, rn, res);
-}
-
-private alias multiplySMLAL = multiplyAccumulateLongSigned!(false);
-private alias multiplySMLALS = multiplyAccumulateLongSigned!(true);
 
 private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWP");
