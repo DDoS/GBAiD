@@ -7,39 +7,27 @@ import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
+private template genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0) {
+    private void function(Registers, Memory, int)[] genTable() {
+        static if (index < (1 << bitCount)) {
+            static if (__traits(compiles, &instructionFamily!index)) {
+                void function(Registers, Memory, int) entry = &instructionFamily!index;
+            } else {
+                void function(Registers, Memory, int) entry = &unsupported;
+            }
+            return [entry] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
+        } else {
+            return [];
+        }
+    }
+}
+
 void function(Registers, Memory, int)[] genARMTable() {
     // Bits are OpCode(4),S(1)
     // where S is set flags
-    void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = [
-        &dataProcessingANDRegisterImmediate,  &dataProcessingANDSRegisterImmediate,  &dataProcessingEORRegisterImmediate,     &dataProcessingEORSRegisterImmediate,
-        &dataProcessingSUBRegisterImmediate,  &dataProcessingSUBSRegisterImmediate,  &dataProcessingRSBRegisterImmediate,     &dataProcessingRSBSRegisterImmediate,
-        &dataProcessingADDRegisterImmediate,  &dataProcessingADDSRegisterImmediate,  &dataProcessingADCRegisterImmediate,     &dataProcessingADCSRegisterImmediate,
-        &dataProcessingSBCRegisterImmediate,  &dataProcessingSBCSRegisterImmediate,  &dataProcessingRSCRegisterImmediate,     &dataProcessingRSCSRegisterImmediate,
-        &unsupported,                         &dataProcessingTSTRegisterImmediate,   &unsupported,                            &dataProcessingTEQRegisterImmediate,
-        &unsupported,                         &dataProcessingCMPRegisterImmediate,   &unsupported,                            &dataProcessingCMNRegisterImmediate,
-        &dataProcessingORRRegisterImmediate,  &dataProcessingORRSRegisterImmediate,  &dataProcessingMOVRegisterImmediate,     &dataProcessingMOVSRegisterImmediate,
-        &dataProcessingBICRegisterImmediate,  &dataProcessingBICSRegisterImmediate,  &dataProcessingMVNRegisterImmediate,     &dataProcessingMVNSRegisterImmediate,
-    ];
-    void function(Registers, Memory, int)[] dataProcessingRegisterInstructions = [
-        &dataProcessingANDRegister,  &dataProcessingANDSRegister,  &dataProcessingEORRegister,     &dataProcessingEORSRegister,
-        &dataProcessingSUBRegister,  &dataProcessingSUBSRegister,  &dataProcessingRSBRegister,     &dataProcessingRSBSRegister,
-        &dataProcessingADDRegister,  &dataProcessingADDSRegister,  &dataProcessingADCRegister,     &dataProcessingADCSRegister,
-        &dataProcessingSBCRegister,  &dataProcessingSBCSRegister,  &dataProcessingRSCRegister,     &dataProcessingRSCSRegister,
-        &unsupported,                &dataProcessingTSTRegister,   &unsupported,                   &dataProcessingTEQRegister,
-        &unsupported,                &dataProcessingCMPRegister,   &unsupported,                   &dataProcessingCMNRegister,
-        &dataProcessingORRRegister,  &dataProcessingORRSRegister,  &dataProcessingMOVRegister,     &dataProcessingMOVSRegister,
-        &dataProcessingBICRegister,  &dataProcessingBICSRegister,  &dataProcessingMVNRegister,     &dataProcessingMVNSRegister,
-    ];
-    void function(Registers, Memory, int)[] dataProcessingImmediateInstructions = [
-        &dataProcessingANDImmediate, &dataProcessingANDSImmediate, &dataProcessingEORImmediate,    &dataProcessingEORSImmediate,
-        &dataProcessingSUBImmediate, &dataProcessingSUBSImmediate, &dataProcessingRSBImmediate,    &dataProcessingRSBSImmediate,
-        &dataProcessingADDImmediate, &dataProcessingADDSImmediate, &dataProcessingADCImmediate,    &dataProcessingADCSImmediate,
-        &dataProcessingSBCImmediate, &dataProcessingSBCSImmediate, &dataProcessingRSCImmediate,    &dataProcessingRSCSImmediate,
-        &unsupported,                &dataProcessingTSTImmediate,  &unsupported,                   &dataProcessingTEQImmediate,
-        &unsupported,                &dataProcessingCMPImmediate,  &unsupported,                   &dataProcessingCMNImmediate,
-        &dataProcessingORRImmediate, &dataProcessingORRSImmediate, &dataProcessingMOVImmediate,    &dataProcessingMOVSImmediate,
-        &dataProcessingBICImmediate, &dataProcessingBICSImmediate, &dataProcessingMVNImmediate,    &dataProcessingMVNSImmediate,
-    ];
+    void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = genTable!(dataProcessing_RegShiftImm, 5, unsupported);
+    void function(Registers, Memory, int)[] dataProcessingRegisterInstructions = genTable!(dataProcessing_RegShiftReg, 5, unsupported);
+    void function(Registers, Memory, int)[] dataProcessingImmediateInstructions = genTable!(dataProcessing_Imm, 5, unsupported);
 
     // Bits are P(1)
     // where P is use SPSR
@@ -177,17 +165,15 @@ void function(Registers, Memory, int)[] genARMTable() {
     return merger.getTable();
 }
 
-private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
-    int zero = res == 0;
-    int negative = res < 0;
-    if (rd == Register.PC) {
-        registers.set(Register.CPSR, registers.get(Register.SPSR));
-    } else {
-        registers.setAPSRFlags(negative, zero, carry, overflow);
-    }
+private mixin template decodeOpDataProcessing_RegShiftImm() {
+    mixin decodeOpDataProcessing_RegShiftReg!true;
 }
 
-private mixin template decodeOpDataProcessingImmediate() {
+private mixin template decodeOpDataProcessing_RegShiftReg() {
+    mixin decodeOpDataProcessing_RegShiftReg!false;
+}
+
+private mixin template decodeOpDataProcessing_Imm() {
     // Decode
     int rn = getBits(instruction, 16, 19);
     int rd = getBits(instruction, 12, 15);
@@ -198,15 +184,7 @@ private mixin template decodeOpDataProcessingImmediate() {
     int carry = shift == 0 ? registers.getFlag(CPSRFlag.C) : getBit(op2, 31);
 }
 
-private mixin template decodeOpDataProcessingRegisterImmediate() {
-    mixin decodeOpDataProcessingRegister!true;
-}
-
-private mixin template decodeOpDataProcessingRegister() {
-    mixin decodeOpDataProcessingRegister!false;
-}
-
-private mixin template decodeOpDataProcessingRegister(bool immediateShift) {
+private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     // Decode
     int rn = getBits(instruction, 16, 19);
     int rd = getBits(instruction, 12, 15);
@@ -223,7 +201,29 @@ private mixin template decodeOpDataProcessingRegister(bool immediateShift) {
     int op2 = registers.applyShift(shiftType, shift, cast(bool) shiftSrc, registers.get(instruction & 0b1111), carry);
 }
 
-private void dataProcessingAND(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing_RegShiftImm(int code)(Registers registers, Memory memory, int instruction) {
+    dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void dataProcessing_RegShiftReg(int code)(Registers registers, Memory memory, int instruction) {
+    dataProcessing!(decodeOpDataProcessing_RegShiftReg, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void dataProcessing_Imm(int code)(Registers registers, Memory memory, int instruction) {
+    dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0))(registers, memory, instruction);
+}
+
+private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
+    int zero = res == 0;
+    int negative = res < 0;
+    if (rd == Register.PC) {
+        registers.set(Register.CPSR, registers.get(Register.SPSR));
+    } else {
+        registers.setAPSRFlags(negative, zero, carry, overflow);
+    }
+}
+
+private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
     mixin decodeOperands;
     // Operation
@@ -236,14 +236,7 @@ private void dataProcessingAND(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingANDImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingANDSImmediate = dataProcessingAND!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingANDRegister = dataProcessingAND!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingANDRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingANDSRegister = dataProcessingAND!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingANDSRegisterImmediate = dataProcessingAND!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingEOR(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "EOR");
     mixin decodeOperands;
     // Operation
@@ -256,14 +249,8 @@ private void dataProcessingEOR(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingEORImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingEORSImmediate = dataProcessingEOR!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingEORRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingEORRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingEORSRegister = dataProcessingEOR!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingEORSRegisterImmediate = dataProcessingEOR!(decodeOpDataProcessingRegisterImmediate, true);
 
-private void dataProcessingSUB(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOperands;
     // Operation
@@ -277,14 +264,7 @@ private void dataProcessingSUB(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingSUBImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingSUBSImmediate = dataProcessingSUB!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingSUBRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingSUBRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingSUBSRegister = dataProcessingSUB!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingSUBSRegisterImmediate = dataProcessingSUB!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingRSB(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSB");
     mixin decodeOperands;
     // Operation
@@ -298,14 +278,7 @@ private void dataProcessingRSB(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingRSBImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingRSBSImmediate = dataProcessingRSB!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingRSBRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingRSBRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingRSBSRegister = dataProcessingRSB!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingRSBSRegisterImmediate = dataProcessingRSB!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingADD(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOperands;
     // Operation
@@ -319,14 +292,7 @@ private void dataProcessingADD(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingADDImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingADDSImmediate = dataProcessingADD!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingADDRegister = dataProcessingADD!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingADDRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingADDSRegister = dataProcessingADD!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingADDSRegisterImmediate = dataProcessingADD!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingADC(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOperands;
     // Operation
@@ -341,14 +307,7 @@ private void dataProcessingADC(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingADCImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingADCSImmediate = dataProcessingADC!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingADCRegister = dataProcessingADC!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingADCRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingADCSRegister = dataProcessingADC!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingADCSRegisterImmediate = dataProcessingADC!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingSBC(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOperands;
     // Operation
@@ -363,14 +322,7 @@ private void dataProcessingSBC(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingSBCImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingSBCSImmediate = dataProcessingSBC!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingSBCRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingSBCRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingSBCSRegister = dataProcessingSBC!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingSBCSRegisterImmediate = dataProcessingSBC!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingRSC(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSC");
     mixin decodeOperands;
     // Operation
@@ -385,14 +337,7 @@ private void dataProcessingRSC(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingRSCImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingRSCSImmediate = dataProcessingRSC!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingRSCRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingRSCRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingRSCSRegister = dataProcessingRSC!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingRSCSRegisterImmediate = dataProcessingRSC!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingTST(alias decodeOperands)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOperands;
     // Operation
@@ -402,12 +347,8 @@ private void dataProcessingTST(alias decodeOperands)(Registers registers, Memory
     setDataProcessingFlags(registers, rd, res, overflow, carry);
 }
 
-private alias dataProcessingTSTImmediate = dataProcessingTST!decodeOpDataProcessingImmediate;
-private alias dataProcessingTSTRegister = dataProcessingTST!(decodeOpDataProcessingRegister);
-private alias dataProcessingTSTRegisterImmediate = dataProcessingTST!(decodeOpDataProcessingRegisterImmediate);
 // TODO: what does the P varient do?
-
-private void dataProcessingTEQ(alias decodeOperands)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TEQ");
     mixin decodeOperands;
     // Operation
@@ -417,11 +358,7 @@ private void dataProcessingTEQ(alias decodeOperands)(Registers registers, Memory
     setDataProcessingFlags(registers, rd, res, overflow, carry);
 }
 
-private alias dataProcessingTEQImmediate = dataProcessingTEQ!decodeOpDataProcessingImmediate;
-private alias dataProcessingTEQRegister = dataProcessingTEQ!(decodeOpDataProcessingRegister);
-private alias dataProcessingTEQRegisterImmediate = dataProcessingTEQ!(decodeOpDataProcessingRegisterImmediate);
-
-private void dataProcessingCMP(alias decodeOperands)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOperands;
     // Operation
@@ -432,11 +369,7 @@ private void dataProcessingCMP(alias decodeOperands)(Registers registers, Memory
     setDataProcessingFlags(registers, rd, res, overflow, carry);
 }
 
-private alias dataProcessingCMPImmediate = dataProcessingCMP!decodeOpDataProcessingImmediate;
-private alias dataProcessingCMPRegister = dataProcessingCMP!(decodeOpDataProcessingRegister);
-private alias dataProcessingCMPRegisterImmediate = dataProcessingCMP!(decodeOpDataProcessingRegisterImmediate);
-
-private void dataProcessingCMN(alias decodeOperands)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOperands;
     // Operation
@@ -447,11 +380,7 @@ private void dataProcessingCMN(alias decodeOperands)(Registers registers, Memory
     setDataProcessingFlags(registers, rd, res, overflow, carry);
 }
 
-private alias dataProcessingCMNImmediate = dataProcessingCMN!decodeOpDataProcessingImmediate;
-private alias dataProcessingCMNRegister = dataProcessingCMN!(decodeOpDataProcessingRegister);
-private alias dataProcessingCMNRegisterImmediate = dataProcessingCMN!(decodeOpDataProcessingRegisterImmediate);
-
-private void dataProcessingORR(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ORR");
     mixin decodeOperands;
     // Operation
@@ -464,14 +393,7 @@ private void dataProcessingORR(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingORRImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingORRSImmediate = dataProcessingORR!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingORRRegister = dataProcessingORR!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingORRRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingORRSRegister = dataProcessingORR!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingORRSRegisterImmediate = dataProcessingORR!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingMOV(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOperands;
     // Operation
@@ -484,14 +406,7 @@ private void dataProcessingMOV(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingMOVImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingMOVSImmediate = dataProcessingMOV!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingMOVRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingMOVRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingMOVSRegister = dataProcessingMOV!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingMOVSRegisterImmediate = dataProcessingMOV!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingBIC(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BIC");
     mixin decodeOperands;
     // Operation
@@ -504,14 +419,7 @@ private void dataProcessingBIC(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingBICImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingBICSImmediate = dataProcessingBIC!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingBICRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingBICRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingBICSRegister = dataProcessingBIC!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingBICSRegisterImmediate = dataProcessingBIC!(decodeOpDataProcessingRegisterImmediate, true);
-
-private void dataProcessingMVN(alias decodeOperands, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MVN");
     mixin decodeOperands;
     // Operation
@@ -524,12 +432,9 @@ private void dataProcessingMVN(alias decodeOperands, bool setFlags)(Registers re
     }
 }
 
-private alias dataProcessingMVNImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, false);
-private alias dataProcessingMVNSImmediate = dataProcessingMVN!(decodeOpDataProcessingImmediate, true);
-private alias dataProcessingMVNRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, false);
-private alias dataProcessingMVNRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, false);
-private alias dataProcessingMVNSRegister = dataProcessingMVN!(decodeOpDataProcessingRegister, true);
-private alias dataProcessingMVNSRegisterImmediate = dataProcessingMVN!(decodeOpDataProcessingRegisterImmediate, true);
+private void dataProcessing(alias decodeOperands, int opCode, bool setFlags)(Registers registers, Memory memory, int instruction) {
+    static assert (0);
+}
 
 private mixin template decodeOpPrsrImmediate() {
     int op = rotateRight(instruction & 0xFF, getBits(instruction, 8, 11) * 2);
