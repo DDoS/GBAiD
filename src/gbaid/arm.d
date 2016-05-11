@@ -9,7 +9,9 @@ import gbaid.cpu;
 import gbaid.util;
 
 private void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
-    static if (index < (1 << bitCount)) {
+    static if (bitCount == 0) {
+        return [&instructionFamily!()];
+    } else static if (index < (1 << bitCount)) {
         static if (hasUDA!(instructionFamily!index, "unsupported")) {
             return [&unsupported] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
         } else {
@@ -35,6 +37,9 @@ void function(Registers, Memory, int)[] genARMTable() {
     // where P is use SPSR and L is load
     void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported)();
 
+    // Not bits
+    void function(Registers, Memory, int)[] branchAndExchangeInstructions = genTable!(branchAndExchange, 0, unsupported)();
+
     // Bits are A(1),S(1)
     // where A is accumulate and S is set flags
     void function(Registers, Memory, int)[] multiplyIntInstructions = genTable!(multiply_Int, 2, unsupported)();
@@ -43,68 +48,30 @@ void function(Registers, Memory, int)[] genARMTable() {
     // where U is unsigned, A is accumulate and S is set flags
     void function(Registers, Memory, int)[] multiplyLongInstructions = genTable!(multiply_Long, 3, unsupported)();
 
-    string genInstructionTemplateTable(string instruction, int bitCount, int offset = 0) {
-        auto s = "[";
-        foreach (i; 0 .. 1 << bitCount) {
-            if (i % 4 == 0) {
-                s ~= "\n";
-            }
-            s ~= "&" ~ instruction ~ "!(" ~ (i + offset).to!string ~ "),";
-        }
-        s ~= "\n]";
-        return s;
-    }
-
-    // Bits are P(1),U(1),B(1),W(1),L(1)
-    // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
-    mixin ("void function(Registers, Memory, int)[] singleDataTransferImmediateInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5) ~ ";");
-
-    // Bits are P(1),U(1),B(1),W(1),L(1)
-    // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
-    mixin ("void function(Registers, Memory, int)[] singleDataTransferRegisterInstructions = " ~ genInstructionTemplateTable("singleDataTransfer", 5, 32) ~ ";");
-
-    string getHalfwordAndSignedDataTransferInstructionTable(bool immediate) {
-        auto s = "[";
-        foreach (i; 0 .. 64) {
-            if (i % 4 == 0) {
-                s ~= "\n";
-            }
-            // Insert the I bit just before P(1),U(1)
-            int code = (i & 0x30) << 1 | (immediate & 1) << 4 | i & 0xF;
-            // If L, then there is no opCode for ~S and ~H; otherwise only opCode for ~S and H exists
-            if (code.checkBit(2) ? (code & 0b11) == 0 : (code & 0b11) != 1) {
-                s ~= "&unsupported, ";
-            } else if (!code.checkBit(6) && code.checkBit(3)) {
-                // If post-increment, then write-back is always enabled and W should be 0
-                s ~= "&unsupported, ";
-            } else {
-                s ~= "&halfwordAndSignedDataTransfer!(" ~ code.to!string ~ "), ";
-            }
-        }
-        s ~= "\n]";
-        return s;
-    }
+    // Bits are B(1)
+    // where B is byte quantity
+    void function(Registers, Memory, int)[] singleDataSwapInstructions = genTable!(singleDataSwap, 1, unsupported)();
 
     // Bits are P(1),U(1),W(1),L(1),S(1),H(1)
     // where P is pre-increment, U is up-increment, W is write back and L is load, S is signed and H is halfword
-    mixin ("void function(Registers, Memory, int)[] halfwordAndSignedDataTransferRegisterInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(false) ~ ";");
-    mixin ("void function(Registers, Memory, int)[] halfwordAndSignedDataTransferImmediateInstructions = " ~ getHalfwordAndSignedDataTransferInstructionTable(true) ~ ";");
+    void function(Registers, Memory, int)[] halfwordAndSignedDataTransferRegisterInstructions = genTable!(halfwordAndSignedDataTransfer_Reg, 6, unsupported)();
+    void function(Registers, Memory, int)[] halfwordAndSignedDataTransferImmediateInstructions = genTable!(halfwordAndSignedDataTransfer_Imm, 6, unsupported)();
 
-    // Bits are B(1)
-    // where B is byte quantity
-    void function(Registers, Memory, int)[] singleDataSwapInstructions = [
-        &singleDataSwapInt, &singleDataSwapByte,
-    ];
+    // Bits are P(1),U(1),B(1),W(1),L(1)
+    // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
+    void function(Registers, Memory, int)[] singleDataTransferImmediateInstructions = genTable!(singleDataTransfer_Imm, 5, unsupported)();
+    void function(Registers, Memory, int)[] singleDataTransferRegisterInstructions = genTable!(singleDataTransfer_Reg, 5, unsupported)();
 
     // Bits are P(1),U(1),S(1),W(1),L(1)
     // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
-    mixin ("void function(Registers, Memory, int)[] blockDataTransferInstructions = " ~ genInstructionTemplateTable("blockDataTransfer", 5) ~ ";");
+    void function(Registers, Memory, int)[] blockDataTransferInstructions = genTable!(blockDataTransfer, 5, unsupported)();
 
     // Bits are L(1)
     // where L is link
-    void function(Registers, Memory, int)[] branchAndBranchWithLinkInstructions = [
-        &branch, &branchAndLink,
-    ];
+    void function(Registers, Memory, int)[] branchAndBranchWithLinkInstructions = genTable!(branchAndBranchWithLink, 1, unsupported)();
+
+    // Not bits
+    void function(Registers, Memory, int)[] softwareInterruptInstructions = genTable!(softwareInterrupt, 0, unsupported)();
 
     /*
         The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#arminstructionsummary
@@ -139,7 +106,7 @@ void function(Registers, Memory, int)[] genARMTable() {
     merger.addSubTable("001tttttdddd", dataProcessingImmediateInstructions);
     merger.addSubTable("00110t10dddd", psrTransferImmediateInstructions);
     merger.addSubTable("00010tt00000", psrTransferRegisterInstructions);
-    merger.addSubTable("000100100001", &branchAndExchange);
+    merger.addSubTable("000100100001", branchAndExchangeInstructions);
     merger.addSubTable("000000tt1001", multiplyIntInstructions);
     merger.addSubTable("00001ttt1001", multiplyLongInstructions);
     merger.addSubTable("00010t001001", singleDataSwapInstructions);
@@ -149,7 +116,7 @@ void function(Registers, Memory, int)[] genARMTable() {
     merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
     merger.addSubTable("100tttttdddd", blockDataTransferInstructions);
     merger.addSubTable("101tdddddddd", branchAndBranchWithLinkInstructions);
-    merger.addSubTable("1111dddddddd", &softwareInterrupt);
+    merger.addSubTable("1111dddddddd", softwareInterruptInstructions);
 
     return merger.getTable();
 }
@@ -478,7 +445,7 @@ private int getPsrMask(int instruction) {
     return mask;
 }
 
-private void branchAndExchange(Registers registers, Memory memory, int instruction) {
+private void branchAndExchange()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
     int address = registers.get(instruction & 0xF);
     if (address & 0b1) { // TODO: check this condition
@@ -567,6 +534,8 @@ private void setMultiplyLongResult(bool setFlags)(Registers registers, int rd, i
     }
 }
 
+private alias singleDataSwap(int code) = singleDataSwap!(code.checkBit(0));
+
 private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWP");
     // Decode operands
@@ -586,16 +555,19 @@ private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, in
     }
 }
 
-private alias singleDataSwapInt = singleDataSwap!false;
-private alias singleDataSwapByte = singleDataSwap!true;
+private alias halfwordAndSignedDataTransfer_Reg(int code) = halfwordAndSignedDataTransfer!(
+    code.checkBit(5), code.checkBit(4), false, code.checkBit(3),
+    code.checkBit(2), code.getBit(1), code.getBit(0)
+);
 
-private void halfwordAndSignedDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
-    halfwordAndSignedDataTransfer!(flags.checkBit(6), flags.checkBit(5), flags.checkBit(4),
-            flags.checkBit(3), flags.checkBit(2), flags.getBit(1), flags.getBit(0))(registers, memory, instruction);
-}
+private alias halfwordAndSignedDataTransfer_Imm(int code) = halfwordAndSignedDataTransfer!(
+    code.checkBit(5), code.checkBit(4), true, code.checkBit(3),
+    code.checkBit(2), code.getBit(1), code.getBit(0)
+);
 
 private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
-            bool writeBack, bool load, bool signed, bool half)(Registers registers, Memory memory, int instruction) {
+        bool writeBack, bool load, bool signed, bool half)(Registers registers, Memory memory, int instruction)
+        if ((!load || half || signed) && (load || half && !signed) && (preIncr || !writeBack)) {
     // Decode operands
     int rn = getBits(instruction, 16, 19);
     int rd = getBits(instruction, 12, 15);
@@ -660,13 +632,25 @@ private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immed
     }
 }
 
-private void singleDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
-    singleDataTransfer!(flags.checkBit(5), flags.checkBit(4), flags.checkBit(3),
-            flags.checkBit(2), flags.checkBit(1), flags.checkBit(0))(registers, memory, instruction);
+@("unsupported")
+private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
+        bool writeBack, bool load, bool signed, bool half)(Registers registers, Memory memory, int instruction)
+        if (load && !half && !signed || !load && (!half || signed) || !preIncr && writeBack) {
+    unsupported(registers, memory, instruction);
 }
 
+private alias singleDataTransfer_Imm(int code) = singleDataTransfer!(
+    false, code.checkBit(4), code.checkBit(3), code.checkBit(2),
+    code.checkBit(1), code.checkBit(0)
+);
+
+private alias singleDataTransfer_Reg(int code) = singleDataTransfer!(
+    true, code.checkBit(4), code.checkBit(3), code.checkBit(2),
+    code.checkBit(1), code.checkBit(0)
+);
+
 private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
-            bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
+        bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
     // TODO: what does NoPrivilege do?
     // Decode operands
     int rn = getBits(instruction, 16, 19);
@@ -724,7 +708,7 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
 
 private static string genBlockDataTransferOperation(bool preIncr, bool load) {
     auto memoryOp = load ? "registers.set(mode, i, memory.getInt(address));\n" :
-            "memory.setInt(address, registers.get(mode, i));\n";
+        "memory.setInt(address, registers.get(mode, i));\n";
     string incr = "address += 4;\n";
     auto singleOp = preIncr ? incr ~ memoryOp : memoryOp ~ incr;
     return
@@ -735,13 +719,13 @@ private static string genBlockDataTransferOperation(bool preIncr, bool load) {
         }`;
 }
 
-private void blockDataTransfer(byte flags)(Registers registers, Memory memory, int instruction) {
-    blockDataTransfer!(flags.checkBit(4), flags.checkBit(3), flags.checkBit(2),
-            flags.checkBit(1), flags.checkBit(0))(registers, memory, instruction);
-}
+private alias blockDataTransfer(int code) = blockDataTransfer!(
+    code.checkBit(4), code.checkBit(3), code.checkBit(2),
+    code.checkBit(1), code.checkBit(0)
+);
 
 private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
-            bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
+        bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
     static if (load) {
         debug (outputInstructions) registers.logInstruction(instruction, "LDM");
     } else {
@@ -784,7 +768,7 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     }
 }
 
-private void branch(Registers registers, Memory memory, int instruction) {
+private void branchAndBranchWithLink(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "B");
     int offset = instruction & 0xFFFFFF;
     // sign extend the offset
@@ -794,7 +778,7 @@ private void branch(Registers registers, Memory memory, int instruction) {
     registers.set(Register.PC, pc + offset * 4);
 }
 
-private void branchAndLink(Registers registers, Memory memory, int instruction) {
+private void branchAndBranchWithLink(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BL");
     int offset = instruction & 0xFFFFFF;
     // sign extend the offset
@@ -805,7 +789,12 @@ private void branchAndLink(Registers registers, Memory memory, int instruction) 
     registers.set(Register.PC, pc + offset * 4);
 }
 
-private void softwareInterrupt(Registers registers, Memory memory, int instruction) {
+@("unsupported")
+private void branchAndBranchWithLink(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
+}
+
+private void softwareInterrupt()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 4);
