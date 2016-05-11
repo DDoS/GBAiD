@@ -103,6 +103,7 @@ public void main(string[] args) {
     }
 
     // TODO:
+    //       possible bug in pokemon emerald at 00000364
     //       sound
     //       implement optional RTC
 }

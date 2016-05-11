@@ -48,6 +48,11 @@ public void function(Registers, Memory, int)[] genTHUMBTable() {
         &unsupported,                                            &unsupported,
     ];
 
+    // No bits
+    void function(Registers, Memory, int)[] loadPCRelativeInstructions = [
+        &loadPCRelative,
+    ];
+
     // Bits are OpCode(2)
     void function(Registers, Memory, int)[] loadAndStoreWithRegisterOffsetInstructions = [
         &loadAndStoreWithRegisterOffsetSTR, &loadAndStoreWithRegisterOffsetSTRB,
@@ -109,6 +114,16 @@ public void function(Registers, Memory, int)[] genTHUMBTable() {
         &conditionalBranch!12, &conditionalBranch!13, &unsupported,          &unsupported,
     ];
 
+    // No bits
+    void function(Registers, Memory, int)[] softwareInterruptInstructions = [
+        &softwareInterrupt,
+    ];
+
+    // No bits
+    void function(Registers, Memory, int)[] unconditionalBranchInstructions = [
+        &unconditionalBranch,
+    ];
+
     // Bits are H(1)
     // where H is high
     void function(Registers, Memory, int)[] longBranchWithLinkInstructions = [
@@ -146,28 +161,28 @@ public void function(Registers, Memory, int)[] genTHUMBTable() {
 
     */
 
-    auto merger = new TableMerger(10, &unsupported);
-    merger.addSubTable("000ttddddd", moveShiftedRegisterInstructions);
-    merger.addSubTable("00011ttddd", addAndSubtractInstructions);
-    merger.addSubTable("001ttddddd", moveCompareAddAndSubtractImmediateInstructions);
-    merger.addSubTable("010000tttt", aluOperationsInstructions);
-    merger.addSubTable("010001tttt", hiRegisterOperationsAndBranchExchangeInstructions);
-    merger.addSubTable("01001ddddd", &loadPCRelative);
-    merger.addSubTable("0101tt0ddd", loadAndStoreWithRegisterOffsetInstructions);
-    merger.addSubTable("0101tt1ddd", loadAndStoreSignExtentedByteAndHalfwordInstructions);
-    merger.addSubTable("011ttddddd", loadAndStoreWithImmediateOffsetInstructions);
-    merger.addSubTable("1000tddddd", loadAndStoreHalfWordInstructions);
-    merger.addSubTable("1001tddddd", loadAndStoreSPRelativeInstructions);
-    merger.addSubTable("1010tddddd", getRelativeAddresssInstructions);
-    merger.addSubTable("10110000td", addOffsetToStackPointerInstructions);
-    merger.addSubTable("1011t10tdd", pushAndPopRegistersInstructions);
-    merger.addSubTable("1100tddddd", multipleLoadAndStoreInstructions);
-    merger.addSubTable("1101ttttdd", conditionalBranchInstructions);
-    merger.addSubTable("11011111dd", &softwareInterrupt);
-    merger.addSubTable("11100ddddd", &unconditionalBranch);
-    merger.addSubTable("1111tddddd", longBranchWithLinkInstructions);
+    auto table = createTable(10, &unsupported);
+    addSubTable(table, "000ttddddd", moveShiftedRegisterInstructions, &unsupported);
+    addSubTable(table, "00011ttddd", addAndSubtractInstructions, &unsupported);
+    addSubTable(table, "001ttddddd", moveCompareAddAndSubtractImmediateInstructions, &unsupported);
+    addSubTable(table, "010000tttt", aluOperationsInstructions, &unsupported);
+    addSubTable(table, "010001tttt", hiRegisterOperationsAndBranchExchangeInstructions, &unsupported);
+    addSubTable(table, "01001ddddd", loadPCRelativeInstructions, &unsupported);
+    addSubTable(table, "0101tt0ddd", loadAndStoreWithRegisterOffsetInstructions, &unsupported);
+    addSubTable(table, "0101tt1ddd", loadAndStoreSignExtentedByteAndHalfwordInstructions, &unsupported);
+    addSubTable(table, "011ttddddd", loadAndStoreWithImmediateOffsetInstructions, &unsupported);
+    addSubTable(table, "1000tddddd", loadAndStoreHalfWordInstructions, &unsupported);
+    addSubTable(table, "1001tddddd", loadAndStoreSPRelativeInstructions, &unsupported);
+    addSubTable(table, "1010tddddd", getRelativeAddresssInstructions, &unsupported);
+    addSubTable(table, "10110000td", addOffsetToStackPointerInstructions, &unsupported);
+    addSubTable(table, "1011t10tdd", pushAndPopRegistersInstructions, &unsupported);
+    addSubTable(table, "1100tddddd", multipleLoadAndStoreInstructions, &unsupported);
+    addSubTable(table, "1101ttttdd", conditionalBranchInstructions, &unsupported);
+    addSubTable(table, "11011111dd", softwareInterruptInstructions, &unsupported);
+    addSubTable(table, "11100ddddd", unconditionalBranchInstructions, &unsupported);
+    addSubTable(table, "1111tddddd", longBranchWithLinkInstructions, &unsupported);
 
-    return merger.getTable();
+    return table;
 }
 
 private void moveShiftedRegister(int shiftType)(Registers registers, Memory memory, int instruction) {

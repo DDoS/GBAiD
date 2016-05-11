@@ -8,6 +8,17 @@ import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
+// Using enum leads to a severe performance penalty for some reason...
+private immutable ARM_INSTRUCTIONS = createARMTable();
+
+public void executeARMInstruction(Registers registers, Memory memory, int instruction) {
+    if (!registers.checkCondition(instruction >>> 28)) {
+        return;
+    }
+    int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
+    ARM_INSTRUCTIONS[code](registers, memory, instruction);
+}
+
 private void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
     static if (bitCount == 0) {
         return [&instructionFamily!()];
@@ -22,7 +33,7 @@ private void function(Registers, Memory, int)[] genTable(alias instructionFamily
     }
 }
 
-void function(Registers, Memory, int)[] genARMTable() {
+private void function(Registers, Memory, int)[] createARMTable() {
     // Bits are OpCode(4),S(1)
     // where S is set flags
     void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = genTable!(dataProcessing_RegShiftImm, 5, unsupported)();
@@ -37,7 +48,7 @@ void function(Registers, Memory, int)[] genARMTable() {
     // where P is use SPSR and L is load
     void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported)();
 
-    // Not bits
+    // No bits
     void function(Registers, Memory, int)[] branchAndExchangeInstructions = genTable!(branchAndExchange, 0, unsupported)();
 
     // Bits are A(1),S(1)
@@ -70,7 +81,7 @@ void function(Registers, Memory, int)[] genARMTable() {
     // where L is link
     void function(Registers, Memory, int)[] branchAndBranchWithLinkInstructions = genTable!(branchAndBranchWithLink, 1, unsupported)();
 
-    // Not bits
+    // No bits
     void function(Registers, Memory, int)[] softwareInterruptInstructions = genTable!(softwareInterrupt, 0, unsupported)();
 
     /*
@@ -100,25 +111,25 @@ void function(Registers, Memory, int)[] genARMTable() {
         Anything not covered by the table must raise an UNDEFINED interrupt
     */
 
-    auto merger = new TableMerger(12, &unsupported);
-    merger.addSubTable("000tttttddd0", dataProcessingRegisterImmediateInstructions);
-    merger.addSubTable("000ttttt0dd1", dataProcessingRegisterInstructions);
-    merger.addSubTable("001tttttdddd", dataProcessingImmediateInstructions);
-    merger.addSubTable("00110t10dddd", psrTransferImmediateInstructions);
-    merger.addSubTable("00010tt00000", psrTransferRegisterInstructions);
-    merger.addSubTable("000100100001", branchAndExchangeInstructions);
-    merger.addSubTable("000000tt1001", multiplyIntInstructions);
-    merger.addSubTable("00001ttt1001", multiplyLongInstructions);
-    merger.addSubTable("00010t001001", singleDataSwapInstructions);
-    merger.addSubTable("000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions);
-    merger.addSubTable("000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions);
-    merger.addSubTable("010tttttdddd", singleDataTransferImmediateInstructions);
-    merger.addSubTable("011tttttddd0", singleDataTransferRegisterInstructions);
-    merger.addSubTable("100tttttdddd", blockDataTransferInstructions);
-    merger.addSubTable("101tdddddddd", branchAndBranchWithLinkInstructions);
-    merger.addSubTable("1111dddddddd", softwareInterruptInstructions);
+    auto table = createTable(12, &unsupported);
+    addSubTable(table, "000tttttddd0", dataProcessingRegisterImmediateInstructions, &unsupported);
+    addSubTable(table, "000ttttt0dd1", dataProcessingRegisterInstructions, &unsupported);
+    addSubTable(table, "001tttttdddd", dataProcessingImmediateInstructions, &unsupported);
+    addSubTable(table, "00110t10dddd", psrTransferImmediateInstructions, &unsupported);
+    addSubTable(table, "00010tt00000", psrTransferRegisterInstructions, &unsupported);
+    addSubTable(table, "000100100001", branchAndExchangeInstructions, &unsupported);
+    addSubTable(table, "000000tt1001", multiplyIntInstructions, &unsupported);
+    addSubTable(table, "00001ttt1001", multiplyLongInstructions, &unsupported);
+    addSubTable(table, "00010t001001", singleDataSwapInstructions, &unsupported);
+    addSubTable(table, "000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions, &unsupported);
+    addSubTable(table, "000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions, &unsupported);
+    addSubTable(table, "010tttttdddd", singleDataTransferImmediateInstructions, &unsupported);
+    addSubTable(table, "011tttttddd0", singleDataTransferRegisterInstructions, &unsupported);
+    addSubTable(table, "100tttttdddd", blockDataTransferInstructions, &unsupported);
+    addSubTable(table, "101tdddddddd", branchAndBranchWithLinkInstructions, &unsupported);
+    addSubTable(table, "1111dddddddd", softwareInterruptInstructions, &unsupported);
 
-    return merger.getTable();
+    return table;
 }
 
 private mixin template decodeOpDataProcessing_RegShiftImm() {
