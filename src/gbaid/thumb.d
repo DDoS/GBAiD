@@ -9,44 +9,21 @@ import gbaid.util;
 
 public void function(Registers, Memory, int)[] genTHUMBTable() {
     // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] moveShiftedRegisterInstructions = [
-        &moveShiftedRegisterLSL, &moveShiftedRegisterLSR, &moveShiftedRegisterASR, &unsupported,
-    ];
+    void function(Registers, Memory, int)[] moveShiftedRegisterInstructions = genTable!(moveShiftedRegister, 2, unsupported)();
 
     // Bits are I(1),S(1)
     // where I is immediate and S is subtract
-    void function(Registers, Memory, int)[] addAndSubtractInstructions = [
-        &addAndSubtract!(false, false), &addAndSubtract!(false, true),
-        &addAndSubtract!(true, false),  &addAndSubtract!(true, true),
-    ];
+    void function(Registers, Memory, int)[] addAndSubtractInstructions = genTable!(addAndSubtract, 2, unsupported)();
 
     // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] moveCompareAddAndSubtractImmediateInstructions = [
-        &moveCompareAddAndSubtractImmediateMOV, &moveCompareAddAndSubtractImmediateCMP,
-        &moveCompareAddAndSubtractImmediateADD, &moveCompareAddAndSubtractImmediateSUB,
-    ];
+    void function(Registers, Memory, int)[] moveCompareAddAndSubtractImmediateInstructions = genTable!(moveCompareAddAndSubtractImmediate, 2, unsupported)();
 
     // Bits are OpCode(4)
-    void function(Registers, Memory, int)[] aluOperationsInstructions = [
-        &aluOperationsAND, &aluOperationsEOR, &aluOperationsLSL, &aluOperationsLSR,
-        &aluOperationsASR, &aluOperationsADC, &aluOperationsSBC, &aluOperationsROR,
-        &aluOperationsTST, &aluOperationsNEG, &aluOperationsCMP, &aluOperationsCMN,
-        &aluOperationsORR, &aluOperationsMUL, &aluOperationsBIC, &aluOperationsMVN,
-    ];
-
+    void function(Registers, Memory, int)[] aluOperationsInstructions = genTable!(aluOperations, 4, unsupported)();
 
     // Bits are OpCode(2),HD(1),HS(1)
     // where HD is high destination and HS is high source
-    void function(Registers, Memory, int)[] hiRegisterOperationsAndBranchExchangeInstructions = [
-        &unsupported,                                            &hiRegisterOperationsAndBranchExchangeADD!(false, true),
-        &hiRegisterOperationsAndBranchExchangeADD!(true, false), &hiRegisterOperationsAndBranchExchangeADD!(true, true),
-        &unsupported,                                            &hiRegisterOperationsAndBranchExchangeCMP!(false, true),
-        &hiRegisterOperationsAndBranchExchangeCMP!(true, false), &hiRegisterOperationsAndBranchExchangeCMP!(true, true),
-        &unsupported,                                            &hiRegisterOperationsAndBranchExchangeMOV!(false, true),
-        &hiRegisterOperationsAndBranchExchangeMOV!(true, false), &hiRegisterOperationsAndBranchExchangeMOV!(true, true),
-        &hiRegisterOperationsAndBranchExchangeBX!(false, false), &hiRegisterOperationsAndBranchExchangeBX!(false, true),
-        &unsupported,                                            &unsupported,
-    ];
+    void function(Registers, Memory, int)[] hiRegisterOperationsAndBranchExchangeInstructions = genTable!(hiRegisterOperationsAndBranchExchange, 4, unsupported)();
 
     // No bits
     void function(Registers, Memory, int)[] loadPCRelativeInstructions = [
@@ -185,28 +162,33 @@ public void function(Registers, Memory, int)[] genTHUMBTable() {
     return table;
 }
 
-private void moveShiftedRegister(int shiftType)(Registers registers, Memory memory, int instruction) {
+private void moveShiftedRegister(int code)(Registers registers, Memory memory, int instruction)
+        if (code >= 0 && code <= 2) {
     int shift = getBits(instruction, 6, 10);
     int op = registers.get(getBits(instruction, 3, 5));
     int rd = instruction & 0b111;
-    static if (shiftType == 0) {
+    static if (code == 0) {
         debug (outputInstructions) registers.logInstruction(instruction, "LSL");
-    } else static if (shiftType == 1) {
+    } else static if (code == 1) {
         debug (outputInstructions) registers.logInstruction(instruction, "LSR");
-    } else static if (shiftType == 2) {
+    } else static if (code == 2) {
         debug (outputInstructions) registers.logInstruction(instruction, "ASR");
     } else {
         static assert (0);
     }
     int carry;
-    op = registers.applyShift(shiftType, shift, false, op, carry);
+    op = registers.applyShift(code, shift, false, op, carry);
     registers.set(rd, op);
     registers.setAPSRFlags(op < 0, op == 0, carry);
 }
 
-private alias moveShiftedRegisterLSL = moveShiftedRegister!0;
-private alias moveShiftedRegisterLSR = moveShiftedRegister!1;
-private alias moveShiftedRegisterASR = moveShiftedRegister!2;
+@("unsupported")
+private void moveShiftedRegister(int code)(Registers registers, Memory memory, int instruction)
+        if (code < 0 || code > 2) {
+    unsupported(registers, memory, instruction);
+}
+
+private alias addAndSubtract(int code) = addAndSubtract!(code.checkBit(1), code.checkBit(0));
 
 private void addAndSubtract(bool immediate, bool subtract)(Registers registers, Memory memory, int instruction) {
     int rn = getBits(instruction, 6, 8);
@@ -244,21 +226,21 @@ private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
     }
 }
 
-private void moveCompareAddAndSubtractImmediateMOV(Registers registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!false;
     registers.set(rd, op2);
     registers.setAPSRFlags(op2 < 0, op2 == 0);
 }
 
-private void moveCompareAddAndSubtractImmediateCMP(Registers registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int v = op1 - op2;
     registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
-private void moveCompareAddAndSubtractImmediateADD(Registers registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 + op2;
@@ -266,12 +248,17 @@ private void moveCompareAddAndSubtractImmediateADD(Registers registers, Memory m
     registers.setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 }
 
-private void moveCompareAddAndSubtractImmediateSUB(Registers registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 - op2;
     registers.set(rd, res);
     registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
+}
+
+@("unsupported")
+private void moveCompareAddAndSubtractImmediate(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
 }
 
 private mixin template decodeOpAluOperations() {
@@ -280,7 +267,7 @@ private mixin template decodeOpAluOperations() {
     int op1 = registers.get(rd);
 }
 
-private void aluOperationsAND(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
     mixin decodeOpAluOperations;
     int res = op1 & op2;
@@ -288,7 +275,7 @@ private void aluOperationsAND(Registers registers, Memory memory, int instructio
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperationsEOR(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "EOR");
     mixin decodeOpAluOperations;
     int res = op1 ^ op2;
@@ -297,7 +284,17 @@ private void aluOperationsEOR(Registers registers, Memory memory, int instructio
 }
 
 private void aluOperationsShift(int type)(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "LSL");
+    static if (type == 0) {
+        debug (outputInstructions) registers.logInstruction(instruction, "LSL");
+    } else static if (type == 1) {
+        debug (outputInstructions) registers.logInstruction(instruction, "LSR");
+    } else static if (type == 2) {
+        debug (outputInstructions) registers.logInstruction(instruction, "ASR");
+    } else static if (type == 3) {
+        debug (outputInstructions) registers.logInstruction(instruction, "ROR");
+    } else {
+        static assert (0);
+    }
     mixin decodeOpAluOperations;
     int carry;
     int res = registers.applyShift(type, op2 & 0xFF, true, op1, carry);
@@ -305,12 +302,19 @@ private void aluOperationsShift(int type)(Registers registers, Memory memory, in
     registers.setAPSRFlags(res < 0, res == 0, carry);
 }
 
-private alias aluOperationsLSL = aluOperationsShift!0;
-private alias aluOperationsLSR = aluOperationsShift!1;
-private alias aluOperationsASR = aluOperationsShift!2;
-private alias aluOperationsROR = aluOperationsShift!3;
+// LSL
+private alias aluOperations(int code: 2) = aluOperationsShift!0;
 
-private void aluOperationsADC(Registers registers, Memory memory, int instruction) {
+// LSR
+private alias aluOperations(int code: 3) = aluOperationsShift!1;
+
+// ASR
+private alias aluOperations(int code: 4) = aluOperationsShift!2;
+
+// ROR
+private alias aluOperations(int code: 7) = aluOperationsShift!3;
+
+private void aluOperations(int code: 5)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOpAluOperations;
     int carry = registers.getFlag(CPSRFlag.C);
@@ -322,7 +326,7 @@ private void aluOperationsADC(Registers registers, Memory memory, int instructio
         overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
 }
 
-private void aluOperationsSBC(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 6)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOpAluOperations;
     int carry = registers.getFlag(CPSRFlag.C);
@@ -334,14 +338,14 @@ private void aluOperationsSBC(Registers registers, Memory memory, int instructio
         overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
 }
 
-private void aluOperationsTST(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 8)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOpAluOperations;
     int v = op1 & op2;
     registers.setAPSRFlags(v < 0, v == 0);
 }
 
-private void aluOperationsNEG(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 9)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "NEG");
     mixin decodeOpAluOperations;
     int res = 0 - op2;
@@ -349,21 +353,21 @@ private void aluOperationsNEG(Registers registers, Memory memory, int instructio
     registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
 }
 
-private void aluOperationsCMP(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 10)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpAluOperations;
     int v = op1 - op2;
     registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
-private void aluOperationsCMN(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 11)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOpAluOperations;
     int v = op1 + op2;
     registers.setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
 }
 
-private void aluOperationsORR(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 12)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ORR");
     mixin decodeOpAluOperations;
     int res = op1 | op2;
@@ -371,7 +375,7 @@ private void aluOperationsORR(Registers registers, Memory memory, int instructio
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperationsMUL(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 13)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MUL");
     mixin decodeOpAluOperations;
     int res = op1 * op2;
@@ -379,7 +383,7 @@ private void aluOperationsMUL(Registers registers, Memory memory, int instructio
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperationsBIC(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 14)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BIC");
     mixin decodeOpAluOperations;
     int res = op1 & ~op2;
@@ -387,12 +391,17 @@ private void aluOperationsBIC(Registers registers, Memory memory, int instructio
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperationsMVN(Registers registers, Memory memory, int instruction) {
+private void aluOperations(int code: 15)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MNV");
     mixin decodeOpAluOperations;
     int res = ~op2;
     registers.set(rd, res);
     registers.setAPSRFlags(res < 0, res == 0);
+}
+
+@("unsupported")
+private void aluOperations(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
 }
 
 private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
@@ -408,13 +417,20 @@ private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDe
     }
 }
 
-private void hiRegisterOperationsAndBranchExchangeADD(bool highDestination, bool highSource)(Registers registers, Memory memory, int instruction) {
+private alias hiRegisterOperationsAndBranchExchange(int code) =
+    hiRegisterOperationsAndBranchExchange!(code.getBits(2, 3), code.checkBit(1), code.checkBit(0));
+
+private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        (Registers registers, Memory memory, int instruction)
+        if (opCode == 0 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
     registers.set(rd, registers.get(rd) + registers.get(rs));
 }
 
-private void hiRegisterOperationsAndBranchExchangeCMP(bool highDestination, bool highSource)(Registers registers, Memory memory, int instruction) {
+private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        (Registers registers, Memory memory, int instruction)
+        if (opCode == 1 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
     int op1 = registers.get(rd);
@@ -423,13 +439,17 @@ private void hiRegisterOperationsAndBranchExchangeCMP(bool highDestination, bool
     registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
-private void hiRegisterOperationsAndBranchExchangeMOV(bool highDestination, bool highSource)(Registers registers, Memory memory, int instruction) {
+private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        (Registers registers, Memory memory, int instruction)
+        if (opCode == 2 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
     registers.set(rd, registers.get(rs));
 }
 
-private void hiRegisterOperationsAndBranchExchangeBX(bool highDestination, bool highSource)(Registers registers, Memory memory, int instruction) {
+private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        (Registers registers, Memory memory, int instruction)
+        if (opCode == 3 && !highDestination) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
     int address = registers.get(rs);
@@ -437,6 +457,16 @@ private void hiRegisterOperationsAndBranchExchangeBX(bool highDestination, bool 
         registers.setFlag(CPSRFlag.T, Set.ARM);
     }
     registers.set(Register.PC, address & ~1);
+}
+
+@("unsupported")
+private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        (Registers registers, Memory memory, int instruction)
+        if (opCode < 0 ||
+            opCode >= 0 && opCode <= 2 && !highDestination && !highSource ||
+            opCode == 3 && highDestination ||
+            opCode > 3) {
+    unsupported(registers, memory, instruction);
 }
 
 private void loadPCRelative(Registers registers, Memory memory, int instruction) {

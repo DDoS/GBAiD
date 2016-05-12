@@ -1,8 +1,6 @@
 module gbaid.arm;
 
-import std.conv;
 import std.string;
-import std.traits;
 
 import gbaid.memory;
 import gbaid.cpu;
@@ -17,20 +15,6 @@ public void executeARMInstruction(Registers registers, Memory memory, int instru
     }
     int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
     ARM_INSTRUCTIONS[code](registers, memory, instruction);
-}
-
-private void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
-    static if (bitCount == 0) {
-        return [&instructionFamily!()];
-    } else static if (index < (1 << bitCount)) {
-        static if (hasUDA!(instructionFamily!index, "unsupported")) {
-            return [&unsupported] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        } else {
-            return [&instructionFamily!index] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        }
-    } else {
-        return [];
-    }
 }
 
 private void function(Registers, Memory, int)[] createARMTable() {

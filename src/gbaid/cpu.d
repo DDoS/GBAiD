@@ -7,6 +7,7 @@ import core.sync.condition;
 import std.stdio;
 import std.conv;
 import std.string;
+import std.traits;
 
 import gbaid.memory;
 import gbaid.arm, gbaid.thumb;
@@ -571,6 +572,23 @@ public void function(Registers, Memory, int)[] createTable(int bitCount,
         table[i] = nullInstruction;
     }
     return table;
+}
+
+// TODO: more template conditions, use UFCS
+
+public void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount,
+        alias unsupported, int index = 0)() {
+    static if (bitCount == 0) {
+        return [&instructionFamily!()];
+    } else static if (index < (1 << bitCount)) {
+        static if (hasUDA!(instructionFamily!index, "unsupported")) {
+            return [&unsupported] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
+        } else {
+            return [&instructionFamily!index] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
+        }
+    } else {
+        return [];
+    }
 }
 
 public void addSubTable(void function(Registers, Memory, int)[] table, string bits,
