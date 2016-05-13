@@ -18,56 +18,6 @@ public void executeARMInstruction(Registers registers, Memory memory, int instru
 }
 
 private void function(Registers, Memory, int)[] createARMTable() {
-    // Bits are OpCode(4),S(1)
-    // where S is set flags
-    void function(Registers, Memory, int)[] dataProcessingRegisterImmediateInstructions = genTable!(dataProcessing_RegShiftImm, 5, unsupported)();
-    void function(Registers, Memory, int)[] dataProcessingRegisterInstructions = genTable!(dataProcessing_RegShiftReg, 5, unsupported)();
-    void function(Registers, Memory, int)[] dataProcessingImmediateInstructions = genTable!(dataProcessing_Imm, 5, unsupported)();
-
-    // Bits are P(1)
-    // where P is use SPSR
-    void function(Registers, Memory, int)[] psrTransferImmediateInstructions = genTable!(psrTransfer_Imm, 1, unsupported)();
-
-    // Bits are P(1),~L(1)
-    // where P is use SPSR and L is load
-    void function(Registers, Memory, int)[] psrTransferRegisterInstructions = genTable!(psrTransfer_Reg, 2, unsupported)();
-
-    // No bits
-    void function(Registers, Memory, int)[] branchAndExchangeInstructions = genTable!(branchAndExchange, 0, unsupported)();
-
-    // Bits are A(1),S(1)
-    // where A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyIntInstructions = genTable!(multiply_Int, 2, unsupported)();
-
-    // Bits are ~U(1),A(1),S(1)
-    // where U is unsigned, A is accumulate and S is set flags
-    void function(Registers, Memory, int)[] multiplyLongInstructions = genTable!(multiply_Long, 3, unsupported)();
-
-    // Bits are B(1)
-    // where B is byte quantity
-    void function(Registers, Memory, int)[] singleDataSwapInstructions = genTable!(singleDataSwap, 1, unsupported)();
-
-    // Bits are P(1),U(1),W(1),L(1),S(1),H(1)
-    // where P is pre-increment, U is up-increment, W is write back and L is load, S is signed and H is halfword
-    void function(Registers, Memory, int)[] halfwordAndSignedDataTransferRegisterInstructions = genTable!(halfwordAndSignedDataTransfer_Reg, 6, unsupported)();
-    void function(Registers, Memory, int)[] halfwordAndSignedDataTransferImmediateInstructions = genTable!(halfwordAndSignedDataTransfer_Imm, 6, unsupported)();
-
-    // Bits are P(1),U(1),B(1),W(1),L(1)
-    // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
-    void function(Registers, Memory, int)[] singleDataTransferImmediateInstructions = genTable!(singleDataTransfer_Imm, 5, unsupported)();
-    void function(Registers, Memory, int)[] singleDataTransferRegisterInstructions = genTable!(singleDataTransfer_Reg, 5, unsupported)();
-
-    // Bits are P(1),U(1),S(1),W(1),L(1)
-    // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
-    void function(Registers, Memory, int)[] blockDataTransferInstructions = genTable!(blockDataTransfer, 5, unsupported)();
-
-    // Bits are L(1)
-    // where L is link
-    void function(Registers, Memory, int)[] branchAndBranchWithLinkInstructions = genTable!(branchAndBranchWithLink, 1, unsupported)();
-
-    // No bits
-    void function(Registers, Memory, int)[] softwareInterruptInstructions = genTable!(softwareInterrupt, 0, unsupported)();
-
     /*
         The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#arminstructionsummary
 
@@ -95,23 +45,57 @@ private void function(Registers, Memory, int)[] createARMTable() {
         Anything not covered by the table must raise an UNDEFINED interrupt
     */
 
-    auto table = createTable(12, &unsupported);
-    addSubTable(table, "000tttttddd0", dataProcessingRegisterImmediateInstructions, &unsupported);
-    addSubTable(table, "000ttttt0dd1", dataProcessingRegisterInstructions, &unsupported);
-    addSubTable(table, "001tttttdddd", dataProcessingImmediateInstructions, &unsupported);
-    addSubTable(table, "00110t10dddd", psrTransferImmediateInstructions, &unsupported);
-    addSubTable(table, "00010tt00000", psrTransferRegisterInstructions, &unsupported);
-    addSubTable(table, "000100100001", branchAndExchangeInstructions, &unsupported);
-    addSubTable(table, "000000tt1001", multiplyIntInstructions, &unsupported);
-    addSubTable(table, "00001ttt1001", multiplyLongInstructions, &unsupported);
-    addSubTable(table, "00010t001001", singleDataSwapInstructions, &unsupported);
-    addSubTable(table, "000tt0tt1tt1", halfwordAndSignedDataTransferRegisterInstructions, &unsupported);
-    addSubTable(table, "000tt1tt1tt1", halfwordAndSignedDataTransferImmediateInstructions, &unsupported);
-    addSubTable(table, "010tttttdddd", singleDataTransferImmediateInstructions, &unsupported);
-    addSubTable(table, "011tttttddd0", singleDataTransferRegisterInstructions, &unsupported);
-    addSubTable(table, "100tttttdddd", blockDataTransferInstructions, &unsupported);
-    addSubTable(table, "101tdddddddd", branchAndBranchWithLinkInstructions, &unsupported);
-    addSubTable(table, "1111dddddddd", softwareInterruptInstructions, &unsupported);
+    auto table = createTable!(unsupported)(12);
+
+    // Bits are OpCode(4),S(1)
+    // where S is set flags
+    addSubTable!("000tttttddd0", dataProcessing_RegShiftImm, unsupported)(table);
+    addSubTable!("000ttttt0dd1", dataProcessing_RegShiftReg, unsupported)(table);
+    addSubTable!("001tttttdddd", dataProcessing_Imm, unsupported)(table);
+
+    // Bits are P(1)
+    // where P is use SPSR
+    addSubTable!("00110t10dddd", psrTransfer_Imm, unsupported)(table);
+
+    // Bits are P(1),~L(1)
+    // where P is use SPSR and L is load
+    addSubTable!("00010tt00000", psrTransfer_Reg, unsupported)(table);
+
+    // No bits
+    addSubTable!("000100100001", branchAndExchange, unsupported)(table);
+
+    // Bits are A(1),S(1)
+    // where A is accumulate and S is set flags
+    addSubTable!("000000tt1001", multiply_Int, unsupported)(table);
+
+    // Bits are ~U(1),A(1),S(1)
+    // where U is unsigned, A is accumulate and S is set flags
+    addSubTable!("00001ttt1001", multiply_Long, unsupported)(table);
+
+    // Bits are B(1)
+    // where B is byte quantity
+    addSubTable!("00010t001001", singleDataSwap, unsupported)(table);
+
+    // Bits are P(1),U(1),W(1),L(1),S(1),H(1)
+    // where P is pre-increment, U is up-increment, W is write back and L is load, S is signed and H is halfword
+    addSubTable!("000tt0tt1tt1", halfwordAndSignedDataTransfer_Reg, unsupported)(table);
+    addSubTable!("000tt1tt1tt1", halfwordAndSignedDataTransfer_Imm, unsupported)(table);
+
+    // Bits are P(1),U(1),B(1),W(1),L(1)
+    // where P is pre-increment, U is up-increment, B is byte quantity, W is write back and L is load
+    addSubTable!("010tttttdddd", singleDataTransfer_Imm, unsupported)(table);
+    addSubTable!("011tttttddd0", singleDataTransfer_Reg, unsupported)(table);
+
+    // Bits are P(1),U(1),S(1),W(1),L(1)
+    // where P is pre-increment, U is up-increment, S is load PSR or force user, W is write back and L is load
+    addSubTable!("100tttttdddd", blockDataTransfer, unsupported)(table);
+
+    // Bits are L(1)
+    // where L is link
+    addSubTable!("101tdddddddd", branchAndBranchWithLink, unsupported)(table);
+
+    // No bits
+    addSubTable!("1111dddddddd", softwareInterrupt, unsupported)(table);
 
     return table;
 }

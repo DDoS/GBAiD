@@ -16,69 +16,6 @@ public void executeTHUMBInstruction(Registers registers, Memory memory, int inst
 }
 
 private void function(Registers, Memory, int)[] createTHUMBTable() {
-    // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] moveShiftedRegisterInstructions = genTable!(moveShiftedRegister, 2, unsupported)();
-
-    // Bits are I(1),S(1)
-    // where I is immediate and S is subtract
-    void function(Registers, Memory, int)[] addAndSubtractInstructions = genTable!(addAndSubtract, 2, unsupported)();
-
-    // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] moveCompareAddAndSubtractImmediateInstructions = genTable!(moveCompareAddAndSubtractImmediate, 2, unsupported)();
-
-    // Bits are OpCode(4)
-    void function(Registers, Memory, int)[] aluOperationsInstructions = genTable!(aluOperations, 4, unsupported)();
-
-    // Bits are OpCode(2),HD(1),HS(1)
-    // where HD is high destination and HS is high source
-    void function(Registers, Memory, int)[] hiRegisterOperationsAndBranchExchangeInstructions = genTable!(hiRegisterOperationsAndBranchExchange, 4, unsupported)();
-
-    // No bits
-    void function(Registers, Memory, int)[] loadPCRelativeInstructions = genTable!(loadPCRelative, 0, unsupported)();
-
-    // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreWithRegisterOffsetInstructions = genTable!(loadAndStoreWithRegisterOffset, 2, unsupported)();
-
-    // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreSignExtentedByteAndHalfwordInstructions = genTable!(loadAndStoreSignExtentedByteAndHalfword, 2, unsupported)();
-
-    // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreWithImmediateOffsetInstructions = genTable!(loadAndStoreWithImmediateOffset, 2, unsupported)();
-
-    // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] loadAndStoreHalfWordInstructions = genTable!(loadAndStoreHalfWord, 1, unsupported)();
-
-    // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] loadAndStoreSPRelativeInstructions = genTable!(loadAndStoreSPRelative, 1, unsupported)();
-
-    // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] getRelativeAddresssInstructions = genTable!(getRelativeAddresss, 1, unsupported)();
-
-    // Bits are S(1)
-    // where S is subtract
-    void function(Registers, Memory, int)[] addOffsetToStackPointerInstructions = genTable!(addOffsetToStackPointer, 1, unsupported)();
-
-    // Bits are Pop(1),R(1)
-    // where Pop is pop of the stack and R is include PC or LR
-    void function(Registers, Memory, int)[] pushAndPopRegistersInstructions = genTable!(pushAndPopRegisters, 2, unsupported)();
-
-    // Bits are L(1)
-    // where L is load
-    void function(Registers, Memory, int)[] multipleLoadAndStoreInstructions = genTable!(multipleLoadAndStore, 1, unsupported)();
-    // Bits are C(4)
-    // where C is condition code
-    void function(Registers, Memory, int)[] conditionalBranchInstructions = genTable!(conditionalBranch, 4, unsupported)();
-
-    // No bits
-    void function(Registers, Memory, int)[] softwareInterruptInstructions = genTable!(softwareInterrupt, 0, unsupported)();
-
-    // No bits
-    void function(Registers, Memory, int)[] unconditionalBranchInstructions = genTable!(unconditionalBranch, 0, unsupported)();
-
-    // Bits are H(1)
-    // where H is high
-    void function(Registers, Memory, int)[] longBranchWithLinkInstructions = genTable!(longBranchWithLink, 1, unsupported)();
-
     /*
 
         The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary
@@ -110,26 +47,71 @@ private void function(Registers, Memory, int)[] createTHUMBTable() {
 
     */
 
-    auto table = createTable(10, &unsupported);
-    addSubTable(table, "000ttddddd", moveShiftedRegisterInstructions, &unsupported);
-    addSubTable(table, "00011ttddd", addAndSubtractInstructions, &unsupported);
-    addSubTable(table, "001ttddddd", moveCompareAddAndSubtractImmediateInstructions, &unsupported);
-    addSubTable(table, "010000tttt", aluOperationsInstructions, &unsupported);
-    addSubTable(table, "010001tttt", hiRegisterOperationsAndBranchExchangeInstructions, &unsupported);
-    addSubTable(table, "01001ddddd", loadPCRelativeInstructions, &unsupported);
-    addSubTable(table, "0101tt0ddd", loadAndStoreWithRegisterOffsetInstructions, &unsupported);
-    addSubTable(table, "0101tt1ddd", loadAndStoreSignExtentedByteAndHalfwordInstructions, &unsupported);
-    addSubTable(table, "011ttddddd", loadAndStoreWithImmediateOffsetInstructions, &unsupported);
-    addSubTable(table, "1000tddddd", loadAndStoreHalfWordInstructions, &unsupported);
-    addSubTable(table, "1001tddddd", loadAndStoreSPRelativeInstructions, &unsupported);
-    addSubTable(table, "1010tddddd", getRelativeAddresssInstructions, &unsupported);
-    addSubTable(table, "10110000td", addOffsetToStackPointerInstructions, &unsupported);
-    addSubTable(table, "1011t10tdd", pushAndPopRegistersInstructions, &unsupported);
-    addSubTable(table, "1100tddddd", multipleLoadAndStoreInstructions, &unsupported);
-    addSubTable(table, "1101ttttdd", conditionalBranchInstructions, &unsupported);
-    addSubTable(table, "11011111dd", softwareInterruptInstructions, &unsupported);
-    addSubTable(table, "11100ddddd", unconditionalBranchInstructions, &unsupported);
-    addSubTable(table, "1111tddddd", longBranchWithLinkInstructions, &unsupported);
+    auto table = createTable!(unsupported)(10);
+
+    // Bits are OpCode(2)
+    addSubTable!("000ttddddd", moveShiftedRegister, unsupported)(table);
+
+    // Bits are I(1),S(1)
+    // where I is immediate and S is subtract
+    addSubTable!("00011ttddd", addAndSubtract, unsupported)(table);
+
+    // Bits are OpCode(2)
+    addSubTable!("001ttddddd", moveCompareAddAndSubtractImmediate, unsupported)(table);
+
+    // Bits are OpCode(4)
+    addSubTable!("010000tttt", aluOperations, unsupported)(table);
+
+    // Bits are OpCode(2),HD(1),HS(1)
+    // where HD is high destination and HS is high source
+    addSubTable!("010001tttt", hiRegisterOperationsAndBranchExchange, unsupported)(table);
+
+    // No bits
+    addSubTable!("01001ddddd", loadPCRelative, unsupported)(table);
+
+    // Bits are OpCode(2)
+    addSubTable!("0101tt0ddd", loadAndStoreWithRegisterOffset, unsupported)(table);
+
+    // Bits are OpCode(2)
+    addSubTable!("0101tt1ddd", loadAndStoreSignExtentedByteAndHalfword, unsupported)(table);
+
+    // Bits are OpCode(2)
+    addSubTable!("011ttddddd", loadAndStoreWithImmediateOffset, unsupported)(table);
+
+    // Bits are OpCode(1)
+    addSubTable!("1000tddddd", loadAndStoreHalfWord, unsupported)(table);
+
+    // Bits are OpCode(1)
+    addSubTable!("1001tddddd", loadAndStoreSPRelative, unsupported)(table);
+
+    // Bits are OpCode(1)
+    addSubTable!("1010tddddd", getRelativeAddresss, unsupported)(table);
+
+    // Bits are S(1)
+    // where S is subtract
+    addSubTable!("10110000td", addOffsetToStackPointer, unsupported)(table);
+
+    // Bits are Pop(1),R(1)
+    // where Pop is pop of the stack and R is include PC or LR
+    addSubTable!("1011t10tdd", pushAndPopRegisters, unsupported)(table);
+
+    // Bits are L(1)
+    // where L is load
+    addSubTable!("1100tddddd", multipleLoadAndStore, unsupported)(table);
+
+    // Bits are C(4)
+    // where C is condition code
+    addSubTable!("1101ttttdd", conditionalBranch, unsupported)(table);
+
+    // No bits
+    addSubTable!("11011111dd", softwareInterrupt, unsupported)(table);
+
+    // No bits
+    addSubTable!("11100ddddd", unconditionalBranch, unsupported)(table);
+
+    // Bits are H(1)
+    // where H is high
+    addSubTable!("1111tddddd", longBranchWithLink, unsupported)(table);
 
     return table;
 }

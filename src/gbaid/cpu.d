@@ -5,6 +5,7 @@ import core.sync.mutex;
 import core.sync.condition;
 
 import std.stdio;
+import std.algorithm.searching;
 import std.conv;
 import std.string;
 import std.traits;
@@ -561,34 +562,20 @@ public class Registers {
     }
 }
 
-public void function(Registers, Memory, int)[] createTable(int bitCount,
-        void function(Registers, Memory, int) nullInstruction) {
+public void function(Registers, Memory, int)[] createTable(alias nullInstruction)(int bitCount) {
     auto table = new void function(Registers, Memory, int)[1 << bitCount];
     foreach (i, t; table) {
-        table[i] = nullInstruction;
+        table[i] = &nullInstruction;
     }
     return table;
 }
 
-// TODO: use UFCS
+// TODO: use UFCS, add alias for "void function(Registers, Memory, int)"
 
-public void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount,
-        alias unsupported, int index = 0)() {
-    static if (bitCount == 0) {
-        return [&instructionFamily!()];
-    } else static if (index < (1 << bitCount)) {
-        static if (hasUDA!(instructionFamily!index, "unsupported")) {
-            return [&unsupported] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        } else {
-            return [&instructionFamily!index] ~ genTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        }
-    } else {
-        return [];
-    }
-}
-
-public void addSubTable(void function(Registers, Memory, int)[] table, string bits,
-        void function(Registers, Memory, int)[] subTable, void function(Registers, Memory, int) nullInstruction) {
+public void addSubTable(string bits, alias instructionFamily, alias nullInstruction)(void function(Registers, Memory, int)[] table) {
+    // Generate the subtable
+    auto subTable = createTable!(instructionFamily, bits.count('t'), nullInstruction)();
+    // Check that there are as many bits as in the table length
     int bitCount = cast(int) bits.length;
     if (1 << bitCount != table.length) {
         throw new Exception("Wrong number of bits");
@@ -638,7 +625,7 @@ public void addSubTable(void function(Registers, Memory, int)[] table, string bi
         // final value and assign the pointer in the table
         foreach (tableBitValue; 0 .. 1 << tableBitCount) {
             // Ignore null instructions
-            if (subTable[tableBitValue] is nullInstruction) {
+            if (subTable[tableBitValue] is &nullInstruction) {
                 continue;
             }
             int index = intermediary;
@@ -650,12 +637,26 @@ public void addSubTable(void function(Registers, Memory, int)[] table, string bi
                 }
             }
             // Check if there's a conflict first
-            if (table[index] !is nullInstruction) {
+            if (table[index] !is &nullInstruction) {
                 throw new Exception("The entry at index " ~ tableBitValue.to!string ~
                     " in sub-table with bits \"" ~ bits ~ "\" conflicts with a previously added one");
             }
             table[index] = subTable[tableBitValue];
         }
+    }
+}
+
+private void function(Registers, Memory, int)[] createTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
+    static if (bitCount == 0) {
+        return [&instructionFamily!()];
+    } else static if (index < (1 << bitCount)) {
+        static if (hasUDA!(instructionFamily!index, "unsupported")) {
+            return [&unsupported] ~ createTable!(instructionFamily, bitCount, unsupported, index + 1)();
+        } else {
+            return [&instructionFamily!index] ~ createTable!(instructionFamily, bitCount, unsupported, index + 1)();
+        }
+    } else {
+        return [];
     }
 }
 
