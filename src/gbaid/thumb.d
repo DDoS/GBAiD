@@ -7,7 +7,15 @@ import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
-public void function(Registers, Memory, int)[] genTHUMBTable() {
+// Using enum leads to a severe performance penalty for some reason...
+private immutable THUMB_INSTRUCTIONS = createTHUMBTable();
+
+public void executeTHUMBInstruction(Registers registers, Memory memory, int instruction) {
+    int code = getBits(instruction, 6, 15);
+    THUMB_INSTRUCTIONS[code](registers, memory, instruction);
+}
+
+private void function(Registers, Memory, int)[] createTHUMBTable() {
     // Bits are OpCode(2)
     void function(Registers, Memory, int)[] moveShiftedRegisterInstructions = genTable!(moveShiftedRegister, 2, unsupported)();
 

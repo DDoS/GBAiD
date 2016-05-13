@@ -23,14 +23,12 @@ public class ARM7TDMI {
     private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
-    private void function(Registers, Memory, int)[] thumbInstructions;
     private int instruction;
     private int decoded;
 
     public this(Memory memory) {
         this.memory = memory;
         registers = new Registers();
-        thumbInstructions = genTHUMBTable();
     }
 
     public void setEntryPointAddress(uint entryPointAddress) {
@@ -151,7 +149,7 @@ public class ARM7TDMI {
         int nextDecoded = decodeInstruction(instruction);
         instruction = nextInstruction;
         // execute
-        fetchInstruction(decoded);
+        executeInstruction(decoded);
         decoded = nextDecoded;
     }
 
@@ -169,14 +167,13 @@ public class ARM7TDMI {
         return instruction;
     }
 
-    private void fetchInstruction(int instruction) {
+    private void executeInstruction(int instruction) {
         final switch (registers.getSet()) {
             case Set.ARM:
                 executeARMInstruction(registers, memory, instruction);
                 break;
             case Set.THUMB:
-                int code = getBits(instruction, 6, 15);
-                thumbInstructions[code](registers, memory, instruction);
+                executeTHUMBInstruction(registers, memory, instruction);
                 break;
         }
     }
