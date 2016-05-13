@@ -8,14 +8,14 @@ import gbaid.cpu;
 import gbaid.util;
 
 // Using enum leads to a severe performance penalty for some reason...
-private immutable THUMB_INSTRUCTIONS = createTHUMBTable();
+private immutable THUMB_EXECUTORS = createTHUMBTable();
 
 public void executeTHUMBInstruction(Registers registers, Memory memory, int instruction) {
     int code = getBits(instruction, 6, 15);
-    THUMB_INSTRUCTIONS[code](registers, memory, instruction);
+    THUMB_EXECUTORS[code](registers, memory, instruction);
 }
 
-private void function(Registers, Memory, int)[] createTHUMBTable() {
+private Executor[] createTHUMBTable() {
     /*
 
         The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#thumbinstructionsummary

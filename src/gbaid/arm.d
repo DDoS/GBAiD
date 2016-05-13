@@ -7,17 +7,17 @@ import gbaid.cpu;
 import gbaid.util;
 
 // Using enum leads to a severe performance penalty for some reason...
-private immutable ARM_INSTRUCTIONS = createARMTable();
+private immutable ARM_EXECUTORS = createARMTable();
 
 public void executeARMInstruction(Registers registers, Memory memory, int instruction) {
     if (!registers.checkCondition(instruction >>> 28)) {
         return;
     }
     int code = getBits(instruction, 20, 27) << 4 | getBits(instruction, 4, 7);
-    ARM_INSTRUCTIONS[code](registers, memory, instruction);
+    ARM_EXECUTORS[code](registers, memory, instruction);
 }
 
-private void function(Registers, Memory, int)[] createARMTable() {
+private Executor[] createARMTable() {
     /*
         The instruction encoding, modified from: http://problemkaputt.de/gbatek.htm#arminstructionsummary
 

@@ -498,7 +498,7 @@ public class Registers {
 
     debug (outputInstructions) {
         private enum uint queueMaxSize = 1024;
-        private Instruction[queueMaxSize] lastInstructions = new Instruction[queueMaxSize];
+        private Executor[queueMaxSize] lastInstructions = new Executor[queueMaxSize];
         private uint queueSize = 0;
         private uint index = 0;
 
@@ -552,7 +552,7 @@ public class Registers {
             }
         }
 
-        private static struct Instruction {
+        private static struct Executor {
             private Mode mode;
             private int address;
             private int code;
@@ -562,17 +562,19 @@ public class Registers {
     }
 }
 
-public void function(Registers, Memory, int)[] createTable(alias nullInstruction)(int bitCount) {
-    auto table = new void function(Registers, Memory, int)[1 << bitCount];
+public alias Executor = void function(Registers, Memory, int);
+
+public Executor[] createTable(alias nullInstruction)(int bitCount) {
+    auto table = new Executor[1 << bitCount];
     foreach (i, t; table) {
         table[i] = &nullInstruction;
     }
     return table;
 }
 
-// TODO: use UFCS, add alias for "void function(Registers, Memory, int)"
+// TODO: use UFCS
 
-public void addSubTable(string bits, alias instructionFamily, alias nullInstruction)(void function(Registers, Memory, int)[] table) {
+public void addSubTable(string bits, alias instructionFamily, alias nullInstruction)(Executor[] table) {
     // Generate the subtable
     auto subTable = createTable!(instructionFamily, bits.count('t'), nullInstruction)();
     // Check that there are as many bits as in the table length
@@ -646,7 +648,7 @@ public void addSubTable(string bits, alias instructionFamily, alias nullInstruct
     }
 }
 
-private void function(Registers, Memory, int)[] createTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
+private Executor[] createTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
     static if (bitCount == 0) {
         return [&instructionFamily!()];
     } else static if (index < (1 << bitCount)) {
