@@ -655,7 +655,8 @@ public void addSubTable(void function(Registers, Memory, int)[] table, string bi
             }
             // Check if there's a conflict first
             if (table[index] !is nullInstruction) {
-                throw new Exception("The entry in sub-table at " ~ tableBitValue.to!string ~ " conflicts with a previously added one");
+                throw new Exception("The entry at index " ~ tableBitValue.to!string ~
+                    " in sub-table with bits \"" ~ bits ~ "\" conflicts with a previously added one");
             }
             table[index] = subTable[tableBitValue];
         }

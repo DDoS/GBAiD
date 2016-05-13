@@ -26,86 +26,50 @@ public void function(Registers, Memory, int)[] genTHUMBTable() {
     void function(Registers, Memory, int)[] hiRegisterOperationsAndBranchExchangeInstructions = genTable!(hiRegisterOperationsAndBranchExchange, 4, unsupported)();
 
     // No bits
-    void function(Registers, Memory, int)[] loadPCRelativeInstructions = [
-        &loadPCRelative,
-    ];
+    void function(Registers, Memory, int)[] loadPCRelativeInstructions = genTable!(loadPCRelative, 0, unsupported)();
 
     // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreWithRegisterOffsetInstructions = [
-        &loadAndStoreWithRegisterOffsetSTR, &loadAndStoreWithRegisterOffsetSTRB,
-        &loadAndStoreWithRegisterOffsetLDR, &loadAndStoreWithRegisterOffsetLDRB,
-    ];
+    void function(Registers, Memory, int)[] loadAndStoreWithRegisterOffsetInstructions = genTable!(loadAndStoreWithRegisterOffset, 2, unsupported)();
 
     // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreSignExtentedByteAndHalfwordInstructions = [
-        &loadAndStoreSignExtentedByteAndHalfwordSTRH, &loadAndStoreSignExtentedByteAndHalfwordLDSB,
-        &loadAndStoreSignExtentedByteAndHalfwordLDRH, &loadAndStoreSignExtentedByteAndHalfwordLDSH,
-    ];
+    void function(Registers, Memory, int)[] loadAndStoreSignExtentedByteAndHalfwordInstructions = genTable!(loadAndStoreSignExtentedByteAndHalfword, 2, unsupported)();
 
     // Bits are OpCode(2)
-    void function(Registers, Memory, int)[] loadAndStoreWithImmediateOffsetInstructions = [
-        &loadAndStoreWithImmediateOffsetSTR,  &loadAndStoreWithImmediateOffsetLDR,
-        &loadAndStoreWithImmediateOffsetSTRB, &loadAndStoreWithImmediateOffsetLDRB,
-    ];
+    void function(Registers, Memory, int)[] loadAndStoreWithImmediateOffsetInstructions = genTable!(loadAndStoreWithImmediateOffset, 2, unsupported)();
 
     // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] loadAndStoreHalfWordInstructions = [
-        &loadAndStoreHalfWordSTRH, &loadAndStoreHalfWordLDRH,
-    ];
+    void function(Registers, Memory, int)[] loadAndStoreHalfWordInstructions = genTable!(loadAndStoreHalfWord, 1, unsupported)();
 
     // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] loadAndStoreSPRelativeInstructions = [
-        &loadAndStoreSPRelative!false, &loadAndStoreSPRelative!true,
-    ];
+    void function(Registers, Memory, int)[] loadAndStoreSPRelativeInstructions = genTable!(loadAndStoreSPRelative, 1, unsupported)();
 
     // Bits are OpCode(1)
-    void function(Registers, Memory, int)[] getRelativeAddresssInstructions = [
-        &getRelativeAddresss!false, &getRelativeAddresss!true,
-    ];
+    void function(Registers, Memory, int)[] getRelativeAddresssInstructions = genTable!(getRelativeAddresss, 1, unsupported)();
 
     // Bits are S(1)
     // where S is subtract
-    void function(Registers, Memory, int)[] addOffsetToStackPointerInstructions = [
-        &addOffsetToStackPointer!false, &addOffsetToStackPointer!true,
-    ];
+    void function(Registers, Memory, int)[] addOffsetToStackPointerInstructions = genTable!(addOffsetToStackPointer, 1, unsupported)();
 
     // Bits are Pop(1),R(1)
     // where Pop is pop of the stack and R is include PC or LR
-    void function(Registers, Memory, int)[] pushAndPopRegistersInstructions = [
-        &pushAndPopRegisters!(false, false), &pushAndPopRegisters!(false, true),
-        &pushAndPopRegisters!(true, false),  &pushAndPopRegisters!(true, true),
-    ];
+    void function(Registers, Memory, int)[] pushAndPopRegistersInstructions = genTable!(pushAndPopRegisters, 2, unsupported)();
 
     // Bits are L(1)
     // where L is load
-    void function(Registers, Memory, int)[] multipleLoadAndStoreInstructions = [
-        &multipleLoadAndStore!false, &multipleLoadAndStore!true,
-    ];
-
+    void function(Registers, Memory, int)[] multipleLoadAndStoreInstructions = genTable!(multipleLoadAndStore, 1, unsupported)();
     // Bits are C(4)
     // where C is condition code
-    void function(Registers, Memory, int)[] conditionalBranchInstructions = [
-        &conditionalBranch!0,  &conditionalBranch!1,  &conditionalBranch!2,  &conditionalBranch!3,
-        &conditionalBranch!4,  &conditionalBranch!5,  &conditionalBranch!6,  &conditionalBranch!7,
-        &conditionalBranch!8,  &conditionalBranch!9,  &conditionalBranch!10, &conditionalBranch!11,
-        &conditionalBranch!12, &conditionalBranch!13, &unsupported,          &unsupported,
-    ];
+    void function(Registers, Memory, int)[] conditionalBranchInstructions = genTable!(conditionalBranch, 4, unsupported)();
 
     // No bits
-    void function(Registers, Memory, int)[] softwareInterruptInstructions = [
-        &softwareInterrupt,
-    ];
+    void function(Registers, Memory, int)[] softwareInterruptInstructions = genTable!(softwareInterrupt, 0, unsupported)();
 
     // No bits
-    void function(Registers, Memory, int)[] unconditionalBranchInstructions = [
-        &unconditionalBranch,
-    ];
+    void function(Registers, Memory, int)[] unconditionalBranchInstructions = genTable!(unconditionalBranch, 0, unsupported)();
 
     // Bits are H(1)
     // where H is high
-    void function(Registers, Memory, int)[] longBranchWithLinkInstructions = [
-        &longBranchWithLink!false, &longBranchWithLink!true,
-    ];
+    void function(Registers, Memory, int)[] longBranchWithLinkInstructions = genTable!(longBranchWithLink, 1, unsupported)();
 
     /*
 
@@ -469,7 +433,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
     unsupported(registers, memory, instruction);
 }
 
-private void loadPCRelative(Registers registers, Memory memory, int instruction) {
+private void loadPCRelative()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     int rd = getBits(instruction, 8, 10);
     int offset = (instruction & 0xFF) * 4;
@@ -485,52 +449,62 @@ private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
     int address = base + offset;
 }
 
-private void loadAndStoreWithRegisterOffsetSTR(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STR");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     memory.setInt(address, registers.get(rd));
 }
 
-private void loadAndStoreWithRegisterOffsetSTRB(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     memory.setByte(address, cast(byte) registers.get(rd));
 }
 
-private void loadAndStoreWithRegisterOffsetLDR(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, rotateRead(address, memory.getInt(address)));
 }
 
-private void loadAndStoreWithRegisterOffsetLDRB(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 3)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, memory.getByte(address) & 0xFF);
 }
 
-private void loadAndStoreSignExtentedByteAndHalfwordSTRH(Registers registers, Memory memory, int instruction) {
+@("unsupported")
+private void loadAndStoreWithRegisterOffset(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
+}
+
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     memory.setShort(address, cast(short) registers.get(rd));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfwordLDSB(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDSB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, memory.getByte(address));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfwordLDRH(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, rotateRead(address, memory.getShort(address)));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfwordLDSH(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 3)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDSH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, rotateReadSigned(address, memory.getShort(address)));
+}
+
+@("unsupported")
+private void loadAndStoreSignExtentedByteAndHalfword(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
 }
 
 private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
@@ -539,47 +513,59 @@ private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
     int rd = instruction & 0b111;
 }
 
-private void loadAndStoreWithImmediateOffsetSTR(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STR");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 4;
     memory.setInt(address, registers.get(rd));
 }
 
-private void loadAndStoreWithImmediateOffsetLDR(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 4;
     registers.set(rd, rotateRead(address, memory.getInt(address)));
 }
 
-private void loadAndStoreWithImmediateOffsetSTRB(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRB");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset;
     memory.setByte(address, cast(byte) registers.get(rd));
 }
 
-private void loadAndStoreWithImmediateOffsetLDRB(Registers registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 3)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset;
     registers.set(rd, memory.getByte(address) & 0xFF);
 }
 
-private void loadAndStoreHalfWordLDRH(Registers registers, Memory memory, int instruction) {
+@("unsupported")
+private void loadAndStoreWithImmediateOffset(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
+}
+
+private void loadAndStoreHalfWord(int code: 0)(Registers registers, Memory memory, int instruction) {
+    debug (outputInstructions) registers.logInstruction(instruction, "STRH");
+    mixin decodeOpLoadAndStoreWithImmediateOffset;
+    int address = base + offset * 2;
+    memory.setShort(address, cast(short) registers.get(rd));
+}
+
+private void loadAndStoreHalfWord(int code: 1)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 2;
     registers.set(rd, rotateRead(address, memory.getShort(address)));
 }
 
-private void loadAndStoreHalfWordSTRH(Registers registers, Memory memory, int instruction) {
-    debug (outputInstructions) registers.logInstruction(instruction, "STRH");
-    mixin decodeOpLoadAndStoreWithImmediateOffset;
-    int address = base + offset * 2;
-    memory.setShort(address, cast(short) registers.get(rd));
+@("unsupported")
+private void loadAndStoreHalfWord(int code)(Registers registers, Memory memory, int instruction) {
+    unsupported(registers, memory, instruction);
 }
+
+private alias loadAndStoreSPRelative(int code) = loadAndStoreSPRelative!(code.checkBit(0));
 
 private void loadAndStoreSPRelative(bool load)(Registers registers, Memory memory, int instruction) {
     int rd = getBits(instruction, 8, 10);
@@ -595,6 +581,8 @@ private void loadAndStoreSPRelative(bool load)(Registers registers, Memory memor
     }
 }
 
+private alias getRelativeAddresss(int code) = getRelativeAddresss!(code.checkBit(0));
+
 private void getRelativeAddresss(bool stackPointer)(Registers registers, Memory memory, int instruction) {
     int rd = getBits(instruction, 8, 10);
     int offset = (instruction & 0xFF) * 4;
@@ -607,6 +595,8 @@ private void getRelativeAddresss(bool stackPointer)(Registers registers, Memory 
     }
 }
 
+private alias addOffsetToStackPointer(int code) = addOffsetToStackPointer!(code.checkBit(0));
+
 private void addOffsetToStackPointer(bool subtract)(Registers registers, Memory memory, int instruction) {
     int offset = (instruction & 0x7F) * 4;
     static if (subtract) {
@@ -617,6 +607,8 @@ private void addOffsetToStackPointer(bool subtract)(Registers registers, Memory 
         registers.set(Register.SP, registers.get(Register.SP) + offset);
     }
 }
+
+private alias pushAndPopRegisters(int code) = pushAndPopRegisters!(code.checkBit(1), code.checkBit(0));
 
 private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Memory memory, int instruction) {
     int registerList = instruction & 0xFF;
@@ -650,6 +642,8 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Me
     registers.set(Register.SP, sp);
 }
 
+private alias multipleLoadAndStore(int code) = multipleLoadAndStore!(code.checkBit(0));
+
 private void multipleLoadAndStore(bool load)(Registers registers, Memory memory, int instruction) {
     int rb = getBits(instruction, 8, 10);
     int registerList = instruction & 0xFF;
@@ -674,8 +668,9 @@ private void multipleLoadAndStore(bool load)(Registers registers, Memory memory,
     registers.set(rb, address);
 }
 
-private void conditionalBranch(byte condition)(Registers registers, Memory memory, int instruction) {
-    if (!registers.checkCondition(condition)) {
+private void conditionalBranch(int code)(Registers registers, Memory memory, int instruction)
+        if (code >= 0 && code <= 13 ) {
+    if (!registers.checkCondition(code)) {
         return;
     }
     debug (outputInstructions) registers.logInstruction(instruction, "B");
@@ -686,7 +681,13 @@ private void conditionalBranch(byte condition)(Registers registers, Memory memor
     registers.set(Register.PC, registers.get(Register.PC) + offset * 2);
 }
 
-private void softwareInterrupt(Registers registers, Memory memory, int instruction) {
+@("unsupported")
+private void conditionalBranch(int code)(Registers registers, Memory memory, int instruction)
+        if (code < 0 || code > 13) {
+    unsupported(registers, memory, instruction);
+}
+
+private void softwareInterrupt()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 2);
@@ -696,7 +697,7 @@ private void softwareInterrupt(Registers registers, Memory memory, int instructi
     registers.setMode(Mode.SUPERVISOR);
 }
 
-private void unconditionalBranch(Registers registers, Memory memory, int instruction) {
+private void unconditionalBranch()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "B");
     int offset = instruction & 0x7FF;
     // sign extend the offset
@@ -704,6 +705,8 @@ private void unconditionalBranch(Registers registers, Memory memory, int instruc
     offset >>= 21;
     registers.set(Register.PC, registers.get(Register.PC) + offset * 2);
 }
+
+private alias longBranchWithLink(int code) = longBranchWithLink!(code.checkBit(0));
 
 private void longBranchWithLink(bool high)(Registers registers, Memory memory, int instruction) {
     int offset = instruction & 0x7FF;
