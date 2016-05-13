@@ -283,7 +283,7 @@ public class Registers {
                         carry = getFlag(CPSRFlag.C);
                         return op;
                     } else if (shift < 32) {
-                        carry = getBit(op, 32 - shift);
+                        carry = op.getBit(32 - shift);
                         return op << shift;
                     } else if (shift == 32) {
                         carry = op & 0b1;
@@ -297,7 +297,7 @@ public class Registers {
                         carry = getFlag(CPSRFlag.C);
                         return op;
                     } else {
-                        carry = getBit(op, 32 - shift);
+                        carry = op.getBit(32 - shift);
                         return op << shift;
                     }
                 }
@@ -308,10 +308,10 @@ public class Registers {
                         carry = getFlag(CPSRFlag.C);
                         return op;
                     } else if (shift < 32) {
-                        carry = getBit(op, shift - 1);
+                        carry = op.getBit(shift - 1);
                         return op >>> shift;
                     } else if (shift == 32) {
-                        carry = getBit(op, 31);
+                        carry = op.getBit(31);
                         return 0;
                     } else {
                         carry = 0;
@@ -319,10 +319,10 @@ public class Registers {
                     }
                 } else {
                     if (shift == 0) {
-                        carry = getBit(op, 31);
+                        carry = op.getBit(31);
                         return 0;
                     } else {
-                        carry = getBit(op, shift - 1);
+                        carry = op.getBit(shift - 1);
                         return op >>> shift;
                     }
                 }
@@ -333,18 +333,18 @@ public class Registers {
                         carry = getFlag(CPSRFlag.C);
                         return op;
                     } else if (shift < 32) {
-                        carry = getBit(op, shift - 1);
+                        carry = op.getBit(shift - 1);
                         return op >> shift;
                     } else {
-                        carry = getBit(op, 31);
+                        carry = op.getBit(31);
                         return carry ? 0xFFFFFFFF : 0;
                     }
                 } else {
                     if (shift == 0) {
-                        carry = getBit(op, 31);
+                        carry = op.getBit(31);
                         return carry ? 0xFFFFFFFF : 0;
                     } else {
-                        carry = getBit(op, shift - 1);
+                        carry = op.getBit(shift - 1);
                         return op >> shift;
                     }
                 }
@@ -356,10 +356,10 @@ public class Registers {
                         return op;
                     } else if (shift & 0b11111) {
                         shift &= 0b11111;
-                        carry = getBit(op, shift - 1);
-                        return rotateRight(op, shift);
+                        carry = op.getBit(shift - 1);
+                        return op.rotateRight(shift);
                     } else {
-                        carry = getBit(op, 31);
+                        carry = op.getBit(31);
                         return op;
                     }
                 } else {
@@ -368,8 +368,8 @@ public class Registers {
                         carry = op & 0b1;
                         return getFlag(CPSRFlag.C) << 31 | op >>> 1;
                     } else {
-                        carry = getBit(op, shift - 1);
-                        return rotateRight(op, shift);
+                        carry = op.getBit(shift - 1);
+                        return op.rotateRight(shift);
                     }
                 }
         }
@@ -380,46 +380,46 @@ public class Registers {
         final switch (condition) {
             case 0x0:
                 // EQ
-                return checkBit(flags, CPSRFlag.Z);
+                return flags.checkBit(CPSRFlag.Z);
             case 0x1:
                 // NE
-                return !checkBit(flags, CPSRFlag.Z);
+                return !flags.checkBit(CPSRFlag.Z);
             case 0x2:
                 // CS/HS
-                return checkBit(flags, CPSRFlag.C);
+                return flags.checkBit(CPSRFlag.C);
             case 0x3:
                 // CC/LO
-                return !checkBit(flags, CPSRFlag.C);
+                return !flags.checkBit(CPSRFlag.C);
             case 0x4:
                 // MI
-                return checkBit(flags, CPSRFlag.N);
+                return flags.checkBit(CPSRFlag.N);
             case 0x5:
                 // PL
-                return !checkBit(flags, CPSRFlag.N);
+                return !flags.checkBit(CPSRFlag.N);
             case 0x6:
                 // VS
-                return checkBit(flags, CPSRFlag.V);
+                return flags.checkBit(CPSRFlag.V);
             case 0x7:
                 // VC
-                return !checkBit(flags, CPSRFlag.V);
+                return !flags.checkBit(CPSRFlag.V);
             case 0x8:
                 // HI
-                return checkBit(flags, CPSRFlag.C) && !checkBit(flags, CPSRFlag.Z);
+                return flags.checkBit(CPSRFlag.C) && !flags.checkBit(CPSRFlag.Z);
             case 0x9:
                 // LS
-                return !checkBit(flags, CPSRFlag.C) || checkBit(flags, CPSRFlag.Z);
+                return !flags.checkBit(CPSRFlag.C) || flags.checkBit(CPSRFlag.Z);
             case 0xA:
                 // GE
-                return checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
+                return flags.checkBit(CPSRFlag.N) == flags.checkBit(CPSRFlag.V);
             case 0xB:
                 // LT
-                return checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
+                return flags.checkBit(CPSRFlag.N) != flags.checkBit(CPSRFlag.V);
             case 0xC:
                 // GT
-                return !checkBit(flags, CPSRFlag.Z) && checkBit(flags, CPSRFlag.N) == checkBit(flags, CPSRFlag.V);
+                return !flags.checkBit(CPSRFlag.Z) && flags.checkBit(CPSRFlag.N) == flags.checkBit(CPSRFlag.V);
             case 0xD:
                 // LE
-                return checkBit(flags, CPSRFlag.Z) || checkBit(flags, CPSRFlag.N) != checkBit(flags, CPSRFlag.V);
+                return flags.checkBit(CPSRFlag.Z) || flags.checkBit(CPSRFlag.N) != flags.checkBit(CPSRFlag.V);
             case 0xE:
                 // AL
                 return true;
@@ -572,8 +572,6 @@ public Executor[] createTable(alias nullInstruction)(int bitCount) {
     return table;
 }
 
-// TODO: use UFCS
-
 public void addSubTable(string bits, alias instructionFamily, alias nullInstruction)(Executor[] table) {
     // Generate the subtable
     auto subTable = createTable!(instructionFamily, bits.count('t'), nullInstruction)();
@@ -663,7 +661,7 @@ private Executor[] createTable(alias instructionFamily, int bitCount, alias unsu
 }
 
 public int rotateRead(int address, int value) {
-    return rotateRight(value, (address & 3) << 3);
+    return value.rotateRight((address & 3) << 3);
 }
 
 public int rotateRead(int address, short value) {

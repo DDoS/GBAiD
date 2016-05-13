@@ -11,7 +11,7 @@ import gbaid.util;
 private immutable THUMB_EXECUTORS = createTHUMBTable();
 
 public void executeTHUMBInstruction(Registers registers, Memory memory, int instruction) {
-    int code = getBits(instruction, 6, 15);
+    int code = instruction.getBits(6, 15);
     THUMB_EXECUTORS[code](registers, memory, instruction);
 }
 
@@ -118,8 +118,8 @@ private Executor[] createTHUMBTable() {
 
 private void moveShiftedRegister(int code)(Registers registers, Memory memory, int instruction)
         if (code >= 0 && code <= 2) {
-    int shift = getBits(instruction, 6, 10);
-    int op = registers.get(getBits(instruction, 3, 5));
+    int shift = instruction.getBits(6, 10);
+    int op = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
     static if (code == 0) {
         debug (outputInstructions) registers.logInstruction(instruction, "LSL");
@@ -144,7 +144,7 @@ private template addAndSubtract(int code) if (code.getBits(2, 31) == 0) {
 }
 
 private void addAndSubtract(bool immediate, bool subtract)(Registers registers, Memory memory, int instruction) {
-    int rn = getBits(instruction, 6, 8);
+    int rn = instruction.getBits(6, 8);
     static if (immediate) {
         // immediate
         int op2 = rn;
@@ -152,7 +152,7 @@ private void addAndSubtract(bool immediate, bool subtract)(Registers registers, 
         // register
         int op2 = registers.get(rn);
     }
-    int op1 = registers.get(getBits(instruction, 3, 5));
+    int op1 = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
     static if (subtract) {
         // SUB
@@ -172,7 +172,7 @@ private void addAndSubtract(bool immediate, bool subtract)(Registers registers, 
 }
 
 private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
-    int rd = getBits(instruction, 8, 10);
+    int rd = instruction.getBits(8, 10);
     int op2 = instruction & 0xFF;
     static if (op1) {
         int op1 = registers.get(rd);
@@ -210,7 +210,7 @@ private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers registers
 }
 
 private mixin template decodeOpAluOperations() {
-    int op2 = registers.get(getBits(instruction, 3, 5));
+    int op2 = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
     int op1 = registers.get(rd);
 }
@@ -349,9 +349,9 @@ private void aluOperations(int code: 15)(Registers registers, Memory memory, int
 
 private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
     static if (highSource) {
-        int rs = getBits(instruction, 3, 5) | 0b1000;
+        int rs = instruction.getBits(3, 5) | 0b1000;
     } else {
-        int rs = getBits(instruction, 3, 5);
+        int rs = instruction.getBits(3, 5);
     }
     static if (highDestination) {
         int rd = instruction & 0b111 | 0b1000;
@@ -417,12 +417,12 @@ private void loadPCRelative()(Registers registers, Memory memory, int instructio
     int offset = (instruction & 0xFF) * 4;
     int pc = registers.get(Register.PC);
     int address = (pc & ~3) + offset;
-    registers.set(rd, rotateRead(address, memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.getInt(address)));
 }
 
 private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
-    int offset = registers.get(getBits(instruction, 6, 8));
-    int base = registers.get(getBits(instruction, 3, 5));
+    int offset = registers.get(instruction.getBits(6, 8));
+    int base = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
     int address = base + offset;
 }
@@ -442,7 +442,7 @@ private void loadAndStoreWithRegisterOffset(int code: 1)(Registers registers, Me
 private void loadAndStoreWithRegisterOffset(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, rotateRead(address, memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.getInt(address)));
 }
 
 private void loadAndStoreWithRegisterOffset(int code: 3)(Registers registers, Memory memory, int instruction) {
@@ -466,18 +466,18 @@ private void loadAndStoreSignExtentedByteAndHalfword(int code: 1)(Registers regi
 private void loadAndStoreSignExtentedByteAndHalfword(int code: 2)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, rotateRead(address, memory.getShort(address)));
+    registers.set(rd, address.rotateRead(memory.getShort(address)));
 }
 
 private void loadAndStoreSignExtentedByteAndHalfword(int code: 3)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDSH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, rotateReadSigned(address, memory.getShort(address)));
+    registers.set(rd, address.rotateReadSigned(memory.getShort(address)));
 }
 
 private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
-    int offset = getBits(instruction, 6, 10);
-    int base = registers.get(getBits(instruction, 3, 5));
+    int offset = instruction.getBits(6, 10);
+    int base = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
 }
 
@@ -492,7 +492,7 @@ private void loadAndStoreWithImmediateOffset(int code: 1)(Registers registers, M
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 4;
-    registers.set(rd, rotateRead(address, memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.getInt(address)));
 }
 
 private void loadAndStoreWithImmediateOffset(int code: 2)(Registers registers, Memory memory, int instruction) {
@@ -520,7 +520,7 @@ private void loadAndStoreHalfWord(int code: 1)(Registers registers, Memory memor
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 2;
-    registers.set(rd, rotateRead(address, memory.getShort(address)));
+    registers.set(rd, address.rotateRead(memory.getShort(address)));
 }
 
 private template loadAndStoreSPRelative(int code) if (code.getBits(1, 31) == 0) {
@@ -528,13 +528,13 @@ private template loadAndStoreSPRelative(int code) if (code.getBits(1, 31) == 0) 
 }
 
 private void loadAndStoreSPRelative(bool load)(Registers registers, Memory memory, int instruction) {
-    int rd = getBits(instruction, 8, 10);
+    int rd = instruction.getBits(8, 10);
     int offset = (instruction & 0xFF) * 4;
     int sp = registers.get(Register.SP);
     int address = sp + offset;
     static if (load) {
         debug (outputInstructions) registers.logInstruction(instruction, "LDR");
-        registers.set(rd, rotateRead(address, memory.getInt(address)));
+        registers.set(rd, address.rotateRead(memory.getInt(address)));
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "STR");
         memory.setInt(address, registers.get(rd));
@@ -546,7 +546,7 @@ private template getRelativeAddresss(int code) if (code.getBits(1, 31) == 0) {
 }
 
 private void getRelativeAddresss(bool stackPointer)(Registers registers, Memory memory, int instruction) {
-    int rd = getBits(instruction, 8, 10);
+    int rd = instruction.getBits(8, 10);
     int offset = (instruction & 0xFF) * 4;
     static if (stackPointer) {
         debug (outputInstructions) registers.logInstruction(instruction, "ADD");
@@ -582,7 +582,7 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Me
     static if (pop) {
         debug (outputInstructions) registers.logInstruction(instruction, "POP");
         foreach (i; 0 .. 8) {
-            if (checkBit(registerList, i)) {
+            if (registerList.checkBit(i)) {
                 registers.set(i, memory.getInt(sp));
                 sp += 4;
             }
@@ -593,10 +593,10 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Me
         }
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "PUSH");
-        sp -= 4 * (bitCount(registerList) + pcAndLR);
+        sp -= 4 * (registerList.bitCount() + pcAndLR);
         int address = sp;
         foreach (i; 0 .. 8) {
-            if (checkBit(registerList, i)) {
+            if (registerList.checkBit(i)) {
                 memory.setInt(address, registers.get(i));
                 address += 4;
             }
@@ -613,13 +613,13 @@ private template multipleLoadAndStore(int code) if (code.getBits(1, 31) == 0) {
 }
 
 private void multipleLoadAndStore(bool load)(Registers registers, Memory memory, int instruction) {
-    int rb = getBits(instruction, 8, 10);
+    int rb = instruction.getBits(8, 10);
     int registerList = instruction & 0xFF;
     int address = registers.get(rb);
     static if (load) {
         debug (outputInstructions) registers.logInstruction(instruction, "LDMIA");
         foreach (i; 0 .. 8) {
-            if (checkBit(registerList, i)) {
+            if (registerList.checkBit(i)) {
                 registers.set(i, memory.getInt(address));
                 address += 4;
             }
@@ -627,7 +627,7 @@ private void multipleLoadAndStore(bool load)(Registers registers, Memory memory,
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "STMIA");
         foreach (i; 0 .. 8) {
-            if (checkBit(registerList, i)) {
+            if (registerList.checkBit(i)) {
                 memory.setInt(address, registers.get(i));
                 address += 4;
             }
