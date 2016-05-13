@@ -273,12 +273,11 @@ public class Registers {
         return value;
     }
 
-    // TODO: use a template here (on registerShift)
-    public int applyShift(int shiftType, int shift, bool registerShift, int op, out int carry) {
+    public int applyShift(bool registerShift)(int shiftType, int shift, int op, out int carry) {
         final switch (shiftType) {
             // LSL
             case 0:
-                if (registerShift) {
+                static if (registerShift) {
                     if (shift == 0) {
                         carry = getFlag(CPSRFlag.C);
                         return op;
@@ -303,7 +302,7 @@ public class Registers {
                 }
             // LSR
             case 1:
-                if (registerShift) {
+                static if (registerShift) {
                     if (shift == 0) {
                         carry = getFlag(CPSRFlag.C);
                         return op;
@@ -328,7 +327,7 @@ public class Registers {
                 }
             // ASR
             case 2:
-                if (registerShift) {
+                static if (registerShift) {
                     if (shift == 0) {
                         carry = getFlag(CPSRFlag.C);
                         return op;
@@ -350,7 +349,7 @@ public class Registers {
                 }
             // ROR
             case 3:
-                if (registerShift) {
+                static if (registerShift) {
                     if (shift == 0) {
                         carry = getFlag(CPSRFlag.C);
                         return op;

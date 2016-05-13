@@ -141,7 +141,6 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     int rd = getBits(instruction, 12, 15);
     int op1 = registers.get(rn);
     // Get op2
-    int shiftSrc = getBit(instruction, 4);
     static if (immediateShift) {
         int shift = getBits(instruction, 7, 11);
     } else {
@@ -149,7 +148,7 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     }
     int shiftType = getBits(instruction, 5, 6);
     int carry;
-    int op2 = registers.applyShift(shiftType, shift, cast(bool) shiftSrc, registers.get(instruction & 0b1111), carry);
+    int op2 = registers.applyShift!(!immediateShift)(shiftType, shift, registers.get(instruction & 0b1111), carry);
 }
 
 private alias dataProcessing_RegShiftImm(int code) = dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0));
@@ -654,7 +653,7 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
         int shift = getBits(instruction, 7, 11);
         int shiftType = getBits(instruction, 5, 6);
         int carry;
-        int offset = registers.applyShift(shiftType, shift, false, registers.get(instruction & 0b1111), carry);
+        int offset = registers.applyShift!false(shiftType, shift, registers.get(instruction & 0b1111), carry);
     } else {
         int offset = instruction & 0xFFF;
     }

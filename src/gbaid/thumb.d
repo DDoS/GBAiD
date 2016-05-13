@@ -149,7 +149,7 @@ private void moveShiftedRegister(int code)(Registers registers, Memory memory, i
         static assert (0);
     }
     int carry;
-    op = registers.applyShift(code, shift, false, op, carry);
+    op = registers.applyShift!false(code, shift, op, carry);
     registers.set(rd, op);
     registers.setAPSRFlags(op < 0, op == 0, carry);
 }
@@ -269,7 +269,7 @@ private void aluOperationsShift(int type)(Registers registers, Memory memory, in
     }
     mixin decodeOpAluOperations;
     int carry;
-    int res = registers.applyShift(type, op2 & 0xFF, true, op1, carry);
+    int res = registers.applyShift!true(type, op2 & 0xFF, op1, carry);
     registers.set(rd, res);
     registers.setAPSRFlags(res < 0, res == 0, carry);
 }
