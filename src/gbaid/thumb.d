@@ -143,10 +143,8 @@ private void moveShiftedRegister(int code)(Registers registers, Memory memory, i
         debug (outputInstructions) registers.logInstruction(instruction, "LSL");
     } else static if (code == 1) {
         debug (outputInstructions) registers.logInstruction(instruction, "LSR");
-    } else static if (code == 2) {
-        debug (outputInstructions) registers.logInstruction(instruction, "ASR");
     } else {
-        static assert (0);
+        debug (outputInstructions) registers.logInstruction(instruction, "ASR");
     }
     int carry;
     op = registers.applyShift!false(code, shift, op, carry);
@@ -155,12 +153,13 @@ private void moveShiftedRegister(int code)(Registers registers, Memory memory, i
 }
 
 @("unsupported")
-private void moveShiftedRegister(int code)(Registers registers, Memory memory, int instruction)
-        if (code < 0 || code > 2) {
-    unsupported(registers, memory, instruction);
+private template moveShiftedRegister(int code: 3) {
+    private alias moveShiftedRegister = unsupported;
 }
 
-private alias addAndSubtract(int code) = addAndSubtract!(code.checkBit(1), code.checkBit(0));
+private template addAndSubtract(int code) if (code.getBits(2, 31) == 0) {
+    private alias addAndSubtract = addAndSubtract!(code.checkBit(1), code.checkBit(0));
+}
 
 private void addAndSubtract(bool immediate, bool subtract)(Registers registers, Memory memory, int instruction) {
     int rn = getBits(instruction, 6, 8);
@@ -226,11 +225,6 @@ private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers registers
     int res = op1 - op2;
     registers.set(rd, res);
     registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
-}
-
-@("unsupported")
-private void moveCompareAddAndSubtractImmediate(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
 }
 
 private mixin template decodeOpAluOperations() {
@@ -371,11 +365,6 @@ private void aluOperations(int code: 15)(Registers registers, Memory memory, int
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-@("unsupported")
-private void aluOperations(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
-}
-
 private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
     static if (highSource) {
         int rs = getBits(instruction, 3, 5) | 0b1000;
@@ -389,8 +378,10 @@ private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDe
     }
 }
 
-private alias hiRegisterOperationsAndBranchExchange(int code) =
-    hiRegisterOperationsAndBranchExchange!(code.getBits(2, 3), code.checkBit(1), code.checkBit(0));
+private template hiRegisterOperationsAndBranchExchange(int code) if (code.getBits(4, 31) == 0) {
+    private alias hiRegisterOperationsAndBranchExchange =
+        hiRegisterOperationsAndBranchExchange!(code.getBits(2, 3), code.checkBit(1), code.checkBit(0));
+}
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
         (Registers registers, Memory memory, int instruction)
@@ -432,13 +423,10 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
 }
 
 @("unsupported")
-private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
-        (Registers registers, Memory memory, int instruction)
-        if (opCode < 0 ||
-            opCode >= 0 && opCode <= 2 && !highDestination && !highSource ||
-            opCode == 3 && highDestination ||
-            opCode > 3) {
-    unsupported(registers, memory, instruction);
+private template hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
+        if (opCode >= 0 && opCode <= 2 && !highDestination && !highSource ||
+            opCode == 3 && highDestination) {
+    private alias hiRegisterOperationsAndBranchExchange = unsupported;
 }
 
 private void loadPCRelative()(Registers registers, Memory memory, int instruction) {
@@ -481,11 +469,6 @@ private void loadAndStoreWithRegisterOffset(int code: 3)(Registers registers, Me
     registers.set(rd, memory.getByte(address) & 0xFF);
 }
 
-@("unsupported")
-private void loadAndStoreWithRegisterOffset(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
-}
-
 private void loadAndStoreSignExtentedByteAndHalfword(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
@@ -508,11 +491,6 @@ private void loadAndStoreSignExtentedByteAndHalfword(int code: 3)(Registers regi
     debug (outputInstructions) registers.logInstruction(instruction, "LDSH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
     registers.set(rd, rotateReadSigned(address, memory.getShort(address)));
-}
-
-@("unsupported")
-private void loadAndStoreSignExtentedByteAndHalfword(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
 }
 
 private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
@@ -549,11 +527,6 @@ private void loadAndStoreWithImmediateOffset(int code: 3)(Registers registers, M
     registers.set(rd, memory.getByte(address) & 0xFF);
 }
 
-@("unsupported")
-private void loadAndStoreWithImmediateOffset(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
-}
-
 private void loadAndStoreHalfWord(int code: 0)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRH");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
@@ -568,12 +541,9 @@ private void loadAndStoreHalfWord(int code: 1)(Registers registers, Memory memor
     registers.set(rd, rotateRead(address, memory.getShort(address)));
 }
 
-@("unsupported")
-private void loadAndStoreHalfWord(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
+private template loadAndStoreSPRelative(int code) if (code.getBits(1, 31) == 0) {
+    private alias loadAndStoreSPRelative = loadAndStoreSPRelative!(code.checkBit(0));
 }
-
-private alias loadAndStoreSPRelative(int code) = loadAndStoreSPRelative!(code.checkBit(0));
 
 private void loadAndStoreSPRelative(bool load)(Registers registers, Memory memory, int instruction) {
     int rd = getBits(instruction, 8, 10);
@@ -589,7 +559,9 @@ private void loadAndStoreSPRelative(bool load)(Registers registers, Memory memor
     }
 }
 
-private alias getRelativeAddresss(int code) = getRelativeAddresss!(code.checkBit(0));
+private template getRelativeAddresss(int code) if (code.getBits(1, 31) == 0) {
+    private alias getRelativeAddresss = getRelativeAddresss!(code.checkBit(0));
+}
 
 private void getRelativeAddresss(bool stackPointer)(Registers registers, Memory memory, int instruction) {
     int rd = getBits(instruction, 8, 10);
@@ -603,7 +575,9 @@ private void getRelativeAddresss(bool stackPointer)(Registers registers, Memory 
     }
 }
 
-private alias addOffsetToStackPointer(int code) = addOffsetToStackPointer!(code.checkBit(0));
+private template addOffsetToStackPointer(int code) if (code.getBits(1, 31) == 0) {
+    private alias addOffsetToStackPointer = addOffsetToStackPointer!(code.checkBit(0));
+}
 
 private void addOffsetToStackPointer(bool subtract)(Registers registers, Memory memory, int instruction) {
     int offset = (instruction & 0x7F) * 4;
@@ -616,7 +590,9 @@ private void addOffsetToStackPointer(bool subtract)(Registers registers, Memory 
     }
 }
 
-private alias pushAndPopRegisters(int code) = pushAndPopRegisters!(code.checkBit(1), code.checkBit(0));
+private template pushAndPopRegisters(int code) if (code.getBits(2, 31) == 0) {
+    private alias pushAndPopRegisters = pushAndPopRegisters!(code.checkBit(1), code.checkBit(0));
+}
 
 private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Memory memory, int instruction) {
     int registerList = instruction & 0xFF;
@@ -650,7 +626,9 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Me
     registers.set(Register.SP, sp);
 }
 
-private alias multipleLoadAndStore(int code) = multipleLoadAndStore!(code.checkBit(0));
+private template multipleLoadAndStore(int code) if (code.getBits(1, 31) == 0) {
+    private alias multipleLoadAndStore = multipleLoadAndStore!(code.checkBit(0));
+}
 
 private void multipleLoadAndStore(bool load)(Registers registers, Memory memory, int instruction) {
     int rb = getBits(instruction, 8, 10);
@@ -690,9 +668,8 @@ private void conditionalBranch(int code)(Registers registers, Memory memory, int
 }
 
 @("unsupported")
-private void conditionalBranch(int code)(Registers registers, Memory memory, int instruction)
-        if (code < 0 || code > 13) {
-    unsupported(registers, memory, instruction);
+private template conditionalBranch(int code) if (code == 14 || code == 15) {
+    private alias conditionalBranch = unsupported;
 }
 
 private void softwareInterrupt()(Registers registers, Memory memory, int instruction) {
@@ -714,7 +691,9 @@ private void unconditionalBranch()(Registers registers, Memory memory, int instr
     registers.set(Register.PC, registers.get(Register.PC) + offset * 2);
 }
 
-private alias longBranchWithLink(int code) = longBranchWithLink!(code.checkBit(0));
+private template longBranchWithLink(int code) if (code.getBits(1, 31) == 0) {
+    private alias longBranchWithLink = longBranchWithLink!(code.checkBit(0));
+}
 
 private void longBranchWithLink(bool high)(Registers registers, Memory memory, int instruction) {
     int offset = instruction & 0x7FF;

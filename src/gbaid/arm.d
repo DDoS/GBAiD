@@ -151,9 +151,20 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     int op2 = registers.applyShift!(!immediateShift)(shiftType, shift, registers.get(instruction & 0b1111), carry);
 }
 
-private alias dataProcessing_RegShiftImm(int code) = dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0));
-private alias dataProcessing_RegShiftReg(int code) = dataProcessing!(decodeOpDataProcessing_RegShiftReg, code.getBits(1, 4), code.checkBit(0));
-private alias dataProcessing_Imm(int code) = dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0));
+private template dataProcessing_RegShiftImm(int code) if (code.getBits(5, 31) == 0) {
+    private alias dataProcessing_RegShiftImm =
+        dataProcessing!(decodeOpDataProcessing_RegShiftImm, code.getBits(1, 4), code.checkBit(0));
+}
+
+private template dataProcessing_RegShiftReg(int code) if (code.getBits(5, 31) == 0) {
+    private alias dataProcessing_RegShiftReg =
+        dataProcessing!(decodeOpDataProcessing_RegShiftReg, code.getBits(1, 4), code.checkBit(0));
+}
+
+private template dataProcessing_Imm(int code) if (code.getBits(5, 31) == 0) {
+    private alias dataProcessing_Imm =
+        dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0));
+}
 
 private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
@@ -365,8 +376,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
 }
 
 @("unsupported")
-private void dataProcessing(alias decodeOperands, int opCode, bool setFlags)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
+private template dataProcessing(alias decodeOperands, int opCode, bool setFlags)
+        if (opCode >= 8 && opCode <= 11 && !setFlags) {
+    private alias dataProcessing = unsupported;
 }
 
 private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
@@ -387,8 +399,13 @@ private mixin template decodeOpPsrTransfer_Reg() {
     int op = registers.get(instruction & 0xF);
 }
 
-private alias psrTransfer_Imm(int code) = psrTransfer!(decodeOpPsrTransfer_Imm, code.checkBit(0), true);
-private alias psrTransfer_Reg(int code) = psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0));
+private template psrTransfer_Imm(int code) if (code.getBits(1, 31) == 0) {
+    private alias psrTransfer_Imm = psrTransfer!(decodeOpPsrTransfer_Imm, code.checkBit(0), true);
+}
+
+private template psrTransfer_Reg(int code) if (code.getBits(2, 31) == 0) {
+    private alias psrTransfer_Reg = psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0));
+}
 
 private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: false)(Registers registers, Memory memory, int instruction)
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
@@ -421,8 +438,9 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: 
 }
 
 @("unsupported")
-private void psrTransfer(alias decodeOperand, bool useSPSR, bool notLoad)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
+private template psrTransfer(alias decodeOperand, bool useSPSR, bool notLoad)
+        if (!notLoad && !__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
+    private alias psrTransfer = unsupported;
 }
 
 private int getPsrMask(int instruction) {
@@ -454,17 +472,24 @@ private mixin template decodeOpMultiply() {
     int op1 = registers.get(instruction & 0xF);
 }
 
-private alias multiply_Int(int code) = multiply!(false, false, code.checkBit(1), code.checkBit(0));
-private alias multiply_Long(int code) = multiply!(true, code.checkBit(2), code.checkBit(1), code.checkBit(0));
+private template multiply_Int(int code) if (code.getBits(2, 31) == 0) {
+    private alias multiply_Int = multiply!(false, false, code.checkBit(1), code.checkBit(0));
+}
 
-private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private template multiply_Long(int code) if (code.getBits(3, 31) == 0) {
+    private alias multiply_Long = multiply!(true, code.checkBit(2), code.checkBit(1), code.checkBit(0));
+}
+
+private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: false, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MUL");
     mixin decodeOpMultiply;
     int res = op1 * op2;
     setMultiplyIntResult!setFlags(registers, rd, res);
 }
 
-private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: true, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MLA");
     mixin decodeOpMultiply;
     int op3 = registers.get(getBits(instruction, 12, 15));
@@ -472,7 +497,8 @@ private void multiply(bool long_: false, bool notUnsigned: false, bool accumulat
     setMultiplyIntResult!setFlags(registers, rd, res);
 }
 
-private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: false, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UMULL");
     mixin decodeOpMultiply;
     int rn = getBits(instruction, 12, 15);
@@ -480,7 +506,8 @@ private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate
     setMultiplyLongResult!setFlags(registers, rd, rn, res);
 }
 
-private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: true, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UMLAL");
     mixin decodeOpMultiply;
     int rn = getBits(instruction, 12, 15);
@@ -489,7 +516,8 @@ private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate
     setMultiplyLongResult!setFlags(registers, rd, rn, res);
 }
 
-private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: false, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: false, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SMULL");
     mixin decodeOpMultiply;
     int rn = getBits(instruction, 12, 15);
@@ -497,7 +525,8 @@ private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate:
     setMultiplyLongResult!setFlags(registers, rd, rn, res);
 }
 
-private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: true, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: true, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SMLAL");
     mixin decodeOpMultiply;
     int rn = getBits(instruction, 12, 15);
@@ -507,8 +536,9 @@ private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate:
 }
 
 @("unsupported")
-private void multiply(bool long_, bool notUnsigned, bool accumulate, bool setFlags)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
+private template multiply(bool long_, bool notUnsigned, bool accumulate, bool setFlags)
+        if (!long_ && notUnsigned) {
+    private alias multiply = unsupported;
 }
 
 private void setMultiplyIntResult(bool setFlags)(Registers registers, int rd, int res) {
@@ -528,7 +558,9 @@ private void setMultiplyLongResult(bool setFlags)(Registers registers, int rd, i
     }
 }
 
-private alias singleDataSwap(int code) = singleDataSwap!(code.checkBit(0));
+private template singleDataSwap(int code) if (code.getBits(1, 31) == 0) {
+    private alias singleDataSwap = singleDataSwap!(code.checkBit(0));
+}
 
 private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWP");
@@ -549,15 +581,19 @@ private void singleDataSwap(bool byteQty)(Registers registers, Memory memory, in
     }
 }
 
-private alias halfwordAndSignedDataTransfer_Reg(int code) = halfwordAndSignedDataTransfer!(
-    code.checkBit(5), code.checkBit(4), false, code.checkBit(3),
-    code.checkBit(2), code.getBit(1), code.getBit(0)
-);
+private template halfwordAndSignedDataTransfer_Reg(int code) if (code.getBits(6, 31) == 0) {
+    private alias halfwordAndSignedDataTransfer_Reg = halfwordAndSignedDataTransfer!(
+        code.checkBit(5), code.checkBit(4), false, code.checkBit(3),
+        code.checkBit(2), code.getBit(1), code.getBit(0)
+    );
+}
 
-private alias halfwordAndSignedDataTransfer_Imm(int code) = halfwordAndSignedDataTransfer!(
-    code.checkBit(5), code.checkBit(4), true, code.checkBit(3),
-    code.checkBit(2), code.getBit(1), code.getBit(0)
-);
+private template halfwordAndSignedDataTransfer_Imm(int code) if (code.getBits(6, 31) == 0) {
+    private alias halfwordAndSignedDataTransfer_Imm = halfwordAndSignedDataTransfer!(
+        code.checkBit(5), code.checkBit(4), true, code.checkBit(3),
+        code.checkBit(2), code.getBit(1), code.getBit(0)
+    );
+}
 
 private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
         bool writeBack, bool load, bool signed, bool half)(Registers registers, Memory memory, int instruction)
@@ -627,21 +663,27 @@ private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immed
 }
 
 @("unsupported")
-private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
-        bool writeBack, bool load, bool signed, bool half)(Registers registers, Memory memory, int instruction)
-        if (load && !half && !signed || !load && (!half || signed) || !preIncr && writeBack) {
-    unsupported(registers, memory, instruction);
+private template halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
+        bool writeBack, bool load, bool signed, bool half)
+        if (load && !half && !signed ||
+            !load && (!half || signed) ||
+            !preIncr && writeBack) {
+    private alias halfwordAndSignedDataTransfer = unsupported;
 }
 
-private alias singleDataTransfer_Imm(int code) = singleDataTransfer!(
-    false, code.checkBit(4), code.checkBit(3), code.checkBit(2),
-    code.checkBit(1), code.checkBit(0)
-);
+private template singleDataTransfer_Imm(int code) if (code.getBits(5, 31) == 0) {
+    private alias singleDataTransfer_Imm = singleDataTransfer!(
+        false, code.checkBit(4), code.checkBit(3), code.checkBit(2),
+        code.checkBit(1), code.checkBit(0)
+    );
+}
 
-private alias singleDataTransfer_Reg(int code) = singleDataTransfer!(
-    true, code.checkBit(4), code.checkBit(3), code.checkBit(2),
-    code.checkBit(1), code.checkBit(0)
-);
+private template singleDataTransfer_Reg(int code) if (code.getBits(5, 31) == 0) {
+    private alias singleDataTransfer_Reg = singleDataTransfer!(
+        true, code.checkBit(4), code.checkBit(3), code.checkBit(2),
+        code.checkBit(1), code.checkBit(0)
+    );
+}
 
 private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
         bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
@@ -713,10 +755,12 @@ private static string genBlockDataTransferOperation(bool preIncr, bool load) {
         }`;
 }
 
-private alias blockDataTransfer(int code) = blockDataTransfer!(
-    code.checkBit(4), code.checkBit(3), code.checkBit(2),
-    code.checkBit(1), code.checkBit(0)
-);
+private template blockDataTransfer(int code) if (code.getBits(5, 31) == 0) {
+    private alias blockDataTransfer = blockDataTransfer!(
+        code.checkBit(4), code.checkBit(3), code.checkBit(2),
+        code.checkBit(1), code.checkBit(0)
+    );
+}
 
 private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
         bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
@@ -781,11 +825,6 @@ private void branchAndBranchWithLink(int code: 1)(Registers registers, Memory me
     int pc = registers.get(Register.PC);
     registers.set(Register.LR, pc - 4);
     registers.set(Register.PC, pc + offset * 4);
-}
-
-@("unsupported")
-private void branchAndBranchWithLink(int code)(Registers registers, Memory memory, int instruction) {
-    unsupported(registers, memory, instruction);
 }
 
 private void softwareInterrupt()(Registers registers, Memory memory, int instruction) {

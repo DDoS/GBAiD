@@ -570,7 +570,7 @@ public void function(Registers, Memory, int)[] createTable(int bitCount,
     return table;
 }
 
-// TODO: more template conditions, use UFCS
+// TODO: use UFCS
 
 public void function(Registers, Memory, int)[] genTable(alias instructionFamily, int bitCount,
         alias unsupported, int index = 0)() {
