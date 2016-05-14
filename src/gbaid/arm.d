@@ -150,7 +150,8 @@ private template dataProcessing_Imm(int code) if (code.getBits(5, 31) == 0) {
         dataProcessing!(decodeOpDataProcessing_Imm, code.getBits(1, 4), code.checkBit(0));
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
     mixin decodeOperands;
     // Operation
@@ -159,11 +160,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)(
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "EOR");
     mixin decodeOperands;
     // Operation
@@ -172,12 +174,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)(
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
 
-private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOperands;
     // Operation
@@ -187,11 +190,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)(
     static if (setFlags) {
         int overflow = overflowedSub(op1, op2, res);
         carry = !borrowedSub(op1, op2, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSB");
     mixin decodeOperands;
     // Operation
@@ -201,11 +205,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)(
     static if (setFlags) {
         int overflow = overflowedSub(op2, op1, res);
         carry = !borrowedSub(op2, op1, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOperands;
     // Operation
@@ -215,11 +220,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)(
     static if (setFlags) {
         int overflow = overflowedAdd(op1, op2, res);
         carry = carriedAdd(op1, op2, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOperands;
     // Operation
@@ -227,65 +233,69 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)(
     int res = tmp + carry;
     registers.set(rd, res);
     // Flag updates
-    static if (setFlags) { // TODO: check if this is correct
+    static if (setFlags) {
         int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
         carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOperands;
     // Operation
     int tmp = op1 - op2;
-    int res = tmp - !carry; // TODO: check if this is correct
+    int res = tmp - !carry;
     registers.set(rd, res);
     // Flag updates
-    static if (setFlags) { // TODO: check if this is correct
+    static if (setFlags) {
         int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
         carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSC");
     mixin decodeOperands;
     // Operation
     int tmp = op2 - op1;
-    int res = tmp - !carry; // TODO: check if this is correct
+    int res = tmp - !carry;
     registers.set(rd, res);
     // Flag updates
-    static if (setFlags) { // TODO: check if this is correct
+    static if (setFlags) {
         int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
         carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: true)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOperands;
     // Operation
     int res = op1 & op2;
     // Flag updates
     int overflow = registers.getFlag(CPSRFlag.V);
-    registers.setDataProcessingFlags(rd, res, overflow, carry);
+    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
 }
 
-// TODO: what does the P varient do?
-private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: true)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TEQ");
     mixin decodeOperands;
     // Operation
     int res = op1 ^ op2;
     // Flag updates
     int overflow = registers.getFlag(CPSRFlag.V);
-    registers.setDataProcessingFlags(rd, res, overflow, carry);
+    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags: true)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOperands;
     // Operation
@@ -293,10 +303,11 @@ private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags:
     // Flag updates
     int overflow = overflowedSub(op1, op2, res);
     carry = !borrowedSub(op1, op2, res);
-    registers.setDataProcessingFlags(rd, res, overflow, carry);
+    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags: true)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags: true)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOperands;
     // Operation
@@ -304,10 +315,11 @@ private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags:
     // Flag updates
     int overflow = overflowedAdd(op1, op2, res);
     carry = carriedAdd(op1, op2, res);
-    registers.setDataProcessingFlags(rd, res, overflow, carry);
+    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ORR");
     mixin decodeOperands;
     // Operation
@@ -316,11 +328,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        setDataProcessingFlags(registers, rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOperands;
     // Operation
@@ -329,11 +342,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BIC");
     mixin decodeOperands;
     // Operation
@@ -342,11 +356,12 @@ private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
-private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)(Registers registers, Memory memory, int instruction) {
+private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
+        (Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MVN");
     mixin decodeOperands;
     // Operation
@@ -355,7 +370,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
     // Flag updates
     static if (setFlags) {
         int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags(rd, res, overflow, carry);
+        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
     }
 }
 
@@ -365,11 +380,15 @@ private template dataProcessing(alias decodeOperands, int opCode, bool setFlags)
     private alias dataProcessing = unsupported;
 }
 
-private void setDataProcessingFlags(Registers registers, int rd, int res, int overflow, int carry) {
+private void setDataProcessingFlags(bool pcSpecial)(Registers registers, int rd, int res, int overflow, int carry) {
     int zero = res == 0;
     int negative = res < 0;
-    if (rd == Register.PC) {
-        registers.set(Register.CPSR, registers.get(Register.SPSR));
+    static if (pcSpecial) {
+        if (rd == Register.PC) {
+            registers.set(Register.CPSR, registers.get(Register.SPSR));
+        } else {
+            registers.setAPSRFlags(negative, zero, carry, overflow);
+        }
     } else {
         registers.setAPSRFlags(negative, zero, carry, overflow);
     }
@@ -401,7 +420,7 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad:
 private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
-    int mask = instruction.getPsrMask() & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xCF : 0));
+    int mask = instruction.getPsrMask() & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xFF : 0));
     int cpsr = registers.get(Register.CPSR);
     registers.set(Register.CPSR, cpsr & ~mask | op & mask);
 }
@@ -416,7 +435,7 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: 
 private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: true)(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
-    int mask = instruction.getPsrMask() & 0xF00000EF;
+    int mask = instruction.getPsrMask() & 0xF00000FF;
     int spsr = registers.get(Register.SPSR);
     registers.set(Register.SPSR, spsr & ~mask | op & mask);
 }
@@ -433,7 +452,14 @@ private int getPsrMask(int instruction) {
         // flags
         mask |= 0xFF000000;
     }
-    // status and extension can be ignored in ARMv4T
+    if (instruction.checkBit(18)) {
+        // status
+        mask |= 0xFF0000;
+    }
+    if (instruction.checkBit(17)) {
+        // extension
+        mask |= 0xFF00;
+    }
     if (instruction.checkBit(16)) {
         // control
         mask |= 0xFF;
@@ -444,7 +470,7 @@ private int getPsrMask(int instruction) {
 private void branchAndExchange()(Registers registers, Memory memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
     int address = registers.get(instruction & 0xF);
-    if (address & 0b1) { // TODO: check this condition
+    if (address & 0b1) {
         registers.setFlag(CPSRFlag.T, Set.THUMB);
     }
     registers.set(Register.PC, address & ~1);
@@ -671,7 +697,6 @@ private template singleDataTransfer_Reg(int code) if (code.getBits(5, 31) == 0) 
 
 private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
         bool writeBack, bool load)(Registers registers, Memory memory, int instruction) {
-    // TODO: what does NoPrivilege do?
     // Decode operands
     int rn = instruction.getBits(16, 19);
     int rd = instruction.getBits(12, 15);
@@ -699,12 +724,16 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
             registers.set(rd, memory.getByte(address) & 0xFF);
         } else {
             debug (outputInstructions) registers.logInstruction(instruction, "LDR");
-            registers.set(rd, address.rotateRead(memory.getInt(address)));
+            int data = address.rotateRead(memory.getInt(address));
+            if (rd == Register.PC) {
+                data &= ~0b11;
+            }
+            registers.set(rd, data);
         }
     } else {
         static if (byteQty) {
             debug (outputInstructions) registers.logInstruction(instruction, "STRB");
-            memory.setByte(address, cast(byte) registers.get(rd)); // TODO: check if this is correct
+            memory.setByte(address, cast(byte) registers.get(rd));
         } else {
             debug (outputInstructions) registers.logInstruction(instruction, "STR");
             memory.setInt(address, registers.get(rd));
@@ -729,14 +758,23 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
 private static string genBlockDataTransferOperation(bool preIncr, bool load) {
     auto memoryOp = load ? "registers.set(mode, i, memory.getInt(address));\n" :
         "memory.setInt(address, registers.get(mode, i));\n";
-    string incr = "address += 4;\n";
+    auto incr = "address += 4;\n";
     auto singleOp = preIncr ? incr ~ memoryOp : memoryOp ~ incr;
-    return
-        `foreach (i; 0 .. 16) {
+    auto ops =
+        `foreach (i; 0 .. 15) {
             if (registerList.checkBit(i)) {
                 ` ~ singleOp ~ `
             }
+         }`;
+    // Handle PC specially because we need to align it on load
+    auto pcOp = load ? "registers.set(mode, i, memory.getInt(address) & ~0b11);\n" : memoryOp;
+    pcOp = preIncr ? incr ~ pcOp : pcOp ~ incr;
+    ops ~= `
+        immutable i = 15;
+        if (registerList.checkBit(i)) {
+            ` ~ pcOp ~ `
         }`;
+    return ops;
 }
 
 private template blockDataTransfer(int code) if (code.getBits(5, 31) == 0) {
@@ -756,12 +794,11 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     // Decode operands
     int rn = instruction.getBits(16, 19);
     int registerList = instruction & 0xFFFF;
-    // Force user mode or restore PSR flag
+    // Force user mode if flag is set and not loading PC
     static if (loadPSR) {
         Mode mode = Mode.USER;
         static if (load) {
             if (registerList.checkBit(15)) {
-                registers.set(Register.CPSR, registers.get(Register.SPSR));
                 mode = registers.getMode();
             }
         }
@@ -785,6 +822,13 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
         // The address to write back is the corrected base
         address = baseAddress;
     }
+    // Loading and load PSR flag is set, restore CPSR
+    static if (loadPSR && load) {
+        if (registerList.checkBit(15)) {
+            registers.set(Register.CPSR, registers.get(Register.SPSR));
+        }
+    }
+    // Writeback the new address into the base if needed
     static if (writeBack) {
         registers.set(mode, rn, address);
     }
