@@ -588,7 +588,7 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers registers, Me
             }
         }
         static if (pcAndLR) {
-            registers.set(Register.PC, memory.getInt(sp));
+            registers.set(Register.PC, memory.getInt(sp) & ~1);
             sp += 4;
         }
     } else {
@@ -633,7 +633,14 @@ private void multipleLoadAndStore(bool load)(Registers registers, Memory memory,
             }
         }
     }
-    registers.set(rb, address);
+    // Don't writeback if the address register was loaded
+    static if (load) {
+        if (!registerList.checkBit(rb)) {
+            registers.set(rb, address);
+        }
+    } else {
+        registers.set(rb, address);
+    }
 }
 
 private void conditionalBranch(int code)(Registers registers, Memory memory, int instruction)
