@@ -162,6 +162,12 @@ public char[] x64_to_x86(string x64) {
     return x86;
 }
 
+public class NullPathException : Exception {
+    public this(string type) {
+        super("Path to \"" ~ type ~ "\" file is null");
+    }
+}
+
 public class Scheduler {
     private alias TaskFunction = void delegate();
     private Thread thread;

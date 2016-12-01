@@ -1,14 +1,18 @@
 module gbaid.memory;
 
-import core.thread;
-import core.time;
-import core.atomic;
+import core.time : TickDuration;
 
-import std.stdio;
 import std.string;
+import std.stdio : File;
 import std.file;
+import std.algorithm : min;
+import std.typecons : tuple, Tuple;
+import std.traits : EnumMembers;
 
 import gbaid.util;
+
+public alias IORegisters = MonitoredMemory!RAM;
+public alias SaveConfiguration = GamePak.SaveConfiguration;
 
 public enum uint BYTES_PER_KIB = 1024;
 public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
@@ -31,6 +35,384 @@ public abstract class Memory {
     public abstract int getInt(uint address);
 
     public abstract void setInt(uint address, int i);
+}
+
+public class MainMemory : MappedMemory {
+    public static enum uint BIOS_SIZE = 16 * BYTES_PER_KIB;
+    private static enum uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
+    private static enum uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
+    private static enum uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
+    private static enum uint PALETTE_SIZE = 1 * BYTES_PER_KIB;
+    private static enum uint VRAM_SIZE = 96 * BYTES_PER_KIB;
+    private static enum uint OAM_SIZE = 1 * BYTES_PER_KIB;
+    public static enum uint BIOS_START = 0x00000000;
+    private static enum uint BIOS_MASK = 0x3FFF;
+    private static enum uint BOARD_WRAM_MASK = 0x3FFFF;
+    private static enum uint CHIP_WRAM_MASK = 0x7FFF;
+    private static enum uint IO_REGISTERS_END = 0x040003FE;
+    private static enum uint IO_REGISTERS_MASK = 0x3FF;
+    private static enum uint PALETTE_MASK = 0x3FF;
+    private static enum uint VRAM_MASK = 0x1FFFF;
+    private static enum uint VRAM_LOWER_MASK = 0xFFFF;
+    private static enum uint VRAM_HIGH_MASK = 0x17FFF;
+    private static enum uint OAM_MASK = 0x3FF;
+    private static enum uint GAME_PAK_START = 0x08000000;
+    private DelegatedROM unusedMemory;
+    private ProtectedROM bios;
+    private RAM boardWRAM;
+    private RAM chipWRAM;
+    private IORegisters ioRegisters;
+    private RAM palette;
+    private RAM vram;
+    private RAM oam;
+    private Memory gamePak;
+    private size_t capacity;
+
+    public this(string biosFile) {
+        unusedMemory = new DelegatedROM(0);
+        bios = new ProtectedROM(biosFile, BIOS_SIZE);
+        boardWRAM = new RAM(BOARD_WRAM_SIZE);
+        chipWRAM = new RAM(CHIP_WRAM_SIZE);
+        ioRegisters = new IORegisters(new RAM(IO_REGISTERS_SIZE));
+        palette = new Palette(PALETTE_SIZE);
+        vram = new VRAM(VRAM_SIZE, ioRegisters);
+        oam = new OAM(OAM_SIZE);
+        gamePak = new NullMemory();
+        updateCapacity();
+    }
+
+    private void updateCapacity() {
+        capacity = bios.getCapacity()
+            + boardWRAM.getCapacity()
+            + chipWRAM.getCapacity()
+            + ioRegisters.getCapacity()
+            + vram.getCapacity()
+            + oam.getCapacity()
+            + palette.getCapacity()
+            + gamePak.getCapacity();
+    }
+
+    public ProtectedROM getBIOS() {
+        return bios;
+    }
+
+    public IORegisters getIORegisters() {
+        return ioRegisters;
+    }
+
+    public RAM getPalette() {
+        return palette;
+    }
+
+    public RAM getVRAM() {
+        return vram;
+    }
+
+    public RAM getOAM() {
+        return oam;
+    }
+
+    public GamePak getGamePak() {
+        return cast(GamePak) gamePak;
+    }
+
+    public void setGamePak(GamePak gamePak) {
+        this.gamePak = gamePak;
+        updateCapacity();
+    }
+
+    public void setBIOSProtection(bool delegate(uint) guard, int delegate(uint) fallback) {
+        bios.setGuard(guard);
+        bios.setFallback(fallback);
+    }
+
+    public void setUnusedMemoryFallBack(int delegate(uint) fallback) {
+        unusedMemory.setDelegate(fallback);
+    }
+
+    protected override Memory map(ref uint address) {
+        int highAddress = address >>> 24;
+        int lowAddress = address & 0xFFFFFF;
+        switch (highAddress) {
+            case 0x0:
+                if (lowAddress & ~BIOS_MASK) {
+                    return unusedMemory;
+                }
+                address &= BIOS_MASK;
+                return bios;
+            case 0x1:
+                return unusedMemory;
+            case 0x2:
+                address &= BOARD_WRAM_MASK;
+                return boardWRAM;
+            case 0x3:
+                address &= CHIP_WRAM_MASK;
+                return chipWRAM;
+            case 0x4:
+                if (address > IO_REGISTERS_END) {
+                    return unusedMemory;
+                }
+                address &= IO_REGISTERS_MASK;
+                return ioRegisters;
+            case 0x5:
+                address &= PALETTE_MASK;
+                return palette;
+            case 0x6:
+                address &= VRAM_MASK;
+                if (address & ~VRAM_LOWER_MASK) {
+                    address &= VRAM_HIGH_MASK;
+                }
+                return vram;
+            case 0x7:
+                address &= OAM_MASK;
+                return oam;
+            case 0x8: .. case 0xE:
+                address -= GAME_PAK_START;
+                return gamePak;
+            default:
+                return unusedMemory;
+        }
+    }
+
+    public override size_t getCapacity() {
+        return capacity;
+    }
+}
+
+public static class Palette : RAM {
+    public this(size_t capacity) {
+        super(capacity);
+    }
+
+    public override void setByte(uint address, byte b) {
+        super.setShort(address, b << 8 | b & 0xFF);
+    }
+}
+
+public class VRAM : RAM {
+    private IORegisters ioRegisters;
+
+    public this(size_t capacity, IORegisters ioRegisters) {
+        super(capacity);
+        this.ioRegisters = ioRegisters;
+    }
+
+    public override void setByte(uint address, byte b) {
+        if (address < 0x10000 || (ioRegisters.getShort(0x0) & 0b111) > 2 && address < 0x14000) {
+            super.setShort(address, b << 8 | b & 0xFF);
+        }
+    }
+}
+
+public static class OAM : RAM {
+    public this(size_t capacity) {
+        super(capacity);
+    }
+
+    public override void setByte(uint address, byte b) {
+    }
+}
+
+public class GamePak : MappedMemory {
+    private static enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
+    private static enum uint ROM_MASK = 0x1FFFFFF;
+    private static enum uint SAVE_MASK = 0xFFFF;
+    private static enum uint EEPROM_MASK_HIGH = 0xFFFF00;
+    private static enum uint EEPROM_MASK_LOW = 0x0;
+    private DelegatedROM unusedMemory;
+    private ROM rom;
+    private Memory save;
+    private Memory eeprom;
+    private uint eepromMask;
+    private size_t capacity;
+
+    public this(string romFile) {
+        unusedMemory = new DelegatedROM(0);
+
+        if (romFile is null) {
+            throw new NullPathException("ROM");
+        }
+        loadROM(romFile);
+    }
+
+    public this(string romFile, string saveFile) {
+        this(romFile);
+
+        if (saveFile is null) {
+            throw new NullPathException("save");
+        }
+        loadSave(saveFile);
+
+        updateCapacity();
+    }
+
+    public this(string romFile, SaveConfiguration saveConfig) {
+        this(romFile);
+
+        final switch (saveConfig) {
+            case SaveConfiguration.SRAM:
+                save = new RAM(SaveMemory.SRAM[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.SRAM_EEPROM:
+                save = new RAM(SaveMemory.SRAM[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.FLASH64K:
+                save = new Flash(SaveMemory.FLASH512[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.FLASH64K_EEPROM:
+                save = new Flash(SaveMemory.FLASH512[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.FLASH128K:
+                save = new Flash(SaveMemory.FLASH1M[1]);
+                eeprom = unusedMemory;
+                break;
+            case SaveConfiguration.FLASH128K_EEPROM:
+                save = new Flash(SaveMemory.FLASH1M[1]);
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.EEPROM:
+                save = unusedMemory;
+                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
+                break;
+            case SaveConfiguration.AUTO:
+                autoNewSave();
+                break;
+        }
+
+        updateCapacity();
+    }
+
+    private void updateCapacity() {
+        capacity = rom.getCapacity() + save.getCapacity() + eeprom.getCapacity();
+    }
+
+    private void loadROM(string romFile) {
+        rom = new ROM(romFile, MAX_ROM_SIZE);
+        eepromMask = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_MASK_HIGH : EEPROM_MASK_LOW;
+    }
+
+    private void loadSave(string saveFile) {
+        save = unusedMemory;
+        eeprom = unusedMemory;
+        Memory[] loaded = loadFromFile(saveFile);
+        foreach (Memory memory; loaded) {
+            if (cast(EEPROM) memory) {
+                eeprom = memory;
+            } else if (cast(Flash) memory || cast(RAM) memory) {
+                save = memory;
+            } else {
+                throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
+            }
+        }
+    }
+
+    private void autoNewSave() {
+        // Detect save types and size using ID strings in ROM
+        bool hasSRAM = false, hasFlash = false, hasEEPROM = false;
+        int saveSize = SaveMemory.SRAM[1], eepromSize = SaveMemory.EEPROM[1];
+        char[] romChars = cast(char[]) rom.getArray(0);
+        auto saveTypes = EnumMembers!SaveMemory;
+        for (size_t i = 0; i < romChars.length; i += 4) {
+            foreach (saveType; saveTypes) {
+                string saveID = saveType[0];
+                if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
+                    final switch (saveID) with (SaveMemory) {
+                        case SRAM[0]:
+                            hasSRAM = true;
+                            saveSize = saveType[1];
+                            break;
+                        case EEPROM[0]:
+                            hasEEPROM = true;
+                            saveSize = saveType[1];
+                            break;
+                        case FLASH[0]:
+                        case FLASH512[0]:
+                        case FLASH1M[0]:
+                            hasFlash = true;
+                            saveSize = saveType[1];
+                            break;
+                    }
+                }
+            }
+        }
+        // Allocate the memory
+        if (hasFlash) {
+            save = new Flash(saveSize);
+        } else {
+            save = new RAM(saveSize);
+        }
+        if (hasEEPROM) {
+            eeprom = new EEPROM(eepromSize);
+        } else {
+            eeprom = unusedMemory;
+        }
+    }
+
+    public void setUnusedMemoryFallBack(int delegate(uint) fallback) {
+        unusedMemory.setDelegate(fallback);
+    }
+
+    protected override Memory map(ref uint address) {
+        int highAddress = address >>> 24;
+        int lowAddress = address & 0xFFFFFF;
+        switch (highAddress) {
+            case 0x0: .. case 0x4:
+                address &= ROM_MASK;
+                if (address < rom.getCapacity()) {
+                    return rom;
+                } else {
+                    return unusedMemory;
+                }
+            case 0x5:
+                if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
+                    address = lowAddress & ~eepromMask;
+                    return eeprom;
+                }
+                goto case 0x4;
+            case 0x6:
+                address &= SAVE_MASK;
+                return save;
+            default:
+                return unusedMemory;
+        }
+    }
+
+    public override size_t getCapacity() {
+        return capacity;
+    }
+
+    public void saveSave(string saveFile) {
+        if (cast(EEPROM) eeprom is null) {
+            saveToFile(saveFile, save);
+        } else if (cast(RAM) save is null && cast(Flash) save is null) {
+            saveToFile(saveFile, eeprom);
+        } else {
+            saveToFile(saveFile, save, eeprom);
+        }
+    }
+
+    private static enum SaveMemory : Tuple!(string, uint) {
+        EEPROM = tuple("EEPROM_V", 8 * BYTES_PER_KIB),
+        SRAM = tuple("SRAM_V", 64 * BYTES_PER_KIB),
+        FLASH = tuple("FLASH_V", 64 * BYTES_PER_KIB),
+        FLASH512 = tuple("FLASH512_V", 64 * BYTES_PER_KIB),
+        FLASH1M = tuple("FLASH1M_V", 128 * BYTES_PER_KIB)
+    }
+
+    public static enum SaveConfiguration {
+        SRAM,
+        SRAM_EEPROM,
+        FLASH64K,
+        FLASH64K_EEPROM,
+        FLASH128K,
+        FLASH128K_EEPROM,
+        EEPROM,
+        AUTO
+    }
 }
 
 public class ROM : Memory {

@@ -5,8 +5,8 @@ import core.time;
 
 import derelict.sdl2.sdl;
 
-import gbaid.system;
 import gbaid.memory;
+import gbaid.interrupt;
 import gbaid.util;
 
 public class Keypad {

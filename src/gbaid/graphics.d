@@ -7,8 +7,9 @@ import core.sync.condition;
 import std.stdio;
 import std.algorithm;
 
-import gbaid.system;
 import gbaid.memory;
+import gbaid.dma;
+import gbaid.interrupt;
 import gbaid.gl, gbaid.gl20;
 import gbaid.shader;
 import gbaid.util;
