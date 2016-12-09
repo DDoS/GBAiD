@@ -1,7 +1,7 @@
 module gbaid.graphics;
 
 import core.thread;
-import core.time;
+import core.sync.mutex;
 import core.sync.condition;
 
 import std.stdio;
@@ -23,9 +23,8 @@ public class Display {
     private static enum uint LAYER_COUNT = 6;
     private static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum short TRANSPARENT = cast(short) 0x8000;
-    private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + 68;
-    private static TickDuration H_DRAW_DURATION;
-    private static TickDuration H_BLANK_DURATION;
+    private static enum uint BLANKING_RESOLUTION = 68;
+    private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
     private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
@@ -39,11 +38,7 @@ public class Display {
     private int[2] internalAffineReferenceY = new int[2];
     private Condition frameSync;
     private bool drawRunning = false;
-
-    static this() {
-        H_DRAW_DURATION = TickDuration.from!"nsecs"(57221);
-        H_BLANK_DURATION = TickDuration.from!"nsecs"(16212);
-    }
+    private int availableCycles = 0;
 
     public this(IORegisters ioRegisters, RAM palette, RAM vram, RAM oam, InterruptHandler interruptHandler, DMAs dmas) {
         this.ioRegisters = ioRegisters.getMonitored();
@@ -80,6 +75,17 @@ public class Display {
         upscalingMode = mode;
     }
 
+    public void giveCycles(int cycles) {
+        availableCycles += cycles;
+    }
+
+    private void takeCycles(int cycles) {
+        while (availableCycles < cycles) {
+            Thread.yield();
+        }
+        availableCycles -= cycles;
+    }
+
     public void run() {
         scope (exit) {
             drawRunning = false;
@@ -88,8 +94,6 @@ public class Display {
                 context.destroy();
             }
         }
-
-        Thread.getThis().name = "Display";
 
         context.setWindowSize(width, height);
         context.create();
@@ -152,7 +156,7 @@ public class Display {
         vertexArray.setData(generatePlane(2, 2));
 
         Thread drawThread = new Thread(&drawRun);
-        drawThread.name = "Draw";
+        drawThread.name = "Display";
         drawRunning = true;
         drawThread.start();
 
@@ -207,8 +211,7 @@ public class Display {
         return texture;
     }
 
-    private void reloadInternalAffineReferencePoint(int layer) {
-        layer -= 2;
+    private void reloadInternalAffineReferencePoint(int layer)() {
         int layerAddressOffset = layer << 4;
         int dx = ioRegisters.getInt(0x28 + layerAddressOffset) << 4;
         internalAffineReferenceX[layer] = dx >> 4;
@@ -228,29 +231,37 @@ public class Display {
     }
 
     private void drawRun() {
-        Timer timer = new Timer();
         while (drawRunning) {
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
-                timer.start();
+                // Wait 4 cycles for each dot in the visible part of the line
                 setHBLANK(line, false);
+                foreach (dot; 0 .. VERTICAL_RESOLUTION) {
+                    takeCycles(4);
+                }
+                // Draw visible lines now, just before the blank
                 if (line < VERTICAL_RESOLUTION) {
                     drawLine(line);
-                } else if (line == VERTICAL_RESOLUTION) {
+                }
+                // Update the control flags dependent on the line being drawn
+                setVCOUNT(line);
+                checkVMATCH(line);
+                // Check if we are done drawing the frame
+                if (line == VERTICAL_RESOLUTION - 1) {
+                    // If so we render it
                     synchronized (frameSync.mutex) {
                         frameSync.notify();
                     }
-                    reloadInternalAffineReferencePoint(2);
-                    reloadInternalAffineReferencePoint(3);
-                }
-                setVCOUNT(line);
-                checkVMATCH(line);
-                if (line == VERTICAL_RESOLUTION - 1) {
+                    // We also need to reset the transformation data
+                    reloadInternalAffineReferencePoint!0();
+                    reloadInternalAffineReferencePoint!1();
+                    // Finally we need to signal the end of the drawing
                     signalVBLANK();
                 }
-                timer.waitUntil(H_DRAW_DURATION);
-                timer.restart();
+                // Wait 4 cycles for each dot in the blank part of the line
                 setHBLANK(line, true);
-                timer.waitUntil(H_BLANK_DURATION);
+                foreach (dot; 0 .. BLANKING_RESOLUTION) {
+                    takeCycles(4);
+                }
             }
         }
     }

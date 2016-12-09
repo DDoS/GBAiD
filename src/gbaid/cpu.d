@@ -1,8 +1,6 @@
 module gbaid.cpu;
 
 import core.thread;
-import core.sync.mutex;
-import core.sync.condition;
 
 import std.stdio;
 import std.algorithm.searching;
@@ -15,15 +13,15 @@ import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
-    private alias HaltTask = bool delegate();
+    private static enum AVERAGE_CPI = 2;
     private Memory memory;
     private uint entryPointAddress = 0x0;
-    private HaltTask haltTask;
     private Thread thread;
     private bool running = false;
     private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
+    private int availableCycles = 0;
     private int instruction;
     private int decoded;
 
@@ -36,14 +34,10 @@ public class ARM7TDMI {
         this.entryPointAddress = entryPointAddress;
     }
 
-    public void setHaltTask(HaltTask haltTask) {
-        this.haltTask = haltTask;
-    }
-
     public void start() {
         if (thread is null) {
             thread = new Thread(&run);
-            thread.name = "ARM CPU";
+            thread.name = "CPU";
             running = true;
             thread.start();
         }
@@ -52,9 +46,6 @@ public class ARM7TDMI {
     public void stop() {
         if (thread !is null) {
             running = false;
-            if (isHalted()) {
-                halt(false);
-            }
             thread = null;
         }
     }
@@ -65,10 +56,6 @@ public class ARM7TDMI {
 
     public void halt(bool state) {
         haltSignal = state;
-    }
-
-    public bool isHalted() {
-        return haltSignal;
     }
 
     public void irq(bool state) {
@@ -91,6 +78,17 @@ public class ARM7TDMI {
         return decoded;
     }
 
+    public void giveCycles(int cycles) {
+        availableCycles += cycles;
+    }
+
+    private void takeCycles(int cycles) {
+        while (availableCycles < cycles) {
+            Thread.yield();
+        }
+        availableCycles -= cycles;
+    }
+
     private void run() {
         try {
             // initialize the stack pointers
@@ -106,15 +104,13 @@ public class ARM7TDMI {
             branch();
             // start ticking
             while (running) {
+                takeCycles(AVERAGE_CPI);
                 if (irqSignal) {
                     branchIRQ();
                 }
                 tick();
-                //registers.dumpInstructions(1);
                 while (haltSignal) {
-                    if (!haltTask()) {
-                        Thread.yield();
-                    }
+                    takeCycles(1);
                 }
                 if (registers.wasPCModified()) {
                     branch();

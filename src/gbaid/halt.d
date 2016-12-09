@@ -10,10 +10,6 @@ public class HaltHandler {
         this.processor = processor;
     }
 
-    public void setHaltTask(bool delegate() haltTask) {
-        processor.setHaltTask(haltTask);
-    }
-
     public void softwareHalt(bool state) {
         softwareHalted = state;
         updateState();

@@ -92,6 +92,7 @@ public class GameBoyAdvance {
             SDL_Init(0);
             keypad.start();
             timers.start();
+            dmas.start();
             processor.start();
             display.run();
         } catch (Exception ex) {
@@ -99,6 +100,7 @@ public class GameBoyAdvance {
             writeln("Exception: ", ex.msg);
         } finally {
             processor.stop();
+            dmas.stop();
             timers.stop();
             keypad.stop();
             SDL_Quit();

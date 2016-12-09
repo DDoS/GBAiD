@@ -38,6 +38,7 @@ public class InterruptHandler {
         if (checkBit(mask, 15)) {
             if (checkBit(newValue, 15)) {
                 // TODO: implement stop
+                assert (0);
             } else {
                 haltHandler.softwareHalt(true);
             }
