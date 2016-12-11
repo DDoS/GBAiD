@@ -1,13 +1,16 @@
 module gbaid.dma;
 
+import core.atomic : MemoryOrder, atomicLoad, atomicOp;
 import core.thread;
 
+import gbaid.cycle;
 import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.util;
 
 public class DMAs {
+    private CycleSharer!4 cycleSharer;
     private MainMemory memory;
     private RAM ioRegisters;
     private InterruptHandler interruptHandler;
@@ -19,10 +22,11 @@ public class DMAs {
     private int[4] wordCounts;
     private int[4] controls;
     private Timing[4] timings;
-    private int triggered = 0;
-    private int availableCycles = 0;
+    private shared int triggered = 0;
 
-    public this(MainMemory memory, IORegisters ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
+    public this(CycleSharer!4 cycleSharer, MainMemory memory, IORegisters ioRegisters,
+            InterruptHandler interruptHandler, HaltHandler haltHandler) {
+        this.cycleSharer = cycleSharer;
         this.memory = memory;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
@@ -62,17 +66,6 @@ public class DMAs {
         triggerDMAs(Timing.HBLANK);
     }
 
-    public void giveCycles(int cycles) {
-        availableCycles += cycles;
-    }
-
-    private void takeCycles(int cycles) {
-        while (availableCycles < cycles) {
-            Thread.yield();
-        }
-        availableCycles -= cycles;
-    }
-
     private void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
         if (!(mask & 0xFFFF0000)) {
             return;
@@ -93,27 +86,29 @@ public class DMAs {
     private void triggerDMAs(Timing timing) {
         foreach (int channel; 0 .. 4) {
             if (timings[channel] == timing) {
-                triggered.setBit(channel, 1);
+                triggered.atomicOp!"|="(1 << channel);
             }
         }
     }
 
     private void run() {
         while (running) {
-            while (availableCycles <= 0) {
-                Thread.yield();
+            // Check if any of the DMAs are triggered
+            if (triggered.atomicLoad!(MemoryOrder.raw) == 0) {
+                cycleSharer.takeCycles!2(1);
+                continue;
             }
-            // Halt if any of the DMAs are triggered
-            haltHandler.dmaHalt(triggered != 0);
+            // Halt for the DMAs
+            haltHandler.dmaHalt(true);
             foreach (int channel; 0 .. 4) {
                 // Run the first triggered DMA with respect to priority
-                if (triggered.checkBit(channel)) {
+                if (triggered.atomicOp!"&"(1 << channel)) {
                     // Copy a single word
-                    takeCycles(3);
+                    cycleSharer.takeCycles!2(3);
                     copyWord(channel);
                     // Finalize the DMA when the transfer is complete
                     if (wordCounts[channel] <= 0) {
-                        takeCycles(3);
+                        cycleSharer.takeCycles!2(3);
                         finalizeDMA(channel);
                     }
                     break;
@@ -142,7 +137,7 @@ public class DMAs {
             interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
         }
 
-        triggered.setBit(channel, 0);
+        triggered.atomicOp!"&="(~(1 << channel));
     }
 
     private void copyWord(int channel) {

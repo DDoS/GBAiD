@@ -13,10 +13,12 @@ import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.input;
 import gbaid.timer;
+import gbaid.cycle;
 import gbaid.graphics;
 import gbaid.util;
 
 public class GameBoyAdvance {
+    private CycleSharer!4 cycleSharer;
     private MainMemory memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -33,17 +35,19 @@ public class GameBoyAdvance {
             throw new NullPathException("BIOS");
         }
 
+        cycleSharer = new CycleSharer!4(4);
+
         memory = new MainMemory(biosFile);
 
         IORegisters ioRegisters = memory.getIORegisters();
 
-        processor = new ARM7TDMI(memory);
+        processor = new ARM7TDMI(cycleSharer, memory);
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
-        timers = new Timers(ioRegisters, interruptHandler);
-        dmas = new DMAs(memory, ioRegisters, interruptHandler, haltHandler);
-        display = new Display(ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
+        timers = new Timers(cycleSharer, ioRegisters, interruptHandler);
+        dmas = new DMAs(cycleSharer, memory, ioRegisters, interruptHandler, haltHandler);
+        display = new Display(cycleSharer, ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
 
         memory.setBIOSProtection(&biosReadGuard, &biosReadFallback);
         memory.setUnusedMemoryFallBack(&unusedReadFallBack);
@@ -100,8 +104,12 @@ public class GameBoyAdvance {
             processor.start();
             display.start();
 
-            graphics.draw(display.lockFrame());
-            display.unlockFrame();
+            while (!graphics.isCloseRequested()) {
+                cycleSharer.giveCycles((240 + 68) * (160 + 68) * 4);
+                graphics.draw(display.lockFrame());
+                display.unlockFrame();
+                cycleSharer.waitForCycleDepletion();
+            }
 
         } catch (Exception ex) {
             writeln("Emulator encountered an exception, system stopping...");

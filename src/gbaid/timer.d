@@ -2,11 +2,13 @@ module gbaid.timer;
 
 import core.thread;
 
+import gbaid.cycle;
 import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.util;
 
 public class Timers {
+    private CycleSharer!4 cycleSharer;
     private RAM ioRegisters;
     private InterruptHandler interruptHandler;
     private Thread thread;
@@ -15,9 +17,9 @@ public class Timers {
     private int[4] controls;
     private int[4] subTicks;
     private ushort[4] ticks;
-    private int availableCycles = 0;
 
-    public this(IORegisters ioRegisters, InterruptHandler interruptHandler) {
+    public this(CycleSharer!4 cycleSharer, IORegisters ioRegisters, InterruptHandler interruptHandler) {
+        this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
         ioRegisters.addMonitor(new TimerMemoryMonitor(), 0x100, 16);
@@ -43,20 +45,9 @@ public class Timers {
         return running;
     }
 
-    public void giveCycles(int cycles) {
-        availableCycles += cycles;
-    }
-
-    private void takeCycles(int cycles) {
-        while (availableCycles < cycles) {
-            Thread.yield();
-        }
-        availableCycles -= cycles;
-    }
-
     private void run() {
         while (running) {
-            takeCycles(1);
+            cycleSharer.takeCycles!3(1);
             auto previousOverflowed = false;
             foreach (timer; 0 .. 4) {
                 // Check that the timer is enabled

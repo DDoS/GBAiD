@@ -5,6 +5,7 @@ import core.sync.mutex;
 
 import std.algorithm;
 
+import gbaid.cycle;
 import gbaid.memory;
 import gbaid.dma;
 import gbaid.interrupt;
@@ -21,6 +22,7 @@ public class Display {
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint BLANKING_RESOLUTION = 68;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
+    private CycleSharer!4 cycleSharer;
     private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
@@ -31,9 +33,10 @@ public class Display {
     private int[2] internalAffineReferenceX;
     private int[2] internalAffineReferenceY;
     private Mutex frameLock;
-    private int availableCycles = 0;
 
-    public this(IORegisters ioRegisters, RAM palette, RAM vram, RAM oam, InterruptHandler interruptHandler, DMAs dmas) {
+    public this(CycleSharer!4 cycleSharer, IORegisters ioRegisters, RAM palette, RAM vram, RAM oam,
+            InterruptHandler interruptHandler, DMAs dmas) {
+        this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters.getMonitored();
         this.palette = palette;
         this.vram = vram;
@@ -72,17 +75,6 @@ public class Display {
         frameLock.unlock();
     }
 
-    public void giveCycles(int cycles) {
-        availableCycles += cycles;
-    }
-
-    private void takeCycles(int cycles) {
-        while (availableCycles < cycles) {
-            Thread.yield();
-        }
-        availableCycles -= cycles;
-    }
-
     private void reloadInternalAffineReferencePoint(int layer)() {
         auto affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
@@ -111,7 +103,7 @@ public class Display {
                 // Wait 4 cycles for each dot in the visible part of the line
                 setHBLANK(line, false);
                 foreach (dot; 0 .. VERTICAL_RESOLUTION) {
-                    takeCycles(4);
+                    cycleSharer.takeCycles!1(4);
                 }
                 // Draw visible lines now, just before the blank
                 if (line < VERTICAL_RESOLUTION) {
@@ -133,7 +125,7 @@ public class Display {
                 // Wait 4 cycles for each dot in the blank part of the line
                 setHBLANK(line, true);
                 foreach (dot; 0 .. BLANKING_RESOLUTION) {
-                    takeCycles(4);
+                    cycleSharer.takeCycles!1(4);
                 }
             }
         }

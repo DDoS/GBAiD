@@ -8,12 +8,13 @@ import std.conv;
 import std.string;
 import std.traits;
 
+import gbaid.cycle;
 import gbaid.memory;
 import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
-    private static enum AVERAGE_CPI = 2;
+    private CycleSharer!4 cycleSharer;
     private Memory memory;
     private uint entryPointAddress = 0x0;
     private Thread thread;
@@ -21,11 +22,11 @@ public class ARM7TDMI {
     private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
-    private int availableCycles = 0;
     private int instruction;
     private int decoded;
 
-    public this(Memory memory) {
+    public this(CycleSharer!4 cycleSharer, Memory memory) {
+        this.cycleSharer = cycleSharer;
         this.memory = memory;
         registers = new Registers();
     }
@@ -78,17 +79,6 @@ public class ARM7TDMI {
         return decoded;
     }
 
-    public void giveCycles(int cycles) {
-        availableCycles += cycles;
-    }
-
-    private void takeCycles(int cycles) {
-        while (availableCycles < cycles) {
-            Thread.yield();
-        }
-        availableCycles -= cycles;
-    }
-
     private void run() {
         try {
             // initialize the stack pointers
@@ -104,13 +94,13 @@ public class ARM7TDMI {
             branch();
             // start ticking
             while (running) {
-                takeCycles(AVERAGE_CPI);
+                cycleSharer.takeCycles!0(2);
                 if (irqSignal) {
                     branchIRQ();
                 }
                 tick();
                 while (haltSignal) {
-                    takeCycles(1);
+                    cycleSharer.takeCycles!0(1);
                 }
                 if (registers.wasPCModified()) {
                     branch();
