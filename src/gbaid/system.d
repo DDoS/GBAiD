@@ -5,7 +5,7 @@ import std.string;
 
 import derelict.sdl2.sdl;
 
-import gbaid.graphics;
+import gbaid.display;
 import gbaid.cpu;
 import gbaid.memory;
 import gbaid.dma;
@@ -13,6 +13,7 @@ import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.input;
 import gbaid.timer;
+import gbaid.graphics;
 import gbaid.util;
 
 public class GameBoyAdvance {
@@ -24,8 +25,8 @@ public class GameBoyAdvance {
     private Keypad keypad;
     private Timers timers;
     private DMAs dmas;
-    private bool running = false;
     private int lastBIOSPreFetch;
+    private Graphics graphics;
 
     public this(string biosFile) {
         if (biosFile is null) {
@@ -48,13 +49,14 @@ public class GameBoyAdvance {
         memory.setUnusedMemoryFallBack(&unusedReadFallBack);
 
         processor.setEntryPointAddress(MainMemory.BIOS_START);
+
+        graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
     }
 
     public void setGamePak(GamePak gamePak) {
         if (gamePak is null) {
-            throw new NullGamePakException();
+            throw new Exception("GamePak is null");
         }
-        checkNotRunning();
         gamePak.setUnusedMemoryFallBack(&unusedReadFallBack);
         memory.setGamePak(gamePak);
     }
@@ -68,15 +70,15 @@ public class GameBoyAdvance {
     }
 
     public void setDisplayScale(float scale) {
-        display.setScale(scale);
+        graphics.setScale(scale);
     }
 
     public void setDisplayFilteringMode(FilteringMode mode) {
-        display.setFilteringMode(mode);
+        graphics.setFilteringMode(mode);
     }
 
     public void setDisplayUpscalingMode(UpscalingMode mode) {
-        display.setUpscalingMode(mode);
+        graphics.setUpscalingMode(mode);
     }
 
     public MainMemory getMemory() {
@@ -84,32 +86,36 @@ public class GameBoyAdvance {
     }
 
     public void run() {
-        checkNotRunning();
         try {
             if (!DerelictSDL2.isLoaded) {
                 DerelictSDL2.load();
             }
             SDL_Init(0);
+
+            graphics.create();
+
             keypad.start();
             timers.start();
             dmas.start();
             processor.start();
-            display.run();
+            display.start();
+
+            graphics.draw(display.lockFrame());
+            display.unlockFrame();
+
         } catch (Exception ex) {
             writeln("Emulator encountered an exception, system stopping...");
             writeln("Exception: ", ex.msg);
         } finally {
+            display.stop();
             processor.stop();
             dmas.stop();
             timers.stop();
             keypad.stop();
-            SDL_Quit();
-        }
-    }
 
-    private void checkNotRunning() {
-        if (running) {
-            throw new EmulatorRunningException();
+            graphics.destroy();
+
+            SDL_Quit();
         }
     }
 
@@ -127,17 +133,5 @@ public class GameBoyAdvance {
 
     private int unusedReadFallBack(uint address) {
         return processor.getPreFetch();
-    }
-}
-
-public class NullGamePakException : Exception {
-    protected this() {
-        super("Game Pak is null");
-    }
-}
-
-public class EmulatorRunningException : Exception {
-    protected this() {
-        super("Cannot perform this action while the emulator is running");
     }
 }

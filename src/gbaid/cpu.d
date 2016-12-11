@@ -190,7 +190,7 @@ public class ARM7TDMI {
 }
 
 public class Registers {
-    private int[37] registers = new int[37];
+    private int[37] registers;
     private bool modifiedPC = false;
 
     public int get(int register) {
