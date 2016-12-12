@@ -100,14 +100,14 @@ public class Display {
             // Acquire the lock on the frame first
             frameLock.lock();
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
-                // Wait 4 cycles for each dot in the visible part of the line
+                // Draw visible lines now
                 setHBLANK(line, false);
-                foreach (dot; 0 .. VERTICAL_RESOLUTION) {
-                    cycleSharer.takeCycles!1(4);
-                }
-                // Draw visible lines now, just before the blank
                 if (line < VERTICAL_RESOLUTION) {
                     drawLine(line);
+                }
+                // Wait 4 cycles for each dot in the visible part of the line
+                foreach (dot; 0 .. HORIZONTAL_RESOLUTION) {
+                    cycleSharer.takeCycles!0(4);
                 }
                 // Update the control flags dependent on the line being drawn
                 setVCOUNT(line);
@@ -125,7 +125,7 @@ public class Display {
                 // Wait 4 cycles for each dot in the blank part of the line
                 setHBLANK(line, true);
                 foreach (dot; 0 .. BLANKING_RESOLUTION) {
-                    cycleSharer.takeCycles!1(4);
+                    cycleSharer.takeCycles!0(4);
                 }
             }
         }

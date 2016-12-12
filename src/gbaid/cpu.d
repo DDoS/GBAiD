@@ -94,13 +94,13 @@ public class ARM7TDMI {
             branch();
             // start ticking
             while (running) {
-                cycleSharer.takeCycles!0(2);
+                cycleSharer.takeCycles!1(4);
                 if (irqSignal) {
                     branchIRQ();
                 }
                 tick();
                 while (haltSignal) {
-                    cycleSharer.takeCycles!0(1);
+                    cycleSharer.takeCycles!1(4);
                 }
                 if (registers.wasPCModified()) {
                     branch();
