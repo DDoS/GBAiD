@@ -416,15 +416,26 @@ public class GamePak : MappedMemory {
 }
 
 public class ROM : Memory {
-    protected void[] memory;
+    protected void[] memoryRaw;
+    protected byte[] memoryByte;
+    protected short[] memoryShort;
+    protected int[] memoryInt;
 
     protected this(size_t capacity) {
-        this.memory = new byte[capacity];
+        this.memoryRaw = new byte[capacity];
+
+        this.memoryByte = cast(byte[]) this.memoryRaw;
+        this.memoryShort = cast(short[]) this.memoryRaw;
+        this.memoryInt = cast(int[]) this.memoryRaw;
     }
 
     public this(void[] memory) {
         this(memory.length);
-        this.memory[] = memory[];
+        this.memoryRaw[] = memory[];
+
+        this.memoryByte = cast(byte[]) this.memoryRaw;
+        this.memoryShort = cast(short[]) this.memoryRaw;
+        this.memoryInt = cast(int[]) this.memoryRaw;
     }
 
     public this(string file, uint maxSize) {
@@ -436,33 +447,33 @@ public class ROM : Memory {
     }
 
     public override size_t getCapacity() {
-        return memory.length;
+        return memoryByte.length;
     }
 
     public override void[] getArray(uint address) {
-        return memory[address .. $];
+        return memoryRaw[address .. $];
     }
 
     public override void* getPointer(uint address) {
-        return memory.ptr + address;
+        return memoryRaw.ptr + address;
     }
 
     public override byte getByte(uint address) {
-        return (cast(byte[]) memory)[address];
+        return memoryByte[address];
     }
 
     public override void setByte(uint address, byte b) {
     }
 
     public override short getShort(uint address) {
-        return (cast(short[]) memory)[address >> 1];
+        return memoryShort[address >> 1];
     }
 
     public override void setShort(uint address, short s) {
     }
 
     public override int getInt(uint address) {
-        return (cast(int[]) memory)[address >> 2];
+        return memoryInt[address >> 2];
     }
 
     public override void setInt(uint address, int i) {
@@ -483,15 +494,15 @@ public class RAM : ROM {
     }
 
     public override void setByte(uint address, byte b) {
-        (cast(byte[]) memory)[address] = b;
+        memoryByte[address] = b;
     }
 
     public override void setShort(uint address, short s) {
-        (cast(short[]) memory)[address >> 1] = s;
+        memoryShort[address >> 1] = s;
     }
 
     public override void setInt(uint address, int i) {
-        (cast(int[]) memory)[address >> 2] = i;
+        memoryInt[address >> 2] = i;
     }
 }
 
@@ -544,7 +555,7 @@ public class Flash : RAM {
     }
 
     private void idChip() {
-        if (memory.length > 64 * BYTES_PER_KIB) {
+        if (memoryByte.length > 64 * BYTES_PER_KIB) {
             deviceID = SANYO_128K_ID;
         } else {
             deviceID = PANASONIC_64K_ID;
@@ -683,13 +694,12 @@ public class EEPROM : RAM {
     private Mode mode = Mode.NORMAL;
     private int targetAddress = 0;
     private int currentAddressBit = 0, currentReadBit = 0;
-    private int[3] writeBuffer = new int[3];
+    private int[3] writeBuffer;
 
     public this(size_t capacity) {
         super(capacity);
-        byte[] byteMemory = cast(byte[]) memory;
         foreach (i; 0 .. capacity) {
-            byteMemory[i] = cast(byte) 0xFF;
+            memoryByte[i] = cast(byte) 0xFF;
         }
     }
 

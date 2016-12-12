@@ -125,7 +125,7 @@ public class Graphics {
         vertexArray = null;
     }
 
-    public void draw(void[] frame) {
+    public void draw(short[] frame) {
         if (!context.isCreated()) {
             create();
         }

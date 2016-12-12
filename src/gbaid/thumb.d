@@ -7,8 +7,9 @@ import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
+private enum THUMB_OPCODE_BIT_COUNT = 10;
 // Using enum leads to a severe performance penalty for some reason...
-private immutable THUMB_EXECUTORS = createTHUMBTable();
+private immutable Executor[1 << THUMB_OPCODE_BIT_COUNT] THUMB_EXECUTORS = createTHUMBTable();
 
 public void executeTHUMBInstruction(Registers registers, Memory memory, int instruction) {
     int code = instruction.getBits(6, 15);
@@ -47,7 +48,7 @@ private Executor[] createTHUMBTable() {
 
     */
 
-    auto table = createTable!(unsupported)(10);
+    auto table = createTable!(unsupported)(THUMB_OPCODE_BIT_COUNT);
 
     // Bits are OpCode(2)
     addSubTable!("000ttddddd", moveShiftedRegister, unsupported)(table);

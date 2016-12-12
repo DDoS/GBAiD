@@ -6,8 +6,9 @@ import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 
+private enum ARM_OPCODE_BIT_COUNT = 12;
 // Using enum leads to a severe performance penalty for some reason...
-private immutable ARM_EXECUTORS = createARMTable();
+private immutable Executor[1 << ARM_OPCODE_BIT_COUNT] ARM_EXECUTORS = createARMTable();
 
 public void executeARMInstruction(Registers registers, Memory memory, int instruction) {
     if (!registers.checkCondition(instruction >>> 28)) {
