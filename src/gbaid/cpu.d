@@ -19,7 +19,7 @@ public class ARM7TDMI {
     private uint entryPointAddress = 0x0;
     private Thread thread;
     private bool running = false;
-    private Registers registers;
+    private Registers* registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
     private int instruction;
@@ -179,7 +179,7 @@ public class ARM7TDMI {
     }
 }
 
-public class Registers {
+public struct Registers {
     private int[37] registers;
     private bool modifiedPC = false;
 
@@ -415,7 +415,7 @@ public class Registers {
         }
     }
 
-    private int getRegisterIndex(Mode mode, int register) {
+    private static int getRegisterIndex(Mode mode, int register) {
         /*
             R0 - R15: 0 - 15
             CPSR: 16
@@ -548,7 +548,7 @@ public class Registers {
     }
 }
 
-public alias Executor = void function(Registers, Memory, int);
+public alias Executor = void function(Registers*, Memory, int);
 
 public Executor[] createTable(alias nullInstruction)(int bitCount) {
     auto table = new Executor[1 << bitCount];
