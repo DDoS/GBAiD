@@ -35,7 +35,7 @@ public class GameBoyAdvance {
             throw new NullPathException("BIOS");
         }
 
-        cycleSharer = new CycleSharer!4(4);
+        cycleSharer = new CycleSharer!4(4 * 4);
 
         memory = new MainMemory(biosFile);
 
