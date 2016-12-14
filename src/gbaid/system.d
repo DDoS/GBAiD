@@ -14,6 +14,7 @@ import gbaid.halt;
 import gbaid.input;
 import gbaid.timer;
 import gbaid.cycle;
+import gbaid.gamepak;
 import gbaid.graphics;
 import gbaid.util;
 
