@@ -8,7 +8,7 @@ import gbaid.interrupt;
 import gbaid.util;
 
 public class Timers {
-    private CycleSharer!4 cycleSharer;
+    private CycleSharer4* cycleSharer;
     private RAM ioRegisters;
     private InterruptHandler interruptHandler;
     private Thread thread;
@@ -18,7 +18,7 @@ public class Timers {
     private int[4] subTicks;
     private ushort[4] ticks;
 
-    public this(CycleSharer!4 cycleSharer, IORegisters ioRegisters, InterruptHandler interruptHandler) {
+    public this(CycleSharer4* cycleSharer, IORegisters ioRegisters, InterruptHandler interruptHandler) {
         this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;

@@ -18,7 +18,7 @@ import gbaid.graphics;
 import gbaid.util;
 
 public class GameBoyAdvance {
-    private CycleSharer!4 cycleSharer;
+    private CycleSharer4 cycleSharer;
     private MainMemory memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -35,19 +35,19 @@ public class GameBoyAdvance {
             throw new NullPathException("BIOS");
         }
 
-        cycleSharer = new CycleSharer!4(4 * 4);
+        cycleSharer = CycleSharer4(4 * 4);
 
         memory = new MainMemory(biosFile);
 
         IORegisters ioRegisters = memory.getIORegisters();
 
-        processor = new ARM7TDMI(cycleSharer, memory);
+        processor = new ARM7TDMI(&cycleSharer, memory);
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
-        timers = new Timers(cycleSharer, ioRegisters, interruptHandler);
-        dmas = new DMAs(cycleSharer, memory, ioRegisters, interruptHandler, haltHandler);
-        display = new Display(cycleSharer, ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
+        timers = new Timers(&cycleSharer, ioRegisters, interruptHandler);
+        dmas = new DMAs(&cycleSharer, memory, ioRegisters, interruptHandler, haltHandler);
+        display = new Display(&cycleSharer, ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
 
         memory.setBIOSProtection(&biosReadGuard, &biosReadFallback);
         memory.setUnusedMemoryFallBack(&unusedReadFallBack);

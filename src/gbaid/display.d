@@ -22,7 +22,7 @@ public class Display {
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint BLANKING_RESOLUTION = 68;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
-    private CycleSharer!4 cycleSharer;
+    private CycleSharer4* cycleSharer;
     private RAM ioRegisters, palette, vram, oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
@@ -34,7 +34,7 @@ public class Display {
     private int[2] internalAffineReferenceY;
     private Mutex frameLock;
 
-    public this(CycleSharer!4 cycleSharer, IORegisters ioRegisters, RAM palette, RAM vram, RAM oam,
+    public this(CycleSharer4* cycleSharer, IORegisters ioRegisters, RAM palette, RAM vram, RAM oam,
             InterruptHandler interruptHandler, DMAs dmas) {
         this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters.getMonitored();

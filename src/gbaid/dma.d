@@ -10,7 +10,7 @@ import gbaid.halt;
 import gbaid.util;
 
 public class DMAs {
-    private CycleSharer!4 cycleSharer;
+    private CycleSharer4* cycleSharer;
     private MainMemory memory;
     private RAM ioRegisters;
     private InterruptHandler interruptHandler;
@@ -24,7 +24,7 @@ public class DMAs {
     private Timing[4] timings;
     private shared int triggered = 0;
 
-    public this(CycleSharer!4 cycleSharer, MainMemory memory, IORegisters ioRegisters,
+    public this(CycleSharer4* cycleSharer, MainMemory memory, IORegisters ioRegisters,
             InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.cycleSharer = cycleSharer;
         this.memory = memory;

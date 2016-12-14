@@ -7,6 +7,8 @@ import std.conv : to;
 
 import gbaid.util;
 
+public alias CycleSharer4 = CycleSharer!4;
+
 public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && numberOfSharers <= 32) {
     private mixin template declarePrivateFields(T, string name, size_t count) {
         mixin("private " ~ T.stringof ~ " " ~ name ~ (count - 1).to!string() ~ ";");
@@ -15,7 +17,7 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
         }
     }
 
-    public class CycleSharer {
+    public struct CycleSharer {
         private immutable size_t cycleBatchSize;
         private shared size_t availableCycles = 0;
         mixin declarePrivateFields!(ptrdiff_t, "distributedCycles", numberOfSharers);

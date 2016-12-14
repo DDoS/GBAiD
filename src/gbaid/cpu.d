@@ -14,7 +14,7 @@ import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
-    private CycleSharer!4 cycleSharer;
+    private CycleSharer4* cycleSharer;
     private Memory memory;
     private uint entryPointAddress = 0x0;
     private Thread thread;
@@ -25,7 +25,7 @@ public class ARM7TDMI {
     private int instruction;
     private int decoded;
 
-    public this(CycleSharer!4 cycleSharer, Memory memory) {
+    public this(CycleSharer4* cycleSharer, Memory memory) {
         this.cycleSharer = cycleSharer;
         this.memory = memory;
         registers = new Registers();
