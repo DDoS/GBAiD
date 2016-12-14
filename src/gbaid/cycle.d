@@ -3,25 +3,16 @@ module gbaid.cycle;
 import core.atomic : MemoryOrder, atomicLoad, atomicStore, atomicOp;
 import core.thread : Thread;
 
-import std.conv : to;
-
 import gbaid.util;
 
 public alias CycleSharer4 = CycleSharer!4;
 
 public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && numberOfSharers <= 32) {
-    private mixin template declarePrivateFields(T, string name, size_t count) {
-        mixin("private " ~ T.stringof ~ " " ~ name ~ (count - 1).to!string() ~ ";");
-        static if (count > 1) {
-            mixin declarePrivateFields!(T, name, count - 1);
-        }
-    }
-
     public struct CycleSharer {
         private enum sharersMask = (1 << numberOfSharers) - 1;
         private immutable size_t cycleBatchSize;
         private shared size_t availableCycles = 0;
-        mixin declarePrivateFields!(ptrdiff_t, "distributedCycles", numberOfSharers);
+        private ptrdiff_t distributedCycle(uint id) = 0;
         private shared uint doneWithCycles = 0;
         private shared uint runningSharers = sharersMask;
 
@@ -46,10 +37,9 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
         public void takeCycles(uint id)(size_t cycles) if (id < numberOfSharers) {
             while (true) {
                 // If we have available cycles, then take them and return
-                enum getDistributedCycles = "distributedCycles" ~ id.to!string();
-                auto remainingCycles = mixin(getDistributedCycles) - cast(ptrdiff_t) cycles;
+                auto remainingCycles = distributedCycle!id - cast(ptrdiff_t) cycles;
                 if (remainingCycles >= 0) {
-                    mixin(getDistributedCycles) = remainingCycles;
+                    distributedCycle!id = remainingCycles;
                     break;
                 }
                 // Otherwise we mark that we are done with the cycles
@@ -72,7 +62,7 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
                     doneWithCycles.atomicStore!(MemoryOrder.raw)(0);
                 }
                 // Self-distribute the cycles
-                mixin(getDistributedCycles) += cycleBatchSize;
+                distributedCycle!id += cycleBatchSize;
                 // Go back to trying to take cycles
             }
         }
