@@ -52,6 +52,7 @@ public class Keypad {
     public void stop() {
         if (thread !is null) {
             running = false;
+            thread.join();
             source.destroy();
             thread = null;
         }

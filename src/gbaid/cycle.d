@@ -18,10 +18,12 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
     }
 
     public struct CycleSharer {
+        private enum sharersMask = (1 << numberOfSharers) - 1;
         private immutable size_t cycleBatchSize;
         private shared size_t availableCycles = 0;
         mixin declarePrivateFields!(ptrdiff_t, "distributedCycles", numberOfSharers);
         private shared uint doneWithCycles = 0;
+        private shared uint runningSharers = sharersMask;
 
         public this(size_t cycleBatchSize) {
             this.cycleBatchSize = cycleBatchSize;
@@ -35,6 +37,10 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
             while (availableCycles.atomicLoad!(MemoryOrder.raw) >= cycleBatchSize) {
                 Thread.yield();
             }
+        }
+
+        public void hasStopped(uint id)() if (id < numberOfSharers) {
+            runningSharers.atomicOp!"&="(~(1 << id));
         }
 
         public void takeCycles(uint id)(size_t cycles) if (id < numberOfSharers) {
@@ -51,8 +57,8 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
                 doneWithCycles.atomicOp!"|="(sharerBit);
                 // If this is the first sharer, wait until all others are also done
                 // For any other sharer, wait until the first sharer has reset the "done" flags
-                enum sharersMask = (1 << numberOfSharers) - 1;
-                enum barrierCondition = id == 0 ? "!= sharersMask" : "& sharerBit";
+                enum barrierCondition = id == 0 ? "!= (sharersMask & runningSharers.atomicLoad!(MemoryOrder.raw))"
+                        : "& sharerBit";
                 while (mixin("doneWithCycles.atomicLoad!(MemoryOrder.raw) " ~ barrierCondition)) {
                 }
                 // The first sharer takes care of distributing a new batch of cycles

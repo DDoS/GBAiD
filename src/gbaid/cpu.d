@@ -47,7 +47,9 @@ public class ARM7TDMI {
     public void stop() {
         if (thread !is null) {
             running = false;
+            thread.join();
             thread = null;
+            cycleSharer.hasStopped!1();
         }
     }
 

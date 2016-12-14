@@ -37,7 +37,9 @@ public class Timers {
     public void stop() {
         if (thread !is null) {
             running = false;
+            thread.join();
             thread = null;
+            cycleSharer.hasStopped!3();
         }
     }
 

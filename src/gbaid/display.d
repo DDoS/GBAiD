@@ -62,7 +62,9 @@ public class Display {
     public void stop() {
         if (thread !is null) {
             running = false;
+            thread.join();
             thread = null;
+            cycleSharer.hasStopped!0();
         }
     }
 

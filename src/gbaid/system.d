@@ -106,7 +106,8 @@ public class GameBoyAdvance {
             display.start();
 
             while (!graphics.isCloseRequested()) {
-                cycleSharer.giveCycles((240 + 68) * (160 + 68) * 4);
+                enum cyclesForAFrame = (240 + 68) * (160 + 68) * 4;
+                cycleSharer.giveCycles(cyclesForAFrame);
                 graphics.draw(display.lockFrame());
                 display.unlockFrame();
                 cycleSharer.waitForCycleDepletion();
@@ -116,11 +117,13 @@ public class GameBoyAdvance {
             writeln("Emulator encountered an exception, system stopping...");
             writeln("Exception: ", ex.msg);
         } finally {
-            display.stop();
+            cycleSharer.giveCycles(size_t.max);
+
             processor.stop();
             dmas.stop();
             timers.stop();
             keypad.stop();
+            display.stop();
 
             graphics.destroy();
 
