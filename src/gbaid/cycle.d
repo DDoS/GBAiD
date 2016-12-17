@@ -10,7 +10,7 @@ public alias CycleSharer4 = CycleSharer!4;
 public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && numberOfSharers <= 32) {
     public struct CycleSharer {
         private enum sharersMask = (1 << numberOfSharers) - 1;
-        private immutable size_t cycleBatchSize;
+        public immutable size_t cycleBatchSize;
         private shared size_t availableCycles = 0;
         private ptrdiff_t distributedCycle(uint id) = 0;
         private shared uint doneWithCycles = 0;
@@ -32,6 +32,11 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
 
         public void hasStopped(uint id)() if (id < numberOfSharers) {
             runningSharers.atomicOp!"&="(~(1 << id));
+        }
+
+        public size_t takeBatchCycles(uint id)() {
+            takeCycles!id(cycleBatchSize);
+            return cycleBatchSize;
         }
 
         public void takeCycles(uint id)(size_t cycles) if (id < numberOfSharers) {

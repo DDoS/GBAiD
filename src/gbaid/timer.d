@@ -13,16 +13,20 @@ public class Timers {
     private InterruptHandler interruptHandler;
     private Thread thread;
     private bool running = false;
-    private ushort[4] reloadValues;
-    private int[4] controls;
-    private int[4] subTicks;
-    private ushort[4] ticks;
+    private ushort reloadValue(int timer) = 0;
+    private int control(int timer) = 0;
+    private int subTicks(int timer) = 0;
+    private ushort ticks(int timer) = 0;
 
     public this(CycleSharer4* cycleSharer, IORegisters ioRegisters, InterruptHandler interruptHandler) {
+        assert (cycleSharer.cycleBatchSize < ushort.max);
         this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters.getMonitored();
         this.interruptHandler = interruptHandler;
-        ioRegisters.addMonitor(new TimerMemoryMonitor(), 0x100, 16);
+        ioRegisters.addMonitor(new TimerMemoryMonitor!0(), 0x100, 4);
+        ioRegisters.addMonitor(new TimerMemoryMonitor!1(), 0x104, 4);
+        ioRegisters.addMonitor(new TimerMemoryMonitor!2(), 0x108, 4);
+        ioRegisters.addMonitor(new TimerMemoryMonitor!3(), 0x10C, 4);
     }
 
     public void start() {
@@ -49,85 +53,88 @@ public class Timers {
 
     private void run() {
         while (running) {
-            cycleSharer.takeCycles!3(1);
-            auto previousOverflowed = false;
-            foreach (timer; 0 .. 4) {
-                // Check that the timer is enabled
-                auto control = controls[timer];
-                if (!control.checkBit(7)) {
-                    previousOverflowed = false;
-                    continue;
-                }
-                // Check the ticking condition
-                bool shouldTick = void;
-                if (control.checkBit(2)) {
-                    // Count-up timing: increment if the previous timer overflowed
-                    shouldTick = previousOverflowed;
-                } else {
-                    // Update the sub-ticks according to the pre-scaler
-                    subTicks[timer]++;
-                    if (subTicks[timer] >= control.getTickLength()) {
-                        // We tick when a sub-tick is complete
-                        subTicks[timer] = 0;
-                        shouldTick = true;
-                    } else {
-                        shouldTick = false;
-                    }
-                }
-                // Tick if we should
-                if (shouldTick) {
-                    // Check for an overflow
-                    previousOverflowed = ticks[timer] == ushort.max;
-                    if (previousOverflowed) {
-                        // If we overflow, write the reload value instead
-                        ticks[timer] = reloadValues[timer];
-                        // Trigger an IRQ on overflow if requested
-                        if (control.checkBit(6)) {
-                            interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + timer);
-                        }
-                    } else {
-                        ticks[timer]++;
-                    }
-                }
-            }
+            auto cycles = cast(ushort) cycleSharer.takeBatchCycles!3();
+            auto previousOverflows = updateTimer!0(cycles, 0);
+            previousOverflows = updateTimer!1(cycles, previousOverflows);
+            previousOverflows = updateTimer!2(cycles, previousOverflows);
+            updateTimer!3(cycles, previousOverflows);
         }
     }
 
-    private class TimerMemoryMonitor : MemoryMonitor {
+    private int updateTimer(int timer)(ushort cycles, int previousOverflows) {
+        // Check that the timer is enabled
+        if (!control!timer.checkBit(7)) {
+            return false;
+        }
+        // Check the ticking condition
+        int newTicks = void;
+        if (control!timer.checkBit(2)) {
+            // Count-up timing: increment if the previous timer overflowed
+            newTicks = previousOverflows;
+        } else {
+            // Update the sub-ticks according to the pre-scaler
+            subTicks!timer += cycles;
+            auto preScalerBase2Power = control!timer.getPreScalerBase2Power();
+            // We tick for each completed sub-tick
+            newTicks = subTicks!timer >> preScalerBase2Power;
+            subTicks!timer &= (1 << preScalerBase2Power) - 1;
+        }
+        // Only tick if we need to
+        if (newTicks <= 0) {
+            return false;
+        }
+        // Check for an overflow
+        auto ticksUntilOverflow = ushort.max - ticks!timer + 1;
+        if (newTicks < ticksUntilOverflow) {
+            // No overflow, just increment the tick counter
+            ticks!timer += newTicks;
+            return 0;
+        }
+        // If we overflow, start by consuming the new ticks to that overflow
+        newTicks -= ticksUntilOverflow;
+        // Reload the value and add any extra ticks past the overflows
+        ticksUntilOverflow = ushort.max - reloadValue!timer + 1;
+        ticks!timer = cast(ushort) (reloadValue!timer + newTicks % ticksUntilOverflow);
+        // Trigger an IRQ on overflow if requested
+        if (control!timer.checkBit(6)) {
+            interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + timer);
+        }
+        // Return the first overflow plus any extra
+        return 1 + newTicks / ticksUntilOverflow;
+    }
+
+    private class TimerMemoryMonitor(int timer) : MemoryMonitor {
         protected override void onRead(Memory ioRegisters, int address, int shift, int mask, ref int value) {
             // Ignore reads that aren't on the counter
             if (!(mask & 0xFFFF)) {
                 return;
             }
             // Write the tick count to the value
-            int timer = (address - 0x100) / 4;
-            value = value & ~mask | ticks[timer] & mask;
+            value = value & ~mask | ticks!timer & mask;
         }
 
         protected override void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldTimer, int newTimer) {
-            // Get the timer number
-            int timer = (address - 0x100) / 4;
             // Update the control and reload value
-            reloadValues[timer] = cast(ushort) (newTimer & 0xFFFF);
-            controls[timer] = newTimer >>> 16;
+            reloadValue!timer = cast(ushort) (newTimer & 0xFFFF);
+            control!timer = newTimer >>> 16;
             // Reset the timer if the enable bit goes from 0 to 1
             if (!oldTimer.checkBit(23) && newTimer.checkBit(23)) {
-                subTicks[timer] = 0;
-                ticks[timer] = reloadValues[timer];
+                subTicks!timer = 0;
+                ticks!timer = reloadValue!timer;
             }
         }
     }
 }
 
-private int getTickLength(int control) {
+private int getPreScalerBase2Power(int control) {
     final switch (control & 0b11) {
         case 0:
-            return 1;
+            return 0;
         case 1:
-            return 64;
+            return 6;
         case 2:
-            return 256;
+            return 8;
         case 3:
-            return 1024;
+            return 10;
     }
 }
