@@ -104,7 +104,7 @@ public class DMAs {
         while (running) {
             // Check if any of the DMAs are triggered
             if (triggered.atomicLoad!(MemoryOrder.raw) == 0) {
-                cycleSharer.takeCycles!2(4);
+                cycleSharer.wasteCycles!2();
                 continue;
             }
             // Halt for the DMAs

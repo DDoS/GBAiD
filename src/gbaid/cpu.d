@@ -102,7 +102,7 @@ public class ARM7TDMI {
                 }
                 tick();
                 while (haltSignal) {
-                    cycleSharer.takeCycles!1(4);
+                    cycleSharer.wasteCycles!1();
                 }
                 if (registers.wasPCModified()) {
                     branch();
