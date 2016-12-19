@@ -6,8 +6,8 @@ import std.file : read, FileException;
 
 import gbaid.util;
 
-public alias Ram = Memory!false;
-public alias Rom = Memory!true;
+public alias Ram(uint byteSize) = Memory!(byteSize, false);
+public alias Rom(uint byteSize) = Memory!(byteSize, true);
 
 private alias ValidSizes = AliasSeq!(byte, ubyte, short, ushort, int, uint);
 private alias IsValidSize(T) = Alias!(staticIndexOf!(T, ValidSizes) >= 0);
@@ -24,76 +24,66 @@ private template SizeBase2Power(T) {
     }
 }
 
-public struct Memory(bool readOnly) {
-    private Mod!(void[]) rawMemory;
-    mixin memoryViews!ValidSizes;
-    private immutable size_t byteSize;
+public enum uint BYTES_PER_KIB = 1024;
+public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
 
-    static if (!readOnly) {
-        public this(size_t byteSize) {
-            rawMemory.length = byteSize;
-            this.byteSize = byteSize;
-            mixin(setMemoryViewsCode!ValidSizes);
-        }
+public enum uint BIOS_SIZE = 16 * BYTES_PER_KIB;
+public enum uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
+public enum uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
+public enum uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
+public enum uint PALETTE_SIZE = 1 * BYTES_PER_KIB;
+public enum uint VRAM_SIZE = 96 * BYTES_PER_KIB;
+public enum uint OAM_SIZE = 1 * BYTES_PER_KIB;
+
+public enum uint BIOS_START = 0x00000000;
+public enum uint BIOS_MASK = 0x3FFF;
+public enum uint BOARD_WRAM_MASK = 0x3FFFF;
+public enum uint CHIP_WRAM_MASK = 0x7FFF;
+public enum uint IO_REGISTERS_END = 0x040003FE;
+public enum uint IO_REGISTERS_MASK = 0x3FF;
+public enum uint PALETTE_MASK = 0x3FF;
+public enum uint VRAM_MASK = 0x1FFFF;
+public enum uint VRAM_LOWER_MASK = 0xFFFF;
+public enum uint VRAM_HIGH_MASK = 0x17FFF;
+public enum uint OAM_MASK = 0x3FF;
+public enum uint GAME_PAK_START = 0x08000000;
+
+public struct Memory(uint byteSize, bool readOnly) {
+    private Mod!(void[byteSize]) memory;
+
+    static if (readOnly) {
+        @disable public this();
     }
 
     public this(void[] memory) {
-        static if (readOnly) {
-            rawMemory = memory.idup;
-        } else {
-            rawMemory = memory.dup;
-        }
-        byteSize = memory.length;
-        mixin(setMemoryViewsCode!ValidSizes);
+        assert(memory.length == byteSize);
+        this.memory[] = memory[];
     }
 
-    public this(string file, uint maxSize) {
+    public this(string file) {
         try {
-            this(read(file, maxSize));
+            this(file.read());
         } catch (FileException ex) {
-            throw new Exception("Cannot read ROM file", ex);
+            throw new Exception("Cannot read memory file", ex);
         }
-    }
-
-    public size_t getByteSize() {
-        return byteSize;
     }
 
     public Mod!T get(T)(uint address) if (IsValidSize!T) {
-        return mixin(memoryCode!T)[address >> SizeBase2Power!T];
+        return *cast(Mod!T*) (memory.ptr + address);
     }
 
     static if (!readOnly) {
         public void set(T)(uint address, T v) if (IsValidSize!T) {
-            mixin(memoryCode!T)[address >> SizeBase2Power!T] = v;
+            *cast(Mod!T*) (memory.ptr + address) = v;
         }
     }
 
     public Mod!(T[]) getArray(T)(uint address, uint size) if (IsValidSize!T) {
-        auto start = address >> SizeBase2Power!T;
-        return mixin(memoryCode!T)[start .. start + (size >> SizeBase2Power!T)];
+        return cast(Mod!(T[])) memory[address .. address + size];
     }
 
     public Mod!(T*) getPointer(T)(uint address) if (IsValidSize!T) {
-        return mixin(memoryCode!T).ptr + (address >> SizeBase2Power!T);
-    }
-
-    private alias memoryCode(T) = Alias!(T.stringof ~ "Memory");
-
-    private mixin template memoryViews(T, Ts...) {
-        mixin("private Mod!(T[]) " ~ memoryCode!T ~ ";");
-        static if (Ts.length > 0) {
-            mixin memoryViews!Ts;
-        }
-    }
-
-    private template setMemoryViewsCode(T, Ts...) {
-        private alias setMemoryViewCode = Alias!(memoryCode!T ~ " = cast(Mod!(" ~ T.stringof ~ "[])) rawMemory;");
-        static if (Ts.length <= 0) {
-            private alias setMemoryViewsCode = Alias!setMemoryViewCode;
-        } else {
-            private alias setMemoryViewsCode = Alias!(setMemoryViewCode ~ setMemoryViewsCode!Ts);
-        }
+        return cast(Mod!T*) (memory.ptr + address);
     }
 
     private template Mod(T) {
@@ -109,11 +99,7 @@ public struct IoRegisters {
     private alias ReadMonitor = void delegate(IoRegisters*, int, int, int, ref int);
     private alias PreWriteMonitor = bool delegate(IoRegisters*, int, int, int, ref int);
     private alias PostWriteMonitor = void delegate(IoRegisters*, int, int, int, int, int);
-    private MonitoredValue[] monitoredValues;
-
-    public this(size_t byteSize) {
-        monitoredValues.length = (byteSize + int.sizeof - 1) / int.sizeof;
-    }
+    private MonitoredValue[(IO_REGISTERS_SIZE + int.sizeof - 1) / int.sizeof] monitoredValues;
 
     public void addReadMonitor(int address)(ReadMonitor monitor) if (IsIntAligned!address) {
         monitoredValues[address >> 2].onRead = monitor;
@@ -174,7 +160,7 @@ public struct IoRegisters {
 }
 
 unittest {
-    auto ram = Ram(1024);
+    auto ram = Ram!1024();
 
     static assert(is(typeof(ram.get!ushort(2)) == ushort));
     static assert(is(typeof(ram.getPointer!ushort(3)) == ushort*));
@@ -187,9 +173,9 @@ unittest {
 
 unittest {
     int[] data = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
-    auto rom = Rom(data);
+    auto rom = Rom!40(data);
 
-    static assert(!__traits(compiles, Memory!true(1024)));
+    static assert(!__traits(compiles, Rom!40()));
     static assert(!__traits(compiles, rom.set!int(8, 34)));
     static assert(is(typeof(rom.get!int(4)) == immutable int));
     static assert(is(typeof(rom.getPointer!int(8)) == immutable int*));
@@ -246,7 +232,7 @@ unittest {
         }
     }
 
-    auto io = IoRegisters(1024);
+    auto io = IoRegisters();
     auto monitor = new TestMonitor();
 
     static assert(!__traits(compiles, io.addReadMonitor!0x2(&monitor.onRead)));
