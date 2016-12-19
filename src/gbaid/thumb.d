@@ -3,7 +3,7 @@ module gbaid.thumb;
 import std.conv;
 import std.string;
 
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.cpu;
 import gbaid.util;
 
@@ -11,7 +11,7 @@ private enum THUMB_OPCODE_BIT_COUNT = 10;
 // Using enum leads to a severe performance penalty for some reason...
 private immutable Executor[1 << THUMB_OPCODE_BIT_COUNT] THUMB_EXECUTORS = createTHUMBTable();
 
-public void executeTHUMBInstruction(Registers* registers, Memory memory, int instruction) {
+public void executeTHUMBInstruction(Registers* registers, MemoryBus* memory, int instruction) {
     int code = instruction.getBits(6, 15);
     THUMB_EXECUTORS[code](registers, memory, instruction);
 }
@@ -117,7 +117,7 @@ private Executor[] createTHUMBTable() {
     return table;
 }
 
-private void moveShiftedRegister(int code)(Registers* registers, Memory memory, int instruction)
+private void moveShiftedRegister(int code)(Registers* registers, MemoryBus* memory, int instruction)
         if (code >= 0 && code <= 2) {
     int shift = instruction.getBits(6, 10);
     int op = registers.get(instruction.getBits(3, 5));
@@ -144,7 +144,7 @@ private template addAndSubtract(int code) if (code.getBits(2, 31) == 0) {
     private alias addAndSubtract = addAndSubtract!(code.checkBit(1), code.checkBit(0));
 }
 
-private void addAndSubtract(bool immediate, bool subtract)(Registers* registers, Memory memory, int instruction) {
+private void addAndSubtract(bool immediate, bool subtract)(Registers* registers, MemoryBus* memory, int instruction) {
     int rn = instruction.getBits(6, 8);
     static if (immediate) {
         // immediate
@@ -180,21 +180,21 @@ private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
     }
 }
 
-private void moveCompareAddAndSubtractImmediate(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!false;
     registers.set(rd, op2);
     registers.setAPSRFlags(op2 < 0, op2 == 0);
 }
 
-private void moveCompareAddAndSubtractImmediate(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int v = op1 - op2;
     registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
-private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 + op2;
@@ -202,7 +202,7 @@ private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* register
     registers.setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 }
 
-private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers* registers, Memory memory, int instruction) {
+private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 - op2;
@@ -216,7 +216,7 @@ private mixin template decodeOpAluOperations() {
     int op1 = registers.get(rd);
 }
 
-private void aluOperations(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
     mixin decodeOpAluOperations;
     int res = op1 & op2;
@@ -224,7 +224,7 @@ private void aluOperations(int code: 0)(Registers* registers, Memory memory, int
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperations(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "EOR");
     mixin decodeOpAluOperations;
     int res = op1 ^ op2;
@@ -232,7 +232,7 @@ private void aluOperations(int code: 1)(Registers* registers, Memory memory, int
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperationsShift(int type)(Registers* registers, Memory memory, int instruction) {
+private void aluOperationsShift(int type)(Registers* registers, MemoryBus* memory, int instruction) {
     static if (type == 0) {
         debug (outputInstructions) registers.logInstruction(instruction, "LSL");
     } else static if (type == 1) {
@@ -263,7 +263,7 @@ private alias aluOperations(int code: 4) = aluOperationsShift!2;
 // ROR
 private alias aluOperations(int code: 7) = aluOperationsShift!3;
 
-private void aluOperations(int code: 5)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 5)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOpAluOperations;
     int carry = registers.getFlag(CPSRFlag.C);
@@ -275,7 +275,7 @@ private void aluOperations(int code: 5)(Registers* registers, Memory memory, int
         overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
 }
 
-private void aluOperations(int code: 6)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 6)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOpAluOperations;
     int carry = registers.getFlag(CPSRFlag.C);
@@ -287,14 +287,14 @@ private void aluOperations(int code: 6)(Registers* registers, Memory memory, int
         overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
 }
 
-private void aluOperations(int code: 8)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 8)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOpAluOperations;
     int v = op1 & op2;
     registers.setAPSRFlags(v < 0, v == 0);
 }
 
-private void aluOperations(int code: 9)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 9)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "NEG");
     mixin decodeOpAluOperations;
     int res = 0 - op2;
@@ -302,21 +302,21 @@ private void aluOperations(int code: 9)(Registers* registers, Memory memory, int
     registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
 }
 
-private void aluOperations(int code: 10)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 10)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpAluOperations;
     int v = op1 - op2;
     registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
-private void aluOperations(int code: 11)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 11)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOpAluOperations;
     int v = op1 + op2;
     registers.setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
 }
 
-private void aluOperations(int code: 12)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 12)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ORR");
     mixin decodeOpAluOperations;
     int res = op1 | op2;
@@ -324,7 +324,7 @@ private void aluOperations(int code: 12)(Registers* registers, Memory memory, in
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperations(int code: 13)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 13)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MUL");
     mixin decodeOpAluOperations;
     int res = op1 * op2;
@@ -332,7 +332,7 @@ private void aluOperations(int code: 13)(Registers* registers, Memory memory, in
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperations(int code: 14)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 14)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BIC");
     mixin decodeOpAluOperations;
     int res = op1 & ~op2;
@@ -340,7 +340,7 @@ private void aluOperations(int code: 14)(Registers* registers, Memory memory, in
     registers.setAPSRFlags(res < 0, res == 0);
 }
 
-private void aluOperations(int code: 15)(Registers* registers, Memory memory, int instruction) {
+private void aluOperations(int code: 15)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MNV");
     mixin decodeOpAluOperations;
     int res = ~op2;
@@ -367,7 +367,7 @@ private template hiRegisterOperationsAndBranchExchange(int code) if (code.getBit
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
-        (Registers* registers, Memory memory, int instruction)
+        (Registers* registers, MemoryBus* memory, int instruction)
         if (opCode == 0 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
@@ -375,7 +375,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
-        (Registers* registers, Memory memory, int instruction)
+        (Registers* registers, MemoryBus* memory, int instruction)
         if (opCode == 1 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
@@ -386,7 +386,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
-        (Registers* registers, Memory memory, int instruction)
+        (Registers* registers, MemoryBus* memory, int instruction)
         if (opCode == 2 && (highDestination || highSource)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
@@ -394,7 +394,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
-        (Registers* registers, Memory memory, int instruction)
+        (Registers* registers, MemoryBus* memory, int instruction)
         if (opCode == 3 && !highDestination) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
@@ -412,13 +412,13 @@ private template hiRegisterOperationsAndBranchExchange(int opCode, bool highDest
     private alias hiRegisterOperationsAndBranchExchange = unsupported;
 }
 
-private void loadPCRelative()(Registers* registers, Memory memory, int instruction) {
+private void loadPCRelative()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     int rd = getBits(instruction, 8, 10);
     int offset = (instruction & 0xFF) * 4;
     int pc = registers.get(Register.PC);
     int address = (pc & ~3) + offset;
-    registers.set(rd, address.rotateRead(memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.get!int(address)));
 }
 
 private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
@@ -428,52 +428,52 @@ private mixin template decodeOpLoadAndStoreWithRegisterOffset() {
     int address = base + offset;
 }
 
-private void loadAndStoreWithRegisterOffset(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STR");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    memory.setInt(address, registers.get(rd));
+    memory.set!int(address, registers.get(rd));
 }
 
-private void loadAndStoreWithRegisterOffset(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    memory.setByte(address, cast(byte) registers.get(rd));
+    memory.set!byte(address, cast(byte) registers.get(rd));
 }
 
-private void loadAndStoreWithRegisterOffset(int code: 2)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, address.rotateRead(memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.get!int(address)));
 }
 
-private void loadAndStoreWithRegisterOffset(int code: 3)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithRegisterOffset(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, memory.getByte(address) & 0xFF);
+    registers.set(rd, memory.get!byte(address) & 0xFF);
 }
 
-private void loadAndStoreSignExtentedByteAndHalfword(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    memory.setShort(address, cast(short) registers.get(rd));
+    memory.set!short(address, cast(short) registers.get(rd));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfword(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDSB");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, memory.getByte(address));
+    registers.set(rd, memory.get!byte(address));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfword(int code: 2)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, address.rotateRead(memory.getShort(address)));
+    registers.set(rd, address.rotateRead(memory.get!short(address)));
 }
 
-private void loadAndStoreSignExtentedByteAndHalfword(int code: 3)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreSignExtentedByteAndHalfword(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDSH");
     mixin decodeOpLoadAndStoreWithRegisterOffset;
-    registers.set(rd, address.rotateReadSigned(memory.getShort(address)));
+    registers.set(rd, address.rotateReadSigned(memory.get!short(address)));
 }
 
 private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
@@ -482,63 +482,63 @@ private mixin template decodeOpLoadAndStoreWithImmediateOffset() {
     int rd = instruction & 0b111;
 }
 
-private void loadAndStoreWithImmediateOffset(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STR");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 4;
-    memory.setInt(address, registers.get(rd));
+    memory.set!int(address, registers.get(rd));
 }
 
-private void loadAndStoreWithImmediateOffset(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 4;
-    registers.set(rd, address.rotateRead(memory.getInt(address)));
+    registers.set(rd, address.rotateRead(memory.get!int(address)));
 }
 
-private void loadAndStoreWithImmediateOffset(int code: 2)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRB");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset;
-    memory.setByte(address, cast(byte) registers.get(rd));
+    memory.set!byte(address, cast(byte) registers.get(rd));
 }
 
-private void loadAndStoreWithImmediateOffset(int code: 3)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreWithImmediateOffset(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset;
-    registers.set(rd, memory.getByte(address) & 0xFF);
+    registers.set(rd, memory.get!byte(address) & 0xFF);
 }
 
-private void loadAndStoreHalfWord(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreHalfWord(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "STRH");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 2;
-    memory.setShort(address, cast(short) registers.get(rd));
+    memory.set!short(address, cast(short) registers.get(rd));
 }
 
-private void loadAndStoreHalfWord(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreHalfWord(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
     mixin decodeOpLoadAndStoreWithImmediateOffset;
     int address = base + offset * 2;
-    registers.set(rd, address.rotateRead(memory.getShort(address)));
+    registers.set(rd, address.rotateRead(memory.get!short(address)));
 }
 
 private template loadAndStoreSPRelative(int code) if (code.getBits(1, 31) == 0) {
     private alias loadAndStoreSPRelative = loadAndStoreSPRelative!(code.checkBit(0));
 }
 
-private void loadAndStoreSPRelative(bool load)(Registers* registers, Memory memory, int instruction) {
+private void loadAndStoreSPRelative(bool load)(Registers* registers, MemoryBus* memory, int instruction) {
     int rd = instruction.getBits(8, 10);
     int offset = (instruction & 0xFF) * 4;
     int sp = registers.get(Register.SP);
     int address = sp + offset;
     static if (load) {
         debug (outputInstructions) registers.logInstruction(instruction, "LDR");
-        registers.set(rd, address.rotateRead(memory.getInt(address)));
+        registers.set(rd, address.rotateRead(memory.get!int(address)));
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "STR");
-        memory.setInt(address, registers.get(rd));
+        memory.set!int(address, registers.get(rd));
     }
 }
 
@@ -546,7 +546,7 @@ private template getRelativeAddresss(int code) if (code.getBits(1, 31) == 0) {
     private alias getRelativeAddresss = getRelativeAddresss!(code.checkBit(0));
 }
 
-private void getRelativeAddresss(bool stackPointer)(Registers* registers, Memory memory, int instruction) {
+private void getRelativeAddresss(bool stackPointer)(Registers* registers, MemoryBus* memory, int instruction) {
     int rd = instruction.getBits(8, 10);
     int offset = (instruction & 0xFF) * 4;
     static if (stackPointer) {
@@ -562,7 +562,7 @@ private template addOffsetToStackPointer(int code) if (code.getBits(1, 31) == 0)
     private alias addOffsetToStackPointer = addOffsetToStackPointer!(code.checkBit(0));
 }
 
-private void addOffsetToStackPointer(bool subtract)(Registers* registers, Memory memory, int instruction) {
+private void addOffsetToStackPointer(bool subtract)(Registers* registers, MemoryBus* memory, int instruction) {
     int offset = (instruction & 0x7F) * 4;
     static if (subtract) {
         debug (outputInstructions) registers.logInstruction(instruction, "ADD");
@@ -577,19 +577,19 @@ private template pushAndPopRegisters(int code) if (code.getBits(2, 31) == 0) {
     private alias pushAndPopRegisters = pushAndPopRegisters!(code.checkBit(1), code.checkBit(0));
 }
 
-private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers* registers, Memory memory, int instruction) {
+private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers* registers, MemoryBus* memory, int instruction) {
     int registerList = instruction & 0xFF;
     int sp = registers.get(Register.SP);
     static if (pop) {
         debug (outputInstructions) registers.logInstruction(instruction, "POP");
         foreach (i; 0 .. 8) {
             if (registerList.checkBit(i)) {
-                registers.set(i, memory.getInt(sp));
+                registers.set(i, memory.get!int(sp));
                 sp += 4;
             }
         }
         static if (pcAndLR) {
-            registers.set(Register.PC, memory.getInt(sp) & ~1);
+            registers.set(Register.PC, memory.get!int(sp) & ~1);
             sp += 4;
         }
     } else {
@@ -598,12 +598,12 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers* registers, M
         int address = sp;
         foreach (i; 0 .. 8) {
             if (registerList.checkBit(i)) {
-                memory.setInt(address, registers.get(i));
+                memory.set!int(address, registers.get(i));
                 address += 4;
             }
         }
         static if (pcAndLR) {
-            memory.setInt(address, registers.get(Register.LR));
+            memory.set!int(address, registers.get(Register.LR));
         }
     }
     registers.set(Register.SP, sp);
@@ -613,7 +613,7 @@ private template multipleLoadAndStore(int code) if (code.getBits(1, 31) == 0) {
     private alias multipleLoadAndStore = multipleLoadAndStore!(code.checkBit(0));
 }
 
-private void multipleLoadAndStore(bool load)(Registers* registers, Memory memory, int instruction) {
+private void multipleLoadAndStore(bool load)(Registers* registers, MemoryBus* memory, int instruction) {
     int rb = instruction.getBits(8, 10);
     int registerList = instruction & 0xFF;
     int address = registers.get(rb);
@@ -621,7 +621,7 @@ private void multipleLoadAndStore(bool load)(Registers* registers, Memory memory
         debug (outputInstructions) registers.logInstruction(instruction, "LDMIA");
         foreach (i; 0 .. 8) {
             if (registerList.checkBit(i)) {
-                registers.set(i, memory.getInt(address));
+                registers.set(i, memory.get!int(address));
                 address += 4;
             }
         }
@@ -629,7 +629,7 @@ private void multipleLoadAndStore(bool load)(Registers* registers, Memory memory
         debug (outputInstructions) registers.logInstruction(instruction, "STMIA");
         foreach (i; 0 .. 8) {
             if (registerList.checkBit(i)) {
-                memory.setInt(address, registers.get(i));
+                memory.set!int(address, registers.get(i));
                 address += 4;
             }
         }
@@ -644,7 +644,7 @@ private void multipleLoadAndStore(bool load)(Registers* registers, Memory memory
     }
 }
 
-private void conditionalBranch(int code)(Registers* registers, Memory memory, int instruction)
+private void conditionalBranch(int code)(Registers* registers, MemoryBus* memory, int instruction)
         if (code >= 0 && code <= 13 ) {
     if (!registers.checkCondition(code)) {
         return;
@@ -662,7 +662,7 @@ private template conditionalBranch(int code) if (code == 14 || code == 15) {
     private alias conditionalBranch = unsupported;
 }
 
-private void softwareInterrupt()(Registers* registers, Memory memory, int instruction) {
+private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 2);
@@ -672,7 +672,7 @@ private void softwareInterrupt()(Registers* registers, Memory memory, int instru
     registers.setMode(Mode.SUPERVISOR);
 }
 
-private void unconditionalBranch()(Registers* registers, Memory memory, int instruction) {
+private void unconditionalBranch()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "B");
     int offset = instruction & 0x7FF;
     // sign extend the offset
@@ -685,7 +685,7 @@ private template longBranchWithLink(int code) if (code.getBits(1, 31) == 0) {
     private alias longBranchWithLink = longBranchWithLink!(code.checkBit(0));
 }
 
-private void longBranchWithLink(bool high)(Registers* registers, Memory memory, int instruction) {
+private void longBranchWithLink(bool high)(Registers* registers, MemoryBus* memory, int instruction) {
     int offset = instruction & 0x7FF;
     static if (high) {
         debug (outputInstructions) registers.logInstruction(instruction, "BL");
@@ -701,7 +701,7 @@ private void longBranchWithLink(bool high)(Registers* registers, Memory memory, 
     }
 }
 
-private void unsupported(Registers* registers, Memory memory, int instruction) {
+private void unsupported(Registers* registers, MemoryBus* memory, int instruction) {
     throw new UnsupportedTHUMBInstructionException(registers.getExecutedPC(), instruction);
 }
 

@@ -6,7 +6,7 @@ import core.sync.mutex;
 import std.algorithm;
 
 import gbaid.cycle;
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.dma;
 import gbaid.interrupt;
 import gbaid.util;
@@ -23,7 +23,10 @@ public class Display {
     private static enum uint BLANKING_RESOLUTION = 68;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
     private CycleSharer4* cycleSharer;
-    private RAM ioRegisters, palette, vram, oam;
+    private IoRegisters* ioRegisters;
+    private Palette* palette;
+    private Vram* vram;
+    private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
     private Thread thread;
@@ -34,10 +37,10 @@ public class Display {
     private int[2] internalAffineReferenceY;
     private Mutex frameLock;
 
-    public this(CycleSharer4* cycleSharer, IORegisters ioRegisters, RAM palette, RAM vram, RAM oam,
+    public this(CycleSharer4* cycleSharer, IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
         this.cycleSharer = cycleSharer;
-        this.ioRegisters = ioRegisters.getMonitored();
+        this.ioRegisters = ioRegisters;
         this.palette = palette;
         this.vram = vram;
         this.oam = oam;
@@ -46,8 +49,10 @@ public class Display {
 
         frameLock = new Mutex();
 
-        ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x28, 8);
-        ioRegisters.addMonitor(&onAffineReferencePointPostWrite, 0x38, 8);
+        ioRegisters.setPostWriteMonitor!0x28(&onAffineReferencePointPostWrite!(2, false));
+        ioRegisters.setPostWriteMonitor!0x2C(&onAffineReferencePointPostWrite!(2, true));
+        ioRegisters.setPostWriteMonitor!0x38(&onAffineReferencePointPostWrite!(3, false));
+        ioRegisters.setPostWriteMonitor!0x3C(&onAffineReferencePointPostWrite!(3, true));
     }
 
     public void start() {
@@ -78,22 +83,23 @@ public class Display {
     }
 
     private void reloadInternalAffineReferencePoint(int layer)() {
-        auto affineLayer = layer - 2;
+        enum affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
-        int dx = ioRegisters.getInt(0x28 + layerAddressOffset) << 4;
+        int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
         internalAffineReferenceX[affineLayer] = dx >> 4;
-        int dy = ioRegisters.getInt(0x2C + layerAddressOffset) << 4;
+        int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
         internalAffineReferenceY[affineLayer] = dy >> 4;
     }
 
-    private void onAffineReferencePointPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
-        int layer = (address >> 4) - 2;
+    private void onAffineReferencePointPostWrite(int layer, bool y)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
+        enum affineLayer = layer - 2;
         newValue <<= 4;
         newValue >>= 4;
-        if (address & 0b100) {
-            internalAffineReferenceY[layer] = newValue;
+        static if (y) {
+            internalAffineReferenceY[affineLayer] = newValue;
         } else {
-            internalAffineReferenceX[layer] = newValue;
+            internalAffineReferenceX[affineLayer] = newValue;
         }
     }
 
@@ -160,14 +166,14 @@ public class Display {
     }
 
     private void lineMode(string type)(int line) {
-        int displayControl = ioRegisters.getShort(0x0);
+        int displayControl = ioRegisters.getUnMonitored!short(0x0);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
 
-        int blendControl = ioRegisters.getShort(0x50);
+        int blendControl = ioRegisters.getUnMonitored!short(0x50);
 
-        short backColor = palette.getShort(0x0) & 0x7FFF;
+        short backColor = palette.get!short(0x0) & 0x7FFF;
 
         static if (type == "Text") {
             lineBackgroundText(line, lines[0], 0, bgEnables);
@@ -219,7 +225,7 @@ public class Display {
         }
 
         int bgControlAddress = 0x8 + (layer << 1);
-        int bgControl = ioRegisters.getShort(bgControlAddress);
+        int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
 
         int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
@@ -227,7 +233,7 @@ public class Display {
         int mapBase = getBits(bgControl, 8, 12) << 11;
         int screenSize = getBits(bgControl, 14, 15);
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
@@ -238,8 +244,8 @@ public class Display {
         int totalHeight = (256 << ((screenSize & 0b10) >> 1)) - 1;
 
         int layerAddressOffset = layer << 2;
-        int xOffset = ioRegisters.getShort(0x10 + layerAddressOffset) & 0x1FF;
-        int yOffset = ioRegisters.getShort(0x12 + layerAddressOffset) & 0x1FF;
+        int xOffset = ioRegisters.getUnMonitored!short(0x10 + layerAddressOffset) & 0x1FF;
+        int yOffset = ioRegisters.getUnMonitored!short(0x12 + layerAddressOffset) & 0x1FF;
 
         int y = (line + yOffset) & totalHeight;
 
@@ -259,8 +265,8 @@ public class Display {
 
         version (UseASM) {
             size_t bufferAddress = cast(size_t) buffer.ptr;
-            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
-            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
 
             enum string x64 =
                 `asm {
@@ -405,7 +411,7 @@ public class Display {
 
                 int mapAddress = map + (lineMapOffset + mapColumn << 1);
 
-                int tile = vram.getShort(mapAddress);
+                int tile = vram.get!short(mapAddress);
 
                 int tileNumber = tile & 0x3FF;
 
@@ -425,14 +431,14 @@ public class Display {
 
                 int paletteAddress = void;
                 if (singlePalette) {
-                    int paletteIndex = vram.getByte(tileAddress) & 0xFF;
+                    int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
                     if (paletteIndex == 0) {
                         buffer[column] = TRANSPARENT;
                         continue;
                     }
                     paletteAddress = paletteIndex << 1;
                 } else {
-                    int paletteIndex = vram.getByte(tileAddress) >> ((sampleColumn & 0b1) << 2) & 0xF;
+                    int paletteIndex = vram.get!byte(tileAddress) >> ((sampleColumn & 0b1) << 2) & 0xF;
                     if (paletteIndex == 0) {
                         buffer[column] = TRANSPARENT;
                         continue;
@@ -440,7 +446,7 @@ public class Display {
                     paletteAddress = (tile >> 8 & 0xF0) + paletteIndex << 1;
                 }
 
-                short color = palette.getShort(paletteAddress) & 0x7FFF;
+                short color = palette.get!short(paletteAddress) & 0x7FFF;
 
                 buffer[column] = color;
             }
@@ -455,8 +461,8 @@ public class Display {
 
             int affineLayer = layer - 2;
             int layerAddressOffset = affineLayer << 4;
-            int pb = ioRegisters.getShort(0x22 + layerAddressOffset);
-            int pd = ioRegisters.getShort(0x26 + layerAddressOffset);
+            int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
+            int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
 
             internalAffineReferenceX[affineLayer] += pb;
             internalAffineReferenceY[affineLayer] += pd;
@@ -464,7 +470,7 @@ public class Display {
         }
 
         int bgControlAddress = 0x8 + (layer << 1);
-        int bgControl = ioRegisters.getShort(bgControlAddress);
+        int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
 
         int tileBase = getBits(bgControl, 2, 3) << 14;
         int mosaic = getBit(bgControl, 6);
@@ -472,7 +478,7 @@ public class Display {
         int displayOverflow = getBit(bgControl, 13);
         int screenSize = getBits(bgControl, 14, 15);
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
@@ -482,10 +488,10 @@ public class Display {
 
         int affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
-        int pa = ioRegisters.getShort(0x20 + layerAddressOffset);
-        int pb = ioRegisters.getShort(0x22 + layerAddressOffset);
-        int pc = ioRegisters.getShort(0x24 + layerAddressOffset);
-        int pd = ioRegisters.getShort(0x26 + layerAddressOffset);
+        int pa = ioRegisters.getUnMonitored!short(0x20 + layerAddressOffset);
+        int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
+        int pc = ioRegisters.getUnMonitored!short(0x24 + layerAddressOffset);
+        int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
 
         int dx = internalAffineReferenceX[affineLayer];
         int dy = internalAffineReferenceY[affineLayer];
@@ -495,8 +501,8 @@ public class Display {
 
         version (UseASM) {
             size_t bufferAddress = cast(size_t) buffer.ptr;
-            size_t vramAddress = cast(size_t) vram.getPointer(0x0);
-            size_t paletteAddress = cast(size_t) palette.getPointer(0x0);
+            size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
+            size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
 
             enum string x64 =
                 `asm {
@@ -656,18 +662,18 @@ public class Display {
 
                 int mapAddress = mapBase + (mapLine << mapLineShift) + mapColumn;
 
-                int tileNumber = vram.getByte(mapAddress) & 0xFF;
+                int tileNumber = vram.get!byte(mapAddress) & 0xFF;
 
                 int tileAddress = tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
 
-                int paletteAddress = (vram.getByte(tileAddress) & 0xFF) << 1;
+                int paletteAddress = (vram.get!byte(tileAddress) & 0xFF) << 1;
 
                 if (paletteAddress == 0) {
                     buffer[column] = TRANSPARENT;
                     continue;
                 }
 
-                short color = palette.getShort(paletteAddress) & 0x7FFF;
+                short color = palette.get!short(paletteAddress) & 0x7FFF;
 
                 buffer[column] = color;
             }
@@ -680,25 +686,25 @@ public class Display {
                 buffer[column] = TRANSPARENT;
             }
 
-            int pb = ioRegisters.getShort(0x22);
-            int pd = ioRegisters.getShort(0x26);
+            int pb = ioRegisters.getUnMonitored!short(0x22);
+            int pd = ioRegisters.getUnMonitored!short(0x26);
 
             internalAffineReferenceX[0] += pb;
             internalAffineReferenceY[0] += pd;
             return;
         }
 
-        int bgControl = ioRegisters.getShort(0xC);
+        int bgControl = ioRegisters.getUnMonitored!short(0xC);
         int mosaic = getBit(bgControl, 6);
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
-        int pa = ioRegisters.getShort(0x20);
-        int pb = ioRegisters.getShort(0x22);
-        int pc = ioRegisters.getShort(0x24);
-        int pd = ioRegisters.getShort(0x26);
+        int pa = ioRegisters.getUnMonitored!short(0x20);
+        int pb = ioRegisters.getUnMonitored!short(0x22);
+        int pc = ioRegisters.getUnMonitored!short(0x24);
+        int pd = ioRegisters.getUnMonitored!short(0x26);
 
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
@@ -719,7 +725,7 @@ public class Display {
 
             int address = x + y * HORIZONTAL_RESOLUTION << 1;
 
-            short color = vram.getShort(address) & 0x7FFF;
+            short color = vram.get!short(address) & 0x7FFF;
             buffer[column] = color;
         }
 
@@ -733,25 +739,25 @@ public class Display {
                 buffer[column] = TRANSPARENT;
             }
 
-            int pb = ioRegisters.getShort(0x22);
-            int pd = ioRegisters.getShort(0x26);
+            int pb = ioRegisters.getUnMonitored!short(0x22);
+            int pd = ioRegisters.getUnMonitored!short(0x26);
 
             internalAffineReferenceX[0] += pb;
             internalAffineReferenceY[0] += pd;
             return;
         }
 
-        int bgControl = ioRegisters.getShort(0xC);
+        int bgControl = ioRegisters.getUnMonitored!short(0xC);
         int mosaic = getBit(bgControl, 6);
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
-        int pa = ioRegisters.getShort(0x20);
-        int pb = ioRegisters.getShort(0x22);
-        int pc = ioRegisters.getShort(0x24);
-        int pd = ioRegisters.getShort(0x26);
+        int pa = ioRegisters.getUnMonitored!short(0x20);
+        int pb = ioRegisters.getUnMonitored!short(0x22);
+        int pc = ioRegisters.getUnMonitored!short(0x24);
+        int pd = ioRegisters.getUnMonitored!short(0x26);
 
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
@@ -774,14 +780,14 @@ public class Display {
 
             int address = x + y * HORIZONTAL_RESOLUTION + addressBase;
 
-            int paletteIndex = vram.getByte(address) & 0xFF;
+            int paletteIndex = vram.get!byte(address) & 0xFF;
             if (paletteIndex == 0) {
                 buffer[column] = TRANSPARENT;
                 continue;
             }
             int paletteAddress = paletteIndex << 1;
 
-            short color = palette.getShort(paletteAddress) & 0x7FFF;
+            short color = palette.get!short(paletteAddress) & 0x7FFF;
             buffer[column] = color;
         }
 
@@ -795,25 +801,25 @@ public class Display {
                 buffer[column] = TRANSPARENT;
             }
 
-            int pb = ioRegisters.getShort(0x22);
-            int pd = ioRegisters.getShort(0x26);
+            int pb = ioRegisters.getUnMonitored!short(0x22);
+            int pd = ioRegisters.getUnMonitored!short(0x26);
 
             internalAffineReferenceX[0] += pb;
             internalAffineReferenceY[0] += pd;
             return;
         }
 
-        int bgControl = ioRegisters.getShort(0xC);
+        int bgControl = ioRegisters.getUnMonitored!short(0xC);
         int mosaic = getBit(bgControl, 6);
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
-        int pa = ioRegisters.getShort(0x20);
-        int pb = ioRegisters.getShort(0x22);
-        int pc = ioRegisters.getShort(0x24);
-        int pd = ioRegisters.getShort(0x26);
+        int pa = ioRegisters.getUnMonitored!short(0x20);
+        int pb = ioRegisters.getUnMonitored!short(0x22);
+        int pc = ioRegisters.getUnMonitored!short(0x24);
+        int pd = ioRegisters.getUnMonitored!short(0x26);
 
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
@@ -836,7 +842,7 @@ public class Display {
 
             int address = x + y * 160 << 1;
 
-            short color = vram.getShort(address) & 0x7FFF;
+            short color = vram.get!short(address) & 0x7FFF;
             buffer[column] = color;
         }
 
@@ -859,14 +865,14 @@ public class Display {
             tileBase += 0x4000;
         }
 
-        int mosaicControl = ioRegisters.getInt(0x4C);
+        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
 
         foreach_reverse (i; 0 .. 128) {
             int attributeAddress = i << 3;
 
-            int attribute0 = oam.getShort(attributeAddress);
+            int attribute0 = oam.get!short(attributeAddress);
             int rotAndScale = getBit(attribute0, 8);
             int doubleSize = getBit(attribute0, 9);
 
@@ -878,7 +884,7 @@ public class Display {
 
             int shape = getBits(attribute0, 14, 15);
 
-            int attribute1 = oam.getShort(attributeAddress + 2);
+            int attribute1 = oam.get!short(attributeAddress + 2);
             int size = getBits(attribute1, 14, 15);
 
             int y = attribute0 & 0xFF;
@@ -963,10 +969,10 @@ public class Display {
                 verticalFlip = 0;
                 int rotAndScaleParameters = getBits(attribute1, 9, 13);
                 int parametersAddress = (rotAndScaleParameters << 5) + 0x6;
-                pa = oam.getShort(parametersAddress);
-                pb = oam.getShort(parametersAddress + 8);
-                pc = oam.getShort(parametersAddress + 16);
-                pd = oam.getShort(parametersAddress + 24);
+                pa = oam.get!short(parametersAddress);
+                pb = oam.get!short(parametersAddress + 8);
+                pc = oam.get!short(parametersAddress + 16);
+                pd = oam.get!short(parametersAddress + 24);
             } else {
                 horizontalFlip = getBit(attribute1, 12);
                 verticalFlip = getBit(attribute1, 13);
@@ -976,7 +982,7 @@ public class Display {
                 pd = 0;
             }
 
-            int attribute2 = oam.getShort(attributeAddress + 4);
+            int attribute2 = oam.get!short(attributeAddress + 4);
             int tileNumber = attribute2 & 0x3FF;
             int priority = getBits(attribute2, 10, 11);
             int paletteNumber = getBits(attribute2, 12, 15);
@@ -1046,20 +1052,20 @@ public class Display {
 
                 int paletteAddress = void;
                 if (singlePalette) {
-                    int paletteIndex = vram.getByte(tileAddress) & 0xFF;
+                    int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
                     if (paletteIndex == 0) {
                         continue;
                     }
                     paletteAddress = paletteIndex << 1;
                 } else {
-                    int paletteIndex = vram.getByte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
+                    int paletteIndex = vram.get!byte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
                     if (paletteIndex == 0) {
                         continue;
                     }
                     paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
                 }
 
-                short color = palette.getShort(0x200 + paletteAddress) & 0x7FFF;
+                short color = palette.get!short(0x200 + paletteAddress) & 0x7FFF;
 
                 int modeFlags = mode << 2 | previousInfo & 0b1000;
                 if (mode == 2) {
@@ -1076,10 +1082,10 @@ public class Display {
         int colorEffect = getBits(blendControl, 6, 7);
 
         int[5] priorities = [
-            ioRegisters.getShort(0x8) & 0b11,
-            ioRegisters.getShort(0xA) & 0b11,
-            ioRegisters.getShort(0xC) & 0b11,
-            ioRegisters.getShort(0xE) & 0b11,
+            ioRegisters.getUnMonitored!short(0x8) & 0b11,
+            ioRegisters.getUnMonitored!short(0xA) & 0b11,
+            ioRegisters.getUnMonitored!short(0xC) & 0b11,
+            ioRegisters.getUnMonitored!short(0xE) & 0b11,
             0
         ];
 
@@ -1096,7 +1102,7 @@ public class Display {
 
             int window = getWindow(windowEnables, objMode, line, column);
             if (window != 0) {
-                int windowControl = ioRegisters.getByte(window);
+                int windowControl = ioRegisters.getUnMonitored!byte(window);
                 layerEnables = windowControl & 0b11111;
                 specialEffectEnabled = checkBit(windowControl, 5);
             } else {
@@ -1183,12 +1189,12 @@ public class Display {
         }
 
         if (windowEnables & 0b1) {
-            int horizontalDimensions = ioRegisters.getShort(0x40);
+            int horizontalDimensions = ioRegisters.getUnMonitored!short(0x40);
 
             int x1 = getBits(horizontalDimensions, 8, 15);
             int x2 = horizontalDimensions & 0xFF;
 
-            int verticalDimensions = ioRegisters.getShort(0x44);
+            int verticalDimensions = ioRegisters.getUnMonitored!short(0x44);
 
             int y1 = getBits(verticalDimensions, 8, 15);
             int y2 = verticalDimensions & 0xFF;
@@ -1199,12 +1205,12 @@ public class Display {
         }
 
         if (windowEnables & 0b10) {
-            int horizontalDimensions = ioRegisters.getShort(0x42);
+            int horizontalDimensions = ioRegisters.getUnMonitored!short(0x42);
 
             int x1 = getBits(horizontalDimensions, 8, 15);
             int x2 = horizontalDimensions & 0xFF;
 
-            int verticalDimensions = ioRegisters.getShort(0x46);
+            int verticalDimensions = ioRegisters.getUnMonitored!short(0x46);
 
             int y1 = getBits(verticalDimensions, 8, 15);
             int y2 = verticalDimensions & 0xFF;
@@ -1228,7 +1234,7 @@ public class Display {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
+        int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
         firstRed += (31 - firstRed) * evy + 8 >> 4;
         firstGreen += (31 - firstGreen) * evy + 8 >> 4;
         firstBlue += (31 - firstBlue) * evy + 8 >> 4;
@@ -1241,7 +1247,7 @@ public class Display {
         int firstGreen = getBits(first, 5, 9);
         int firstBlue = getBits(first, 10, 14);
 
-        int evy = min(ioRegisters.getInt(0x54) & 0b11111, 16);
+        int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
         firstRed -= firstRed * evy + 8 >> 4;
         firstGreen -= firstGreen * evy + 8 >> 4;
         firstBlue -= firstBlue * evy + 8 >> 4;
@@ -1258,7 +1264,7 @@ public class Display {
         int secondGreen = getBits(second, 5, 9);
         int secondBlue = getBits(second, 10, 14);
 
-        int blendAlpha = ioRegisters.getShort(0x52);
+        int blendAlpha = ioRegisters.getUnMonitored!short(0x52);
 
         int eva = min(blendAlpha & 0b11111, 16);
         firstRed = firstRed * eva + 8 >> 4;
@@ -1278,7 +1284,7 @@ public class Display {
     }
 
     private Mode getMode() {
-        int displayControl = ioRegisters.getShort(0x0);
+        int displayControl = ioRegisters.getUnMonitored!short(0x0);
         if (checkBit(displayControl, 7)) {
             return Mode.BLANK;
         }
@@ -1286,9 +1292,9 @@ public class Display {
     }
 
     private void setHBLANK(int line, bool state) {
-        int displayStatus = ioRegisters.getShort(0x4);
+        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
         setBit(displayStatus, 1, state);
-        ioRegisters.setShort(0x4, cast(short) displayStatus);
+        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
         if (state) {
             if (line < VERTICAL_RESOLUTION) {
                 dmas.signalHBLANK();
@@ -1300,15 +1306,15 @@ public class Display {
     }
 
     private void setVCOUNT(int line) {
-        ioRegisters.setByte(0x6, cast(byte) line);
-        int displayStatus = ioRegisters.getShort(0x4);
+        ioRegisters.setUnMonitored!byte(0x6, cast(byte) line);
+        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
         setBit(displayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
         setBit(displayStatus, 2, getBits(displayStatus, 8, 15) == line);
-        ioRegisters.setShort(0x4, cast(short) displayStatus);
+        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
     }
 
     private void checkVMATCH(int line) {
-        int displayStatus = ioRegisters.getInt(0x4);
+        int displayStatus = ioRegisters.getUnMonitored!int(0x4);
         if (checkBit(displayStatus, 5) && getBits(displayStatus, 8, 15) == line) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
@@ -1316,7 +1322,7 @@ public class Display {
 
     private void signalVBLANK() {
         dmas.signalVBLANK();
-        int displayStatus = ioRegisters.getInt(0x4);
+        int displayStatus = ioRegisters.getUnMonitored!int(0x4);
         if (checkBit(displayStatus, 3)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
         }

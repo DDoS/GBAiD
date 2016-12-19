@@ -3,13 +3,13 @@ module gbaid.timer;
 import core.thread;
 
 import gbaid.cycle;
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.interrupt;
 import gbaid.util;
 
 public class Timers {
     private CycleSharer4* cycleSharer;
-    private RAM ioRegisters;
+    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private Thread thread;
     private bool running = false;
@@ -18,15 +18,21 @@ public class Timers {
     private int subTicks(int timer) = 0;
     private ushort ticks(int timer) = 0;
 
-    public this(CycleSharer4* cycleSharer, IORegisters ioRegisters, InterruptHandler interruptHandler) {
+    public this(CycleSharer4* cycleSharer, IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         assert (cycleSharer.cycleBatchSize < ushort.max);
         this.cycleSharer = cycleSharer;
-        this.ioRegisters = ioRegisters.getMonitored();
+        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
-        ioRegisters.addMonitor(new TimerMemoryMonitor!0(), 0x100, 4);
-        ioRegisters.addMonitor(new TimerMemoryMonitor!1(), 0x104, 4);
-        ioRegisters.addMonitor(new TimerMemoryMonitor!2(), 0x108, 4);
-        ioRegisters.addMonitor(new TimerMemoryMonitor!3(), 0x10C, 4);
+
+        ioRegisters.setReadMonitor!0x100(&onRead!0);
+        ioRegisters.setReadMonitor!0x104(&onRead!1);
+        ioRegisters.setReadMonitor!0x108(&onRead!2);
+        ioRegisters.setReadMonitor!0x10C(&onRead!3);
+
+        ioRegisters.setPostWriteMonitor!0x100(&onPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0x104(&onPostWrite!1);
+        ioRegisters.setPostWriteMonitor!0x108(&onPostWrite!2);
+        ioRegisters.setPostWriteMonitor!0x10C(&onPostWrite!3);
     }
 
     public void start() {
@@ -103,25 +109,24 @@ public class Timers {
         return 1 + newTicks / ticksUntilOverflow;
     }
 
-    private class TimerMemoryMonitor(int timer) : MemoryMonitor {
-        protected override void onRead(Memory ioRegisters, int address, int shift, int mask, ref int value) {
-            // Ignore reads that aren't on the counter
-            if (!(mask & 0xFFFF)) {
-                return;
-            }
-            // Write the tick count to the value
-            value = value & ~mask | ticks!timer & mask;
+    private void onRead(int timer)(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
+        // Ignore reads that aren't on the counter
+        if (!(mask & 0xFFFF)) {
+            return;
         }
+        // Write the tick count to the value
+        value = value & ~mask | ticks!timer & mask;
+    }
 
-        protected override void onPostWrite(Memory ioRegisters, int address, int shift, int mask, int oldTimer, int newTimer) {
-            // Update the control and reload value
-            reloadValue!timer = cast(ushort) (newTimer & 0xFFFF);
-            control!timer = newTimer >>> 16;
-            // Reset the timer if the enable bit goes from 0 to 1
-            if (!oldTimer.checkBit(23) && newTimer.checkBit(23)) {
-                subTicks!timer = 0;
-                ticks!timer = reloadValue!timer;
-            }
+    private void onPostWrite(int timer)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldTimer, int newTimer) {
+        // Update the control and reload value
+        reloadValue!timer = cast(ushort) (newTimer & 0xFFFF);
+        control!timer = newTimer >>> 16;
+        // Reset the timer if the enable bit goes from 0 to 1
+        if (!oldTimer.checkBit(23) && newTimer.checkBit(23)) {
+            subTicks!timer = 0;
+            ticks!timer = reloadValue!timer;
         }
     }
 }

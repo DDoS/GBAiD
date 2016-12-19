@@ -7,7 +7,7 @@ import derelict.sdl2.sdl;
 
 import gbaid.display;
 import gbaid.cpu;
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.dma;
 import gbaid.interrupt;
 import gbaid.halt;
@@ -20,7 +20,7 @@ import gbaid.util;
 
 public class GameBoyAdvance {
     private CycleSharer4 cycleSharer;
-    private MainMemory memory;
+    private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
@@ -38,24 +38,29 @@ public class GameBoyAdvance {
 
         cycleSharer = CycleSharer4(4 * 4);
 
-        memory = new MainMemory(biosFile);
+        memory = MemoryBus(biosFile);
 
-        IORegisters ioRegisters = memory.getIORegisters();
+        auto ioRegisters = memory.ioRegisters;
 
-        processor = new ARM7TDMI(&cycleSharer, memory);
+        processor = new ARM7TDMI(&cycleSharer, &memory);
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
         timers = new Timers(&cycleSharer, ioRegisters, interruptHandler);
-        dmas = new DMAs(&cycleSharer, memory, ioRegisters, interruptHandler, haltHandler);
-        display = new Display(&cycleSharer, ioRegisters, memory.getPalette(), memory.getVRAM(), memory.getOAM(), interruptHandler, dmas);
+        dmas = new DMAs(&cycleSharer, &memory, ioRegisters, interruptHandler, haltHandler);
+        display = new Display(&cycleSharer, ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
-        memory.setBIOSProtection(&biosReadGuard, &biosReadFallback);
-        memory.setUnusedMemoryFallBack(&unusedReadFallBack);
+        memory.biosReadGuard = &biosReadGuard;
+        memory.biosReadFallback = &biosReadFallback;
+        memory.unusedMemory = &unusedReadFallBack;
 
-        processor.setEntryPointAddress(MainMemory.BIOS_START);
+        processor.setEntryPointAddress(BIOS_START);
 
         graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
+    }
+
+    @property public MemoryBus* memoryBus() {
+        return &memory;
     }
 
     public void setGamePak(GamePak gamePak) {
@@ -63,7 +68,7 @@ public class GameBoyAdvance {
             throw new Exception("GamePak is null");
         }
         gamePak.setUnusedMemoryFallBack(&unusedReadFallBack);
-        memory.setGamePak(gamePak);
+        //memory.setGamePak(gamePak);
     }
 
     public void useKeyboard() {
@@ -84,10 +89,6 @@ public class GameBoyAdvance {
 
     public void setDisplayUpscalingMode(UpscalingMode mode) {
         graphics.setUpscalingMode(mode);
-    }
-
-    public MainMemory getMemory() {
-        return memory;
     }
 
     public void run() {
@@ -132,7 +133,7 @@ public class GameBoyAdvance {
     }
 
     private bool biosReadGuard(uint address) {
-        if (processor.getProgramCounter() < cast(int) MainMemory.BIOS_SIZE) {
+        if (processor.getProgramCounter() < cast(int) BIOS_SIZE) {
             lastBIOSPreFetch = processor.getPreFetch();
             return true;
         }

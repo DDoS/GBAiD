@@ -5,13 +5,13 @@ import core.time;
 
 import derelict.sdl2.sdl;
 
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.interrupt;
 import gbaid.util;
 
 public class Keypad {
     private static TickDuration INPUT_PERIOD;
-    private RAM ioRegisters;
+    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private InputSource source;
     private Thread thread;
@@ -21,8 +21,8 @@ public class Keypad {
         INPUT_PERIOD = TickDuration.from!"nsecs"(16666667);
     }
 
-    public this(IORegisters ioRegisters, InterruptHandler interruptHandler) {
-        this.ioRegisters = ioRegisters.getMonitored();
+    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
+        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
         source = new Keyboard();
     }
@@ -63,7 +63,7 @@ public class Keypad {
         while (running) {
             timer.start();
             int state = ~updateState();
-            int control = ioRegisters.getShort(0x132);
+            int control = ioRegisters.getUnMonitored!short(0x132);
             if (checkBit(control, 14)) {
                 int requested = control & 0x3FF;
                 if (checkBit(control, 15)) {
@@ -80,7 +80,7 @@ public class Keypad {
 
     private int updateState() {
         int keypadState = ~source.getKeypadState() & 0x3FF;
-        ioRegisters.setShort(0x130, cast(short) keypadState);
+        ioRegisters.setUnMonitored!short(0x130, cast(short) keypadState);
         return keypadState;
     }
 }

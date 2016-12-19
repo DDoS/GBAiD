@@ -104,19 +104,21 @@ public struct IoRegisters {
     private alias PostWriteMonitor = void delegate(IoRegisters*, int, int, int, int, int);
     private MonitoredValue[(IO_REGISTERS_SIZE + int.sizeof - 1) / int.sizeof] monitoredValues;
 
-    public void addReadMonitor(int address)(ReadMonitor monitor) if (IsIntAligned!address) {
+    public void setReadMonitor(int address)(ReadMonitor monitor) if (IsIntAligned!address) {
         monitoredValues[address >> 2].onRead = monitor;
     }
 
-    public void addPreWriteMonitor(int address)(PreWriteMonitor monitor) if (IsIntAligned!address) {
+    public void setPreWriteMonitor(int address)(PreWriteMonitor monitor) if (IsIntAligned!address) {
         monitoredValues[address >> 2].onPreWrite = monitor;
     }
 
-    public void addPostWriteMonitor(int address)(PostWriteMonitor monitor) if (IsIntAligned!address) {
+    public void setPostWriteMonitor(int address)(PostWriteMonitor monitor) if (IsIntAligned!address) {
         monitoredValues[address >> 2].onPostWrite = monitor;
     }
 
-    public T get(T)(uint address) if (IsValidSize!T) {
+    public alias getUnMonitored(T) = get!(T, false);
+
+    public T get(T, bool monitored = true)(uint address) if (IsValidSize!T) {
         alias lsb = Alias!(((1 << SizeBase2Power!T) - 1) ^ 3);
         auto shift = (address & lsb) << 3;
         alias bits = Alias!(cast(uint) ((1L << T.sizeof * 8) - 1));
@@ -124,13 +126,17 @@ public struct IoRegisters {
         auto alignedAddress = address & ~3;
         auto monitor = monitoredValues.ptr + (alignedAddress >> 2);
         auto value = monitor.value;
-        if (monitor.onRead !is null) {
-            monitor.onRead(&this, alignedAddress, shift, mask, value);
+        static if (monitored) {
+            if (monitor.onRead !is null) {
+                monitor.onRead(&this, alignedAddress, shift, mask, value);
+            }
         }
         return cast(T) ((value & mask) >> shift);
     }
 
-    public void set(T)(uint address, T value) if (IsValidSize!T) {
+    public alias setUnMonitored(T) = set!(T, false);
+
+    public void set(T, bool monitored = true)(uint address, T value) if (IsValidSize!T) {
         alias lsb = Alias!(((1 << SizeBase2Power!T) - 1) ^ 3);
         auto shift = (address & lsb) << 3;
         alias bits = Alias!(cast(uint) ((1L << T.sizeof * 8) - 1));
@@ -142,13 +148,18 @@ public struct IoRegisters {
         }
         auto alignedAddress = address & ~3;
         auto monitor = monitoredValues.ptr + (alignedAddress >> 2);
-        if (monitor.onPreWrite is null || monitor.onPreWrite(&this, alignedAddress, shift, mask, intValue)) {
-            auto oldValue = monitor.value;
-            auto newValue = oldValue & ~mask | intValue & mask;
-            monitor.value = newValue;
-            if (monitor.onPostWrite !is null) {
-                monitor.onPostWrite(&this, alignedAddress, shift, mask, oldValue, newValue);
+        static if (monitored) {
+            if (monitor.onPreWrite is null || monitor.onPreWrite(&this, alignedAddress, shift, mask, intValue)) {
+                auto oldValue = monitor.value;
+                auto newValue = oldValue & ~mask | intValue & mask;
+                monitor.value = newValue;
+                if (monitor.onPostWrite !is null) {
+                    monitor.onPostWrite(&this, alignedAddress, shift, mask, oldValue, newValue);
+                }
             }
+        } else {
+            auto oldValue = monitor.value;
+            monitor.value = oldValue & ~mask | intValue & mask;
         }
     }
 
@@ -179,8 +190,8 @@ public struct MemoryBus {
     private Oam _oam;
     //private Memory gamePak;
     private int delegate(uint) _unusedMemory = null;
-    private bool delegate(uint) _biosGuard = null;
-    private int delegate(uint) _biosFallback = null;
+    private bool delegate(uint) _biosReadGuard = null;
+    private int delegate(uint) _biosReadFallback = null;
 
     @disable public this();
 
@@ -221,12 +232,12 @@ public struct MemoryBus {
         _unusedMemory = unusedMemory;
     }
 
-    @property public void biosGuard(bool delegate(uint) biosGuard) {
-        _biosGuard = biosGuard;
+    @property public void biosReadGuard(bool delegate(uint) biosReadGuard) {
+        _biosReadGuard = biosReadGuard;
     }
 
-    @property public void biosFallback(int delegate(uint) biosFallback) {
-        _biosFallback = biosFallback;
+    @property public void biosReadFallback(int delegate(uint) biosReadFallback) {
+        _biosReadFallback = biosReadFallback;
     }
 
     public T get(T)(uint address) if (IsValidSize!T) {
@@ -237,8 +248,8 @@ public struct MemoryBus {
                 if (lowAddress & ~BIOS_MASK) {
                     return cast(T) _unusedMemory(address);
                 }
-                if (!_biosGuard(address)) {
-                    return cast(T) _biosFallback(address);
+                if (!_biosReadGuard(address)) {
+                    return cast(T) _biosReadFallback(address);
                 }
                 return _bios.get!T(address & BIOS_MASK);
             case 0x1:
@@ -265,6 +276,7 @@ public struct MemoryBus {
             case 0x8: .. case 0xE:
                 //address -= GAME_PAK_START;
                 //return gamePak;
+                return 0;
             default:
                 return cast(T) _unusedMemory(address);
         }
@@ -396,9 +408,9 @@ unittest {
 
     static assert(!__traits(compiles, io.addReadMonitor!0x2(&monitor.onRead)));
 
-    io.addReadMonitor!0x14(&monitor.onRead);
-    io.addPreWriteMonitor!0x14(&monitor.onPreWrite);
-    io.addPostWriteMonitor!0x14(&monitor.onPostWrite);
+    io.setReadMonitor!0x14(&monitor.onRead);
+    io.setPreWriteMonitor!0x14(&monitor.onPreWrite);
+    io.setPostWriteMonitor!0x14(&monitor.onPostWrite);
 
     monitor.expected(0x14, 0, 0xFFFFFFFF, 0x2, 0x0, 0x2);
     io.set!int(0x14, 0x2);

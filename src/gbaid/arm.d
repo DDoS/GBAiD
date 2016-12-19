@@ -2,7 +2,7 @@ module gbaid.arm;
 
 import std.string;
 
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.cpu;
 import gbaid.util;
 
@@ -10,7 +10,7 @@ private enum ARM_OPCODE_BIT_COUNT = 12;
 // Using enum leads to a severe performance penalty for some reason...
 private immutable Executor[1 << ARM_OPCODE_BIT_COUNT] ARM_EXECUTORS = createARMTable();
 
-public void executeARMInstruction(Registers* registers, Memory memory, int instruction) {
+public void executeARMInstruction(Registers* registers, MemoryBus* memory, int instruction) {
     if (!registers.checkCondition(instruction >>> 28)) {
         return;
     }
@@ -152,7 +152,7 @@ private template dataProcessing_Imm(int code) if (code.getBits(5, 31) == 0) {
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "AND");
     mixin decodeOperands;
     // Operation
@@ -166,7 +166,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "EOR");
     mixin decodeOperands;
     // Operation
@@ -181,7 +181,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)
 
 
 private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOperands;
     // Operation
@@ -196,7 +196,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSB");
     mixin decodeOperands;
     // Operation
@@ -211,7 +211,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOperands;
     // Operation
@@ -226,7 +226,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOperands;
     // Operation
@@ -242,7 +242,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOperands;
     // Operation
@@ -258,7 +258,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "RSC");
     mixin decodeOperands;
     // Operation
@@ -274,7 +274,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: true)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOperands;
     // Operation
@@ -285,7 +285,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: 
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: true)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "TEQ");
     mixin decodeOperands;
     // Operation
@@ -296,7 +296,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: 
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags: true)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOperands;
     // Operation
@@ -308,7 +308,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags:
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags: true)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOperands;
     // Operation
@@ -320,7 +320,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags:
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ORR");
     mixin decodeOperands;
     // Operation
@@ -334,7 +334,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOperands;
     // Operation
@@ -348,7 +348,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BIC");
     mixin decodeOperands;
     // Operation
@@ -362,7 +362,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MVN");
     mixin decodeOperands;
     // Operation
@@ -411,14 +411,14 @@ private template psrTransfer_Reg(int code) if (code.getBits(2, 31) == 0) {
     private alias psrTransfer_Reg = psrTransfer!(decodeOpPsrTransfer_Reg, code.checkBit(1), code.checkBit(0));
 }
 
-private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: false)(Registers* registers, Memory memory, int instruction)
+private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: false)(Registers* registers, MemoryBus* memory, int instruction)
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MRS");
     int rd = instruction.getBits(12, 15);
     registers.set(rd, registers.get(Register.CPSR));
 }
 
-private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: true)(Registers* registers, Memory memory, int instruction) {
+private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: true)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
     int mask = instruction.getPsrMask() & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xFF : 0));
@@ -426,14 +426,14 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad:
     registers.set(Register.CPSR, cpsr & ~mask | op & mask);
 }
 
-private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: false)(Registers* registers, Memory memory, int instruction)
+private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: false)(Registers* registers, MemoryBus* memory, int instruction)
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MRS");
     int rd = instruction.getBits(12, 15);
     registers.set(rd, registers.get(Register.SPSR));
 }
 
-private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: true)(Registers* registers, Memory memory, int instruction) {
+private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: true)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
     int mask = instruction.getPsrMask() & 0xF00000FF;
@@ -468,7 +468,7 @@ private int getPsrMask(int instruction) {
     return mask;
 }
 
-private void branchAndExchange()(Registers* registers, Memory memory, int instruction) {
+private void branchAndExchange()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BX");
     int address = registers.get(instruction & 0xF);
     if (address & 0b1) {
@@ -492,7 +492,7 @@ private template multiply_Long(int code) if (code.getBits(3, 31) == 0) {
 }
 
 private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: false, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MUL");
     mixin decodeOpMultiply;
     int res = op1 * op2;
@@ -500,7 +500,7 @@ private void multiply(bool long_: false, bool notUnsigned: false, bool accumulat
 }
 
 private void multiply(bool long_: false, bool notUnsigned: false, bool accumulate: true, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MLA");
     mixin decodeOpMultiply;
     int op3 = registers.get(instruction.getBits(12, 15));
@@ -509,7 +509,7 @@ private void multiply(bool long_: false, bool notUnsigned: false, bool accumulat
 }
 
 private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: false, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UMULL");
     mixin decodeOpMultiply;
     int rn = instruction.getBits(12, 15);
@@ -518,7 +518,7 @@ private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate
 }
 
 private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate: true, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UMLAL");
     mixin decodeOpMultiply;
     int rn = instruction.getBits(12, 15);
@@ -528,7 +528,7 @@ private void multiply(bool long_: true, bool notUnsigned: false, bool accumulate
 }
 
 private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: false, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SMULL");
     mixin decodeOpMultiply;
     int rn = instruction.getBits(12, 15);
@@ -537,7 +537,7 @@ private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate:
 }
 
 private void multiply(bool long_: true, bool notUnsigned: true, bool accumulate: true, bool setFlags)
-        (Registers* registers, Memory memory, int instruction) {
+        (Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SMLAL");
     mixin decodeOpMultiply;
     int rn = instruction.getBits(12, 15);
@@ -573,7 +573,7 @@ private template singleDataSwap(int code) if (code.getBits(1, 31) == 0) {
     private alias singleDataSwap = singleDataSwap!(code.checkBit(0));
 }
 
-private void singleDataSwap(bool byteQty)(Registers* registers, Memory memory, int instruction) {
+private void singleDataSwap(bool byteQty)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWP");
     // Decode operands
     int rn = instruction.getBits(16, 19);
@@ -582,12 +582,12 @@ private void singleDataSwap(bool byteQty)(Registers* registers, Memory memory, i
     int address = registers.get(rn);
     // Do memory swap
     static if (byteQty) {
-        int b = memory.getByte(address) & 0xFF;
-        memory.setByte(address, cast(byte) registers.get(rm));
+        int b = memory.get!byte(address) & 0xFF;
+        memory.set!byte(address, cast(byte) registers.get(rm));
         registers.set(rd, b);
     } else {
-        int w = address.rotateRead(memory.getInt(address));
-        memory.setInt(address, registers.get(rm));
+        int w = address.rotateRead(memory.get!int(address));
+        memory.set!int(address, registers.get(rm));
         registers.set(rd, w);
     }
 }
@@ -607,7 +607,7 @@ private template halfwordAndSignedDataTransfer_Imm(int code) if (code.getBits(6,
 }
 
 private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immediate,
-        bool writeBack, bool load, bool signed, bool half)(Registers* registers, Memory memory, int instruction)
+        bool writeBack, bool load, bool signed, bool half)(Registers* registers, MemoryBus* memory, int instruction)
         if ((!load || half || signed) && (load || half && !signed) && (preIncr || !writeBack)) {
     // Decode operands
     int rn = instruction.getBits(16, 19);
@@ -633,15 +633,15 @@ private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immed
         static if (half) {
             static if (signed) {
                 debug (outputInstructions) registers.logInstruction(instruction, "LDRSH");
-                registers.set(rd, address.rotateReadSigned(memory.getShort(address)));
+                registers.set(rd, address.rotateReadSigned(memory.get!short(address)));
             } else {
                 debug (outputInstructions) registers.logInstruction(instruction, "LDRH");
-                registers.set(rd, address.rotateRead(memory.getShort(address)));
+                registers.set(rd, address.rotateRead(memory.get!short(address)));
             }
         } else {
             static if (signed) {
                 debug (outputInstructions) registers.logInstruction(instruction, "LDRSB");
-                registers.set(rd, memory.getByte(address));
+                registers.set(rd, memory.get!byte(address));
             } else {
                 static assert (0);
             }
@@ -649,7 +649,7 @@ private void halfwordAndSignedDataTransfer(bool preIncr, bool upIncr, bool immed
     } else {
         static if (half && !signed) {
             debug (outputInstructions) registers.logInstruction(instruction, "STRH");
-            memory.setShort(address, cast(short) registers.get(rd));
+            memory.set!short(address, cast(short) registers.get(rd));
         } else {
             static assert (0);
         }
@@ -697,7 +697,7 @@ private template singleDataTransfer_Reg(int code) if (code.getBits(5, 31) == 0) 
 }
 
 private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bool byteQty,
-        bool writeBack, bool load)(Registers* registers, Memory memory, int instruction) {
+        bool writeBack, bool load)(Registers* registers, MemoryBus* memory, int instruction) {
     // Decode operands
     int rn = instruction.getBits(16, 19);
     int rd = instruction.getBits(12, 15);
@@ -722,10 +722,10 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
     static if (load) {
         static if (byteQty) {
             debug (outputInstructions) registers.logInstruction(instruction, "LDRB");
-            registers.set(rd, memory.getByte(address) & 0xFF);
+            registers.set(rd, memory.get!byte(address) & 0xFF);
         } else {
             debug (outputInstructions) registers.logInstruction(instruction, "LDR");
-            int data = address.rotateRead(memory.getInt(address));
+            int data = address.rotateRead(memory.get!int(address));
             if (rd == Register.PC) {
                 data &= ~0b11;
             }
@@ -734,10 +734,10 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
     } else {
         static if (byteQty) {
             debug (outputInstructions) registers.logInstruction(instruction, "STRB");
-            memory.setByte(address, cast(byte) registers.get(rd));
+            memory.set!byte(address, cast(byte) registers.get(rd));
         } else {
             debug (outputInstructions) registers.logInstruction(instruction, "STR");
-            memory.setInt(address, registers.get(rd));
+            memory.set!int(address, registers.get(rd));
         }
     }
     // Do post-increment and write back if needed
@@ -757,8 +757,8 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
 }
 
 private static string genBlockDataTransferOperation(bool preIncr, bool load) {
-    auto memoryOp = load ? "registers.set(mode, i, memory.getInt(address));\n" :
-        "memory.setInt(address, registers.get(mode, i));\n";
+    auto memoryOp = load ? "registers.set(mode, i, memory.get!int(address));\n" :
+        "memory.set!int(address, registers.get(mode, i));\n";
     auto incr = "address += 4;\n";
     auto singleOp = preIncr ? incr ~ memoryOp : memoryOp ~ incr;
     auto ops =
@@ -768,7 +768,7 @@ private static string genBlockDataTransferOperation(bool preIncr, bool load) {
             }
          }`;
     // Handle PC specially because we need to align it on load
-    auto pcOp = load ? "registers.set(mode, i, memory.getInt(address) & ~0b11);\n" : memoryOp;
+    auto pcOp = load ? "registers.set(mode, i, memory.get!int(address) & ~0b11);\n" : memoryOp;
     pcOp = preIncr ? incr ~ pcOp : pcOp ~ incr;
     ops ~= `
         immutable i = 15;
@@ -786,7 +786,7 @@ private template blockDataTransfer(int code) if (code.getBits(5, 31) == 0) {
 }
 
 private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
-        bool writeBack, bool load)(Registers* registers, Memory memory, int instruction) {
+        bool writeBack, bool load)(Registers* registers, MemoryBus* memory, int instruction) {
     static if (load) {
         debug (outputInstructions) registers.logInstruction(instruction, "LDM");
     } else {
@@ -835,7 +835,7 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     }
 }
 
-private void branchAndBranchWithLink(int code: 0)(Registers* registers, Memory memory, int instruction) {
+private void branchAndBranchWithLink(int code: 0)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "B");
     int offset = instruction & 0xFFFFFF;
     // sign extend the offset
@@ -845,7 +845,7 @@ private void branchAndBranchWithLink(int code: 0)(Registers* registers, Memory m
     registers.set(Register.PC, pc + offset * 4);
 }
 
-private void branchAndBranchWithLink(int code: 1)(Registers* registers, Memory memory, int instruction) {
+private void branchAndBranchWithLink(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "BL");
     int offset = instruction & 0xFFFFFF;
     // sign extend the offset
@@ -856,7 +856,7 @@ private void branchAndBranchWithLink(int code: 1)(Registers* registers, Memory m
     registers.set(Register.PC, pc + offset * 4);
 }
 
-private void softwareInterrupt()(Registers* registers, Memory memory, int instruction) {
+private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
     registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
     registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 4);
@@ -865,7 +865,7 @@ private void softwareInterrupt()(Registers* registers, Memory memory, int instru
     registers.setMode(Mode.SUPERVISOR);
 }
 
-private void undefined(Registers* registers, Memory memory, int instruction) {
+private void undefined(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UND");
     registers.set(Mode.UNDEFINED, Register.SPSR, registers.get(Register.CPSR));
     registers.set(Mode.UNDEFINED, Register.LR, registers.get(Register.PC) - 4);
@@ -874,7 +874,7 @@ private void undefined(Registers* registers, Memory memory, int instruction) {
     registers.setMode(Mode.UNDEFINED);
 }
 
-private void unsupported(Registers* registers, Memory memory, int instruction) {
+private void unsupported(Registers* registers, MemoryBus* memory, int instruction) {
     throw new UnsupportedARMInstructionException(registers.getExecutedPC(), instruction);
 }
 

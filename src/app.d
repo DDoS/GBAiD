@@ -5,7 +5,6 @@ import std.file;
 import std.path;
 
 import gbaid.system;
-import gbaid.memory;
 import gbaid.gamepak;
 import gbaid.graphics;
 import gbaid.util;

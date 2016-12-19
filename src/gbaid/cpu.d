@@ -9,26 +9,25 @@ import std.string;
 import std.traits;
 
 import gbaid.cycle;
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
     private CycleSharer4* cycleSharer;
-    private Memory memory;
+    private MemoryBus* memory;
     private uint entryPointAddress = 0x0;
     private Thread thread;
     private bool running = false;
-    private Registers* registers;
+    private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
     private int instruction;
     private int decoded;
 
-    public this(CycleSharer4* cycleSharer, Memory memory) {
+    public this(CycleSharer4* cycleSharer, MemoryBus* memory) {
         this.cycleSharer = cycleSharer;
         this.memory = memory;
-        registers = new Registers();
     }
 
     public void setEntryPointAddress(uint entryPointAddress) {
@@ -145,9 +144,9 @@ public class ARM7TDMI {
     private int fetchInstruction() {
         final switch (registers.getSet()) {
             case Set.ARM:
-                return memory.getInt(registers.get(Register.PC));
+                return memory.get!int(registers.get(Register.PC));
             case Set.THUMB:
-                return mirror(memory.getShort(registers.get(Register.PC)));
+                return memory.get!short(registers.get(Register.PC)).mirror();
         }
     }
 
@@ -159,10 +158,10 @@ public class ARM7TDMI {
     private void executeInstruction(int instruction) {
         final switch (registers.getSet()) {
             case Set.ARM:
-                executeARMInstruction(registers, memory, instruction);
+                executeARMInstruction(&registers, memory, instruction);
                 break;
             case Set.THUMB:
-                executeTHUMBInstruction(registers, memory, instruction);
+                executeTHUMBInstruction(&registers, memory, instruction);
                 break;
         }
     }
@@ -550,7 +549,7 @@ public struct Registers {
     }
 }
 
-public alias Executor = void function(Registers*, Memory, int);
+public alias Executor = void function(Registers*, MemoryBus*, int);
 
 public Executor[] createTable(alias nullInstruction)(int bitCount) {
     auto table = new Executor[1 << bitCount];

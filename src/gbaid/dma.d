@@ -4,15 +4,15 @@ import core.atomic : MemoryOrder, atomicLoad, atomicOp;
 import core.thread;
 
 import gbaid.cycle;
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.util;
 
 public class DMAs {
     private CycleSharer4* cycleSharer;
-    private MainMemory memory;
-    private RAM ioRegisters;
+    private MemoryBus* memory;
+    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
     private Thread thread;
@@ -24,18 +24,18 @@ public class DMAs {
     private Timing timing(int channel) = Timing.DISABLED;
     private shared int triggered = 0;
 
-    public this(CycleSharer4* cycleSharer, MainMemory memory, IORegisters ioRegisters,
+    public this(CycleSharer4* cycleSharer, MemoryBus* memory, IoRegisters* ioRegisters,
             InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.cycleSharer = cycleSharer;
         this.memory = memory;
-        this.ioRegisters = ioRegisters.getMonitored();
+        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
         this.haltHandler = haltHandler;
 
-        ioRegisters.addMonitor(&onPostWrite!0, 0xBA, 2);
-        ioRegisters.addMonitor(&onPostWrite!1, 0xC6, 2);
-        ioRegisters.addMonitor(&onPostWrite!2, 0xD2, 2);
-        ioRegisters.addMonitor(&onPostWrite!3, 0xDE, 2);
+        ioRegisters.setPostWriteMonitor!0xB8(&onPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0xC4(&onPostWrite!1);
+        ioRegisters.setPostWriteMonitor!0xD0(&onPostWrite!2);
+        ioRegisters.setPostWriteMonitor!0xDC(&onPostWrite!3);
     }
 
     public void start() {
@@ -69,7 +69,7 @@ public class DMAs {
     }
 
     private void onPostWrite(int channel)
-            (Memory ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
         if (!(mask & 0xFFFF0000)) {
             return;
         }
@@ -78,8 +78,8 @@ public class DMAs {
         timing!channel = newControl.getTiming!channel();
 
         if (!checkBit(oldControl, 31) && checkBit(newControl, 31)) {
-            sourceAddress!channel = ioRegisters.getInt(address - 8).formatSourceAddress!channel();
-            destinationAddress!channel = ioRegisters.getInt(address - 4).formatDestinationAddress!channel();
+            sourceAddress!channel = ioRegisters.getUnMonitored!int(address - 8).formatSourceAddress!channel();
+            destinationAddress!channel = ioRegisters.getUnMonitored!int(address - 4).formatDestinationAddress!channel();
             wordCount!channel = newControl.getWordCount!channel();
             triggerDMAs(Timing.IMMEDIATE);
         }
@@ -147,13 +147,13 @@ public class DMAs {
         int dmaAddress = channel * 0xC + 0xB8;
         if (checkBit(control, 9)) {
             // Repeating DMA
-            wordCount!channel = ioRegisters.getInt(dmaAddress).getWordCount!channel();
+            wordCount!channel = ioRegisters.getUnMonitored!int(dmaAddress).getWordCount!channel();
             if (getBits(control, 5, 6) == 3) {
-                destinationAddress!channel = ioRegisters.getInt(dmaAddress - 4).formatDestinationAddress!channel();
+                destinationAddress!channel = ioRegisters.getUnMonitored!int(dmaAddress - 4).formatDestinationAddress!channel();
             }
         } else {
             // Clear the DMA enable bit
-            ioRegisters.setShort(dmaAddress + 2, cast(short) (control & 0x7FFF));
+            ioRegisters.setUnMonitored!short(dmaAddress + 2, cast(short) (control & 0x7FFF));
             timing!channel = Timing.DISABLED;
         }
         // Trigger DMA end interrupt if enabled
@@ -187,9 +187,9 @@ public class DMAs {
         int increment = type ? 4 : 2;
 
         if (type) {
-            memory.setInt(destinationAddress!channel, memory.getInt(sourceAddress!channel));
+            memory.set!int(destinationAddress!channel, memory.get!int(sourceAddress!channel));
         } else {
-            memory.setShort(destinationAddress!channel, memory.getShort(sourceAddress!channel));
+            memory.set!short(destinationAddress!channel, memory.get!short(sourceAddress!channel));
         }
 
         modifyAddress(sourceAddress!channel, sourceAddressControl, increment);
