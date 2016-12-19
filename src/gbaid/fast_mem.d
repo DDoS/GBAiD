@@ -3,6 +3,7 @@ module gbaid.fast_mem;
 import std.traits : MutableOf, ImmutableOf;
 import std.meta : Alias, AliasSeq, staticIndexOf;
 import std.file : read, FileException;
+import std.format : format;
 
 import gbaid.util;
 
@@ -56,7 +57,9 @@ public struct Memory(uint byteSize, bool readOnly) {
     }
 
     public this(void[] memory) {
-        assert(memory.length == byteSize);
+        if (byteSize != memory.length) {
+            throw new Exception(format("The expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        }
         this.memory[] = memory[];
     }
 
@@ -156,6 +159,162 @@ public struct IoRegisters {
         private PreWriteMonitor onPreWrite = null;
         private PostWriteMonitor onPostWrite = null;
         private int value;
+    }
+}
+
+public alias Bios = Rom!BIOS_SIZE;
+public alias BoardWram = Ram!BOARD_WRAM_SIZE;
+public alias ChipWram = Ram!CHIP_WRAM_SIZE;
+public alias Palette = Ram!PALETTE_SIZE;
+public alias Vram = Ram!VRAM_SIZE;
+public alias Oam = Ram!OAM_SIZE;
+
+public struct MemoryBus {
+    private Bios _bios;
+    private BoardWram _boardWRAM;
+    private ChipWram _chipWRAM;
+    private IoRegisters _ioRegisters;
+    private Palette _palette;
+    private Vram _vram;
+    private Oam _oam;
+    //private Memory gamePak;
+    private int delegate(uint) _unusedMemory = null;
+    private bool delegate(uint) _biosGuard = null;
+    private int delegate(uint) _biosFallback = null;
+
+    @disable public this();
+
+    public this(string biosFile) {
+        _bios = Bios(biosFile);
+    }
+
+    @property public Bios* bios() {
+        return &_bios;
+    }
+
+    @property public BoardWram* boardWRAM() {
+        return &_boardWRAM;
+    }
+
+    @property public ChipWram* chipWRAM() {
+        return &_chipWRAM;
+    }
+
+    @property public IoRegisters* ioRegisters() {
+        return &_ioRegisters;
+    }
+
+    @property public Palette* palette() {
+        return &_palette;
+    }
+
+    @property public Vram* vram() {
+        return &_vram;
+    }
+
+    @property public Oam* oam() {
+        return &_oam;
+    }
+
+    @property public void unusedMemory(int delegate(uint) unusedMemory) {
+        assert (unusedMemory !is null);
+        _unusedMemory = unusedMemory;
+    }
+
+    @property public void biosGuard(bool delegate(uint) biosGuard) {
+        _biosGuard = biosGuard;
+    }
+
+    @property public void biosFallback(int delegate(uint) biosFallback) {
+        _biosFallback = biosFallback;
+    }
+
+    public T get(T)(uint address) if (IsValidSize!T) {
+        auto highAddress = address >>> 24;
+        switch (highAddress) {
+            case 0x0:
+                auto lowAddress = address & 0xFFFFFF;
+                if (lowAddress & ~BIOS_MASK) {
+                    return cast(T) _unusedMemory(address);
+                }
+                if (!_biosGuard(address)) {
+                    return cast(T) _biosFallback(address);
+                }
+                return _bios.get!T(address & BIOS_MASK);
+            case 0x1:
+                return cast(T) _unusedMemory(address);
+            case 0x2:
+                return _boardWRAM.get!T(address & BOARD_WRAM_MASK);
+            case 0x3:
+                return _chipWRAM.get!T(address & CHIP_WRAM_MASK);
+            case 0x4:
+                if (address > IO_REGISTERS_END) {
+                    return cast(T) _unusedMemory(address);
+                }
+                return _ioRegisters.get!T(address & IO_REGISTERS_MASK);
+            case 0x5:
+                return _palette.get!T(address & PALETTE_MASK);
+            case 0x6:
+                address &= VRAM_MASK;
+                if (address & ~VRAM_LOWER_MASK) {
+                    address &= VRAM_HIGH_MASK;
+                }
+                return _vram.get!T(address);
+            case 0x7:
+                return _oam.get!T(address & OAM_MASK);
+            case 0x8: .. case 0xE:
+                //address -= GAME_PAK_START;
+                //return gamePak;
+            default:
+                return cast(T) _unusedMemory(address);
+        }
+    }
+
+    public void set(T)(uint address, T value) if (IsValidSize!T) {
+        auto highAddress = address >>> 24;
+        switch (highAddress) {
+            case 0x2:
+                _boardWRAM.set!T(address & BOARD_WRAM_MASK, value);
+                break;
+            case 0x3:
+                _chipWRAM.set!T(address & CHIP_WRAM_MASK, value);
+                break;
+            case 0x4:
+                if (address <= IO_REGISTERS_END) {
+                    _ioRegisters.set!T(address & IO_REGISTERS_MASK, value);
+                }
+                break;
+            case 0x5:
+                static if (is(T == byte) || is(T == ubyte)) {
+                    _palette.set!short(address & PALETTE_MASK, value << 8 | value & 0xFF);
+                } else {
+                    _palette.set!T(address & PALETTE_MASK, value);
+                }
+                break;
+            case 0x6:
+                address &= VRAM_MASK;
+                if (address & ~VRAM_LOWER_MASK) {
+                    address &= VRAM_HIGH_MASK;
+                }
+                static if (is(T == byte) || is(T == ubyte)) {
+                    if (address < 0x10000 || (ioRegisters.get!short(0x0) & 0b111) > 2 && address < 0x14000) {
+                        _vram.set!short(address, value << 8 | value & 0xFF);
+                    }
+                } else {
+                    _vram.set!T(address, value);
+                }
+                break;
+            case 0x7:
+                static if (!is(T == byte) && !is(T == ubyte)) {
+                    _oam.set!T(address & OAM_MASK, value);
+                }
+                break;
+            case 0x8: .. case 0xE:
+                //address -= GAME_PAK_START;
+                //return gamePak;
+            default:
+                break;
+        }
     }
 }
 
