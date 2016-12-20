@@ -44,11 +44,10 @@ public class ARM7TDMI {
     }
 
     public void stop() {
+        running = false;
         if (thread !is null) {
-            running = false;
-            thread.join();
+            thread.join(false);
             thread = null;
-            cycleSharer.hasStopped!1();
         }
     }
 
@@ -81,6 +80,9 @@ public class ARM7TDMI {
     }
 
     private void run() {
+        scope (exit) {
+            cycleSharer.hasStopped!1();
+        }
         try {
             // initialize the stack pointers
             registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
@@ -100,7 +102,7 @@ public class ARM7TDMI {
                     branchIRQ();
                 }
                 tick();
-                while (haltSignal) {
+                while (haltSignal && running) {
                     cycleSharer.wasteCycles!1();
                 }
                 if (registers.wasPCModified()) {

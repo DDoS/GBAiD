@@ -45,11 +45,10 @@ public class Timers {
     }
 
     public void stop() {
+        running = false;
         if (thread !is null) {
-            running = false;
-            thread.join();
+            thread.join(false);
             thread = null;
-            cycleSharer.hasStopped!3();
         }
     }
 
@@ -58,6 +57,9 @@ public class Timers {
     }
 
     private void run() {
+        scope (exit) {
+            cycleSharer.hasStopped!3();
+        }
         while (running) {
             auto cycles = cast(ushort) cycleSharer.takeBatchCycles!3();
             auto previousOverflows = updateTimer!0(cycles, 0);

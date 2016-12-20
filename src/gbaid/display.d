@@ -65,11 +65,10 @@ public class Display {
     }
 
     public void stop() {
+        running = false;
         if (thread !is null) {
-            running = false;
-            thread.join();
+            thread.join(false);
             thread = null;
-            cycleSharer.hasStopped!0();
         }
     }
 
@@ -104,6 +103,9 @@ public class Display {
     }
 
     private void run() {
+        scope (exit) {
+            cycleSharer.hasStopped!0();
+        }
         while (running) {
             // Acquire the lock on the frame first
             frameLock.lock();

@@ -48,11 +48,10 @@ public class DMAs {
     }
 
     public void stop() {
+        running = false;
         if (thread !is null) {
-            running = false;
-            thread.join();
+            thread.join(false);
             thread = null;
-            cycleSharer.hasStopped!2();
         }
     }
 
@@ -101,6 +100,9 @@ public class DMAs {
     }
 
     private void run() {
+        scope (exit) {
+            cycleSharer.hasStopped!2();
+        }
         while (running) {
             // Check if any of the DMAs are triggered
             if (triggered.atomicLoad!(MemoryOrder.raw) == 0) {
