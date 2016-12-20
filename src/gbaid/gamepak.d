@@ -2,99 +2,230 @@ module gbaid.gamepak;
 
 import core.time : TickDuration;
 
-import std.stdio : File;
-import std.algorithm : min;
+import std.format : format;
+import std.file : read, FileException;
+import std.algorithm.iteration : splitter;
+import std.algorithm.comparison : min;
 import std.typecons : tuple, Tuple;
 import std.traits : EnumMembers;
+import std.meta : Alias;
 
-import gbaid.memory;
+import gbaid.fast_mem;
 import gbaid.util;
 
-public alias SaveConfiguration = GamePak.SaveConfiguration;
+public enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
+public enum uint EEPROM_SIZE = 8 * BYTES_PER_KIB;
+public enum uint ROM_MASK = 0x1FFFFFF;
+public enum uint SAVE_MASK = 0xFFFF;
+public enum uint EEPROM_MASK_HIGH = 0xFFFF00;
+public enum uint EEPROM_MASK_LOW = 0x0;
 
-public class GamePak : MappedMemory {
-    private static enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
-    private static enum uint ROM_MASK = 0x1FFFFFF;
-    private static enum uint SAVE_MASK = 0xFFFF;
-    private static enum uint EEPROM_MASK_HIGH = 0xFFFF00;
-    private static enum uint EEPROM_MASK_LOW = 0x0;
-    private DelegatedROM unusedMemory;
-    private ROM rom;
-    private Memory save;
-    private Memory eeprom;
+public enum SaveMemoryKind : string {
+    EEPROM = "EEPROM_V",
+    SRAM = "SRAM_V",
+    FLASH_512K = "FLASH_V|FLASH512_V",
+    FLASH_1M = "FLASH1M_V",
+    UNKNOWN = ""
+}
+
+public enum SaveConfiguration {
+    SRAM,
+    SRAM_EEPROM,
+    FLASH_512K,
+    FLASH_512K_EEPROM,
+    FLASH_1M,
+    FLASH_1M_EEPROM,
+    EEPROM,
+    AUTO
+}
+
+public alias SaveMemoryConfiguration = Tuple!(SaveMemoryKind, bool);
+
+public enum SaveMemoryConfiguration[SaveConfiguration] saveMemoryForConfiguration = [
+    SaveConfiguration.SRAM: tuple(SaveMemoryKind.SRAM, false),
+    SaveConfiguration.SRAM_EEPROM: tuple(SaveMemoryKind.SRAM, true),
+    SaveConfiguration.FLASH_512K: tuple(SaveMemoryKind.FLASH_512K, false),
+    SaveConfiguration.FLASH_512K_EEPROM: tuple(SaveMemoryKind.FLASH_512K, true),
+    SaveConfiguration.FLASH_1M: tuple(SaveMemoryKind.FLASH_1M, false),
+    SaveConfiguration.FLASH_1M_EEPROM: tuple(SaveMemoryKind.FLASH_1M, true),
+    SaveConfiguration.EEPROM: tuple(SaveMemoryKind.EEPROM, true),
+    SaveConfiguration.AUTO: tuple(SaveMemoryKind.UNKNOWN, false)
+];
+
+public alias GameRom = Rom!MAX_ROM_SIZE;
+public alias Sram = Ram!(32 * BYTES_PER_KIB);
+public alias Flash512K = Flash!(64 * BYTES_PER_KIB);
+public alias Flash1M = Flash!(128 * BYTES_PER_KIB);
+
+private union SaveMemory {
+    private Sram* sram;
+    private Flash512K* flash512k;
+    private Flash1M* flash1m;
+}
+
+public struct GamePak {
+    private GameRom rom;
+    private SaveMemoryKind saveKind;
+    private SaveMemory save;
+    private Eeprom* eeprom;
+    private int delegate(uint) _unusedMemory = null;
     private uint eepromMask;
-    private size_t capacity;
+    private uint actualRomByteSize;
+
+    @disable public this();
 
     public this(string romFile) {
-        unusedMemory = new DelegatedROM(0);
-
-        if (romFile is null) {
-            throw new NullPathException("ROM");
-        }
-        loadROM(romFile);
+        this(romFile, null);
     }
 
     public this(string romFile, string saveFile) {
-        this(romFile);
-
-        if (saveFile is null) {
-            throw new NullPathException("save");
-        }
-        loadSave(saveFile);
-
-        updateCapacity();
+        rom = romFile is null ? GameRom(new byte[0]) : GameRom(readFileAndSize(romFile, actualRomByteSize));
+        //loadSave(saveFile);
     }
 
     public this(string romFile, SaveConfiguration saveConfig) {
-        this(romFile);
+        rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
+        allocateNewSave(saveMemoryForConfiguration[saveConfig]);
+    }
 
-        final switch (saveConfig) {
-            case SaveConfiguration.SRAM:
-                save = new RAM(SaveMemory.SRAM[1]);
-                eeprom = unusedMemory;
-                break;
-            case SaveConfiguration.SRAM_EEPROM:
-                save = new RAM(SaveMemory.SRAM[1]);
-                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
-                break;
-            case SaveConfiguration.FLASH64K:
-                save = new Flash(SaveMemory.FLASH512[1]);
-                eeprom = unusedMemory;
-                break;
-            case SaveConfiguration.FLASH64K_EEPROM:
-                save = new Flash(SaveMemory.FLASH512[1]);
-                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
-                break;
-            case SaveConfiguration.FLASH128K:
-                save = new Flash(SaveMemory.FLASH1M[1]);
-                eeprom = unusedMemory;
-                break;
-            case SaveConfiguration.FLASH128K_EEPROM:
-                save = new Flash(SaveMemory.FLASH1M[1]);
-                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
-                break;
-            case SaveConfiguration.EEPROM:
-                save = unusedMemory;
-                eeprom = new EEPROM(SaveMemory.EEPROM[1]);
-                break;
-            case SaveConfiguration.AUTO:
+    @property public void unusedMemory(int delegate(uint) unusedMemory) {
+        assert (unusedMemory !is null);
+        _unusedMemory = unusedMemory;
+    }
+
+    public T get(T)(uint address) if (IsValidSize!T) {
+        auto highAddress = address >>> 24;
+        switch (highAddress) {
+            case 0x0: .. case 0x4:
+                address &= ROM_MASK;
+                if (address < actualRomByteSize) {
+                    return rom.get!T(address);
+                }
+                return cast(T) _unusedMemory(address);
+            case 0x5:
+                auto lowAddress = address & 0xFFFFFF;
+                if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
+                    static if (is(T == short) || is(T == ushort)) {
+                        return eeprom.get!T(lowAddress & ~eepromMask);
+                    } else {
+                        return cast(T) _unusedMemory(address);
+                    }
+                }
+                goto case 0x4;
+            case 0x6:
+                address &= SAVE_MASK;
+                switch (saveKind) with (SaveMemoryKind) {
+                    case SRAM:
+                        return save.sram.get!T(address);
+                    case FLASH_512K:
+                        static if (is(T == byte) || is(T == ubyte)) {
+                            return save.flash512k.get!T(address);
+                        } else {
+                            return cast(T) _unusedMemory(address);
+                        }
+                    case FLASH_1M:
+                        static if (is(T == byte) || is(T == ubyte)) {
+                            return save.flash1m.get!T(address);
+                        } else {
+                            return cast(T) _unusedMemory(address);
+                        }
+                    default:
+                        return cast(T) _unusedMemory(address);
+                }
+            default:
+                return cast(T) _unusedMemory(address);
+        }
+    }
+
+    public void set(T)(uint address, T value) if (IsValidSize!T) {
+        auto highAddress = address >>> 24;
+        switch (highAddress) {
+            case 0x5:
+                auto lowAddress = address & 0xFFFFFF;
+                if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
+                    static if (is(T == short) || is(T == ushort)) {
+                        return eeprom.set!T(lowAddress & ~eepromMask, value);
+                    }
+                }
+                goto default;
+            case 0x6:
+                address &= SAVE_MASK;
+                switch (saveKind) with (SaveMemoryKind) {
+                    case SRAM:
+                        return save.sram.set!T(address, value);
+                    case FLASH_512K:
+                        static if (is(T == byte) || is(T == ubyte)) {
+                            save.flash512k.set!T(address, value);
+                        }
+                        return;
+                    case FLASH_1M:
+                        static if (is(T == byte) || is(T == ubyte)) {
+                             save.flash1m.set!T(address, value);
+                        }
+                        return;
+                    default:
+                        return;
+                }
+            default:
+                return;
+        }
+    }
+
+    private void allocateNewSave(SaveMemoryConfiguration saveConfig) {
+        saveKind = saveConfig[0];
+        final switch (saveKind) with (SaveMemoryKind) {
+            case UNKNOWN:
                 autoNewSave();
+                return;
+            case SRAM:
+                save.sram = new Sram();
+                break;
+            case FLASH_512K:
+                save.flash512k = new Flash512K(true);
+                break;
+            case FLASH_1M:
+                save.flash1m = new Flash1M(true);
+                break;
+            case EEPROM:
+                save.sram = null;
                 break;
         }
-
-        updateCapacity();
+        eeprom = saveConfig[1] ? new Eeprom(true) : null;
     }
 
-    private void updateCapacity() {
-        capacity = rom.getCapacity() + save.getCapacity() + eeprom.getCapacity();
+    private void autoNewSave() {
+        // Get the ID strings for the save kinds
+        SaveMemoryKind[string] saveKindForId;
+        foreach (string saveKind; EnumMembers!SaveMemoryKind) {
+            foreach (saveId; saveKind.splitter('|')) {
+                if (saveId.length <= 0) {
+                    continue;
+                }
+                saveKindForId[saveId] = cast(SaveMemoryKind) saveKind;
+            }
+        }
+        // Detect save types and size using ID strings in ROM
+        auto foundKind = SaveMemoryKind.SRAM;
+        auto hasEeprom = false;
+        auto romChars = rom.getArray!ubyte(0, actualRomByteSize);
+        for (size_t i = 0; i < romChars.length; i += 4) {
+            foreach (saveId, saveKind; saveKindForId) {
+                if (romChars[i .. min(i + saveId.length, $)] == saveId) {
+                    if (saveKind == SaveMemoryKind.EEPROM) {
+                        hasEeprom = true;
+                    } else {
+                        foundKind = saveKind;
+                    }
+                }
+            }
+        }
+        // Allocate the memory
+        import std.stdio : writeln;
+        writeln(foundKind, ' ', hasEeprom);
+        allocateNewSave(tuple(foundKind, hasEeprom));
     }
 
-    private void loadROM(string romFile) {
-        rom = new ROM(romFile, MAX_ROM_SIZE);
-        eepromMask = rom.getCapacity() > 16 * BYTES_PER_MIB ? EEPROM_MASK_HIGH : EEPROM_MASK_LOW;
-    }
-
-    private void loadSave(string saveFile) {
+    /*private void loadSave(string saveFile) {
         save = unusedMemory;
         eeprom = unusedMemory;
         Memory[] loaded = loadFromFile(saveFile);
@@ -107,84 +238,9 @@ public class GamePak : MappedMemory {
                 throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
             }
         }
-    }
+    }*/
 
-    private void autoNewSave() {
-        // Detect save types and size using ID strings in ROM
-        bool hasSRAM = false, hasFlash = false, hasEEPROM = false;
-        int saveSize = SaveMemory.SRAM[1], eepromSize = SaveMemory.EEPROM[1];
-        char[] romChars = cast(char[]) rom.getArray(0);
-        auto saveTypes = EnumMembers!SaveMemory;
-        for (size_t i = 0; i < romChars.length; i += 4) {
-            foreach (saveType; saveTypes) {
-                string saveID = saveType[0];
-                if (romChars[i .. min(i + saveID.length, romChars.length)] == saveID) {
-                    final switch (saveID) with (SaveMemory) {
-                        case SRAM[0]:
-                            hasSRAM = true;
-                            saveSize = saveType[1];
-                            break;
-                        case EEPROM[0]:
-                            hasEEPROM = true;
-                            saveSize = saveType[1];
-                            break;
-                        case FLASH[0]:
-                        case FLASH512[0]:
-                        case FLASH1M[0]:
-                            hasFlash = true;
-                            saveSize = saveType[1];
-                            break;
-                    }
-                }
-            }
-        }
-        // Allocate the memory
-        if (hasFlash) {
-            save = new Flash(saveSize);
-        } else {
-            save = new RAM(saveSize);
-        }
-        if (hasEEPROM) {
-            eeprom = new EEPROM(eepromSize);
-        } else {
-            eeprom = unusedMemory;
-        }
-    }
-
-    public void setUnusedMemoryFallBack(int delegate(uint) fallback) {
-        unusedMemory.setDelegate(fallback);
-    }
-
-    protected override Memory map(ref uint address) {
-        int highAddress = address >>> 24;
-        int lowAddress = address & 0xFFFFFF;
-        switch (highAddress) {
-            case 0x0: .. case 0x4:
-                address &= ROM_MASK;
-                if (address < rom.getCapacity()) {
-                    return rom;
-                } else {
-                    return unusedMemory;
-                }
-            case 0x5:
-                if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
-                    address = lowAddress & ~eepromMask;
-                    return eeprom;
-                }
-                goto case 0x4;
-            case 0x6:
-                address &= SAVE_MASK;
-                return save;
-            default:
-                return unusedMemory;
-        }
-    }
-
-    public override size_t getCapacity() {
-        return capacity;
-    }
-
-    public void saveSave(string saveFile) {
+    /*public void saveSave(string saveFile) {
         if (cast(EEPROM) eeprom is null) {
             saveToFile(saveFile, save);
         } else if (cast(RAM) save is null && cast(Flash) save is null) {
@@ -192,29 +248,21 @@ public class GamePak : MappedMemory {
         } else {
             saveToFile(saveFile, save, eeprom);
         }
-    }
+    }*/
 
-    private static enum SaveMemory : Tuple!(string, uint) {
-        EEPROM = tuple("EEPROM_V", 8 * BYTES_PER_KIB),
-        SRAM = tuple("SRAM_V", 64 * BYTES_PER_KIB),
-        FLASH = tuple("FLASH_V", 64 * BYTES_PER_KIB),
-        FLASH512 = tuple("FLASH512_V", 64 * BYTES_PER_KIB),
-        FLASH1M = tuple("FLASH1M_V", 128 * BYTES_PER_KIB)
-    }
-
-    public static enum SaveConfiguration {
-        SRAM,
-        SRAM_EEPROM,
-        FLASH64K,
-        FLASH64K_EEPROM,
-        FLASH128K,
-        FLASH128K_EEPROM,
-        EEPROM,
-        AUTO
+    private static void[] readFileAndSize(string file, ref uint size) {
+        try {
+            auto memory = file.read();
+            size = cast(uint) memory.length;
+            return memory;
+        } catch (FileException ex) {
+            throw new Exception("Cannot read memory file", ex);
+        }
     }
 }
 
-public class Flash : RAM {
+public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSize == 128 * BYTES_PER_KIB) {
+    private alias DeviceID = Alias!(byteSize == 64 * BYTES_PER_KIB ? PANASONIC_64K_ID : SANYO_128K_ID);
     private static enum uint PANASONIC_64K_ID = 0x1B32;
     private static enum uint SANYO_128K_ID = 0x1362;
     private static enum uint DEVICE_ID_ADDRESS = 0x1;
@@ -232,7 +280,7 @@ public class Flash : RAM {
     private static TickDuration WRITE_TIMEOUT = 10;
     private static TickDuration ERASE_SECTOR_TIMEOUT = 500;
     private static TickDuration ERASE_ALL_TIMEOUT = 500;
-    private uint deviceID;
+    private void[byteSize] memory;
     private Mode mode = Mode.NORMAL;
     private uint cmdStage = 0;
     private bool timedCMD = false;
@@ -246,39 +294,37 @@ public class Flash : RAM {
         ERASE_ALL_TIMEOUT = TickDuration.from!"msecs"(500);
     }
 
-    public this(size_t capacity) {
-        super(capacity);
-        erase(0, cast(uint) capacity);
-        idChip();
+    public this(bool erase) {
+        if (!erase) {
+            return;
+        }
+        this.erase(0x0, byteSize);
     }
 
     public this(void[] memory) {
-        super(memory);
-        idChip();
+        if (byteSize != memory.length) {
+            throw new Exception(format("The expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        }
+        this.memory[] = memory[];
     }
 
-    public this(string file, uint maxByteSize) {
-        super(file, maxByteSize);
-        idChip();
-    }
-
-    private void idChip() {
-        if (memoryByte.length > 64 * BYTES_PER_KIB) {
-            deviceID = SANYO_128K_ID;
-        } else {
-            deviceID = PANASONIC_64K_ID;
+    public this(string file) {
+        try {
+            this(file.read());
+        } catch (FileException ex) {
+            throw new Exception("Cannot read memory file", ex);
         }
     }
 
-    public override byte getByte(uint address) {
+    public T get(T)(uint address) if (is(T == byte) || is(T == ubyte)) {
         if (mode == Mode.ID && address <= DEVICE_ID_ADDRESS) {
-            return cast(byte) (deviceID >> ((address & 0b1) << 3));
+            return cast(byte) (DeviceID >> ((address & 0b1) << 3));
         }
-        return super.getByte(address + sectorOffset);
+        return *cast(T*) (memory.ptr + address + sectorOffset);
     }
 
-    public override void setByte(uint address, byte b) {
-        uint value = b & 0xFF;
+    public void set(T)(uint address, T value) if (is(T == byte) || is(T == ubyte)) {
+        uint intValue = value & 0xFF;
         // Handle command time-outs
         if (timedCMD && TickDuration.currSystemTick() >= cmdTimeOut) {
             endCMD();
@@ -286,30 +332,30 @@ public class Flash : RAM {
         // Handle commands completions
         switch (mode) {
             case Mode.ERASE_ALL:
-                if (address == 0x0 && value == 0xFF) {
+                if (address == 0x0 && intValue == 0xFF) {
                     endCMD();
                 }
                 break;
             case Mode.ERASE_SECTOR:
-                if (address == eraseSectorTarget && value == 0xFF) {
+                if (address == eraseSectorTarget && intValue == 0xFF) {
                     endCMD();
                 }
                 break;
             case Mode.WRITE_BYTE:
-                super.setByte(address + sectorOffset, b);
+                *cast(byte*) (memory.ptr + address + sectorOffset) = value;
                 endCMD();
                 break;
             case Mode.SWITCH_BANK:
-                sectorOffset = (b & 0b1) << 16;
+                sectorOffset = (value & 0b1) << 16;
                 endCMD();
                 break;
             default:
         }
         // Handle command initialization and execution
-        if (address == FIRST_CMD_ADDRESS && value == FIRST_CMD_START_BYTE) {
+        if (address == FIRST_CMD_ADDRESS && intValue == FIRST_CMD_START_BYTE) {
             cmdStage = 1;
         } else if (cmdStage == 1) {
-            if (address == SECOND_CMD_ADDRESS && value == SECOND_CMD_START_BYTE) {
+            if (address == SECOND_CMD_ADDRESS && intValue == SECOND_CMD_START_BYTE) {
                 cmdStage = 2;
             } else {
                 cmdStage = 0;
@@ -318,7 +364,7 @@ public class Flash : RAM {
             cmdStage = 0;
             // execute
             if (address == FIRST_CMD_ADDRESS) {
-                switch (value) {
+                switch (intValue) {
                     case ID_MODE_START_CMD_BYTE:
                         mode = Mode.ID;
                         break;
@@ -332,7 +378,7 @@ public class Flash : RAM {
                         if (mode == Mode.ERASE) {
                             mode = Mode.ERASE_ALL;
                             startTimedCMD(ERASE_ALL_TIMEOUT);
-                            erase(0x0, cast(uint) getCapacity());
+                            erase(0x0, byteSize);
                         }
                         break;
                     case WRITE_BYTE_CMD_BYTE:
@@ -340,13 +386,13 @@ public class Flash : RAM {
                         startTimedCMD(WRITE_TIMEOUT);
                         break;
                     case SWITCH_BANK_CMD_BYTE:
-                        if (deviceID == SANYO_128K_ID) {
+                        if (DeviceID == SANYO_128K_ID) {
                             mode = Mode.SWITCH_BANK;
                         }
                         break;
                     default:
                 }
-            } else if (!(address & 0xFF0FFF) && value == ERASE_SECTOR_CMD_BYTE && mode == Mode.ERASE) {
+            } else if (!(address & 0xFF0FFF) && intValue == ERASE_SECTOR_CMD_BYTE && mode == Mode.ERASE) {
                 mode = Mode.ERASE_SECTOR;
                 eraseSectorTarget = address;
                 startTimedCMD(ERASE_SECTOR_TIMEOUT);
@@ -366,25 +412,11 @@ public class Flash : RAM {
     }
 
     private void erase(uint address, uint size) {
+        auto byteMemory = cast(byte*) memory.ptr;
         foreach (i; address .. address + size) {
-            super.setByte(i, cast(byte) 0xFF);
+            *byteMemory = cast(byte) 0xFF;
+            byteMemory++;
         }
-    }
-
-    public override short getShort(uint address) {
-        throw new UnsupportedMemoryWidthException(address, 2);
-    }
-
-    public override void setShort(uint address, short s) {
-        throw new UnsupportedMemoryWidthException(address, 2);
-    }
-
-    public override int getInt(uint address) {
-        throw new UnsupportedMemoryWidthException(address, 4);
-    }
-
-    public override void setInt(uint address, int i) {
-        throw new UnsupportedMemoryWidthException(address, 4);
     }
 
     private static enum Mode {
@@ -398,36 +430,42 @@ public class Flash : RAM {
     }
 }
 
-public class EEPROM : RAM {
+public struct Eeprom {
+    private void[EEPROM_SIZE] memory;
     private Mode mode = Mode.NORMAL;
     private int targetAddress = 0;
-    private int currentAddressBit = 0, currentReadBit = 0;
+    private int currentAddressBit = 0;
+    private int currentReadBit = 0;
     private int[3] writeBuffer;
 
-    public this(size_t capacity) {
-        super(capacity);
-        foreach (i; 0 .. capacity) {
-            memoryByte[i] = cast(byte) 0xFF;
+    public this(bool erase) {
+        if (!erase) {
+            return;
+        }
+        auto byteMemory = cast(byte*) memory.ptr;
+        foreach (i; 0 .. memory.length) {
+            *byteMemory = cast(byte) 0xFF;
+            byteMemory++;
         }
     }
 
     public this(void[] memory) {
-        super(memory);
+        if (this.memory.length != memory.length) {
+            throw new Exception(format("The expected a memory size of %dB, but got %dB",
+                    this.memory.length, memory.length));
+        }
+        this.memory[] = memory[];
     }
 
-    public this(string file, uint maxByteSize) {
-        super(file, maxByteSize);
+    public this(string file) {
+        try {
+            this(file.read());
+        } catch (FileException ex) {
+            throw new Exception("Cannot read memory file", ex);
+        }
     }
 
-    public override byte getByte(uint address) {
-        throw new UnsupportedMemoryWidthException(address, 1);
-    }
-
-    public override void setByte(uint address, byte b) {
-        throw new UnsupportedMemoryWidthException(address, 1);
-    }
-
-    public override short getShort(uint address) {
+    public T get(T)(uint address) if (is(T == short) || is (T == ushort)) {
         if (mode == Mode.WRITE) {
             // get write address and offset in write buffer
             int actualAddress = void;
@@ -443,18 +481,19 @@ public class EEPROM : RAM {
             // get data to write from buffer
             long toWrite = 0;
             foreach (int i; 0 .. 64) {
-                toWrite |= ucast(getBit(writeBuffer[i + bitOffset >> 5], i + bitOffset & 31)) << 63 - i;
+                toWrite |= writeBuffer[i + bitOffset >> 5].getBit(i + bitOffset & 31).ucast() << 63 - i;
             }
             // write data
-            super.setInt(actualAddress, cast(int) toWrite);
-            super.setInt(actualAddress + 4, cast(int) (toWrite >>> 32));
+            auto intMemory = cast(int*) (memory.ptr + actualAddress);
+            *intMemory = cast(int) toWrite;
+            *(intMemory + 1) = cast(int) (toWrite >>> 32);
             // end write mode
             mode = Mode.NORMAL;
             targetAddress = 0;
             currentAddressBit = 0;
         } else if (mode == Mode.READ) {
             // get data
-            short data = void;
+            T data = void;
             if (currentReadBit < 4) {
                 // first 4 bits are 0
                 data = 0;
@@ -469,7 +508,8 @@ public class EEPROM : RAM {
                 actualAddress <<= 3;
                 actualAddress += 7 - (currentReadBit - 4 >> 3);
                 // get the data bit
-                data = cast(short) getBit(super.getByte(actualAddress), 7 - (currentReadBit - 4 & 7));
+                auto byteMemory = cast(byte*) (memory.ptr + actualAddress);
+                data = cast(T) (*byteMemory).getBit(7 - (currentReadBit - 4 & 7));
             }
             // end read mode on last bit
             if (currentReadBit == 67) {
@@ -487,12 +527,12 @@ public class EEPROM : RAM {
         return 1;
     }
 
-    public override void setShort(uint address, short s) {
+    public void set(T)(uint address, T value) if (is(T == short) || is (T == ushort)) {
         // get relevant bit
-        int bit = s & 0b1;
+        int bit = value & 0b1;
         // if in write mode, buffer the bit
         if (mode == Mode.WRITE) {
-            setBit(writeBuffer[currentAddressBit - 2 >> 5],  currentAddressBit - 2 & 31, bit);
+            writeBuffer[currentAddressBit - 2 >> 5].setBit(currentAddressBit - 2 & 31, bit);
         }
         // then process as command or address bit
         if (currentAddressBit == 0) {
@@ -509,18 +549,10 @@ public class EEPROM : RAM {
             // set address if we have a command
             if (currentAddressBit < 16) {
                 // max address size if 14 (+2 including command bits)
-                setBit(targetAddress, 33 - currentAddressBit, bit);
+                targetAddress.setBit(33 - currentAddressBit, bit);
             }
             currentAddressBit++;
         }
-    }
-
-    public override int getInt(uint address) {
-        throw new UnsupportedMemoryWidthException(address, 4);
-    }
-
-    public override void setInt(uint address, int i) {
-        throw new UnsupportedMemoryWidthException(address, 4);
     }
 
     private static enum Mode {
@@ -549,7 +581,7 @@ public class EEPROM : RAM {
         n byte groups:
             c bytes: memory
  */
-
+/*
 public Memory[] loadFromFile(string filePath) {
     Memory fromTypeID(int id, void[] contents) {
         final switch (id) {
@@ -622,4 +654,4 @@ public void saveToFile(string filePath, Memory[] memories ...) {
         file.rawWrite(memory.getArray(0));
     }
     // closing is done automatically
-}
+}*/

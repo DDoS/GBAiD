@@ -78,12 +78,8 @@ public void main(string[] args) {
         }
     }
 
-    // Create Game Pak
-    GamePak gamePak = save is null ? new GamePak(rom, memory) : new GamePak(rom, save);
-
     // Create and configure GBA
-    GameBoyAdvance gba = new GameBoyAdvance(bios);
-    gba.setGamePak(gamePak);
+    GameBoyAdvance gba = new GameBoyAdvance(bios, save);
     gba.setDisplayScale(scale);
     gba.setDisplayFilteringMode(filtering);
     gba.setDisplayUpscalingMode(upscaling);
@@ -99,7 +95,7 @@ public void main(string[] args) {
         if (save is null) {
             save = setExtension(rom, SAVE_EXTENSION);
         }
-        gamePak.saveSave(save);
+        //gamePak.saveSave(save);
         writeln("Saved save \"", save, "\"");
     }
 

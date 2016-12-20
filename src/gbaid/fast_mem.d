@@ -5,13 +5,15 @@ import std.meta : Alias, AliasSeq, staticIndexOf;
 import std.file : read, FileException;
 import std.format : format;
 
+import gbaid.gamepak;
 import gbaid.util;
 
 public alias Ram(uint byteSize) = Memory!(byteSize, false);
 public alias Rom(uint byteSize) = Memory!(byteSize, true);
 
 private alias ValidSizes = AliasSeq!(byte, ubyte, short, ushort, int, uint);
-private alias IsValidSize(T) = Alias!(staticIndexOf!(T, ValidSizes) >= 0);
+// TODO: make me private after merger with gamepak.d
+public alias IsValidSize(T) = Alias!(staticIndexOf!(T, ValidSizes) >= 0);
 
 private template SizeBase2Power(T) {
     static if (is(T == byte) || is(T == ubyte)) {
@@ -188,15 +190,16 @@ public struct MemoryBus {
     private Palette _palette;
     private Vram _vram;
     private Oam _oam;
-    //private Memory gamePak;
+    private GamePak _gamePak;
     private int delegate(uint) _unusedMemory = null;
     private bool delegate(uint) _biosReadGuard = null;
     private int delegate(uint) _biosReadFallback = null;
 
     @disable public this();
 
-    public this(string biosFile) {
+    public this(string biosFile, string romFile) {
         _bios = Bios(biosFile);
+        _gamePak = GamePak(romFile);
     }
 
     @property public Bios* bios() {
@@ -227,9 +230,14 @@ public struct MemoryBus {
         return &_oam;
     }
 
+    @property public GamePak* gamePak() {
+        return &_gamePak;
+    }
+
     @property public void unusedMemory(int delegate(uint) unusedMemory) {
         assert (unusedMemory !is null);
         _unusedMemory = unusedMemory;
+        gamePak.unusedMemory = _unusedMemory;
     }
 
     @property public void biosReadGuard(bool delegate(uint) biosReadGuard) {
@@ -274,9 +282,7 @@ public struct MemoryBus {
             case 0x7:
                 return _oam.get!T(address & OAM_MASK);
             case 0x8: .. case 0xE:
-                //address -= GAME_PAK_START;
-                //return gamePak;
-                return 0;
+                return _gamePak.get!T(address - GAME_PAK_START);
             default:
                 return cast(T) _unusedMemory(address);
         }
@@ -322,10 +328,9 @@ public struct MemoryBus {
                 }
                 break;
             case 0x8: .. case 0xE:
-                //address -= GAME_PAK_START;
-                //return gamePak;
-            default:
+                _gamePak.set!T(address - GAME_PAK_START, value);
                 break;
+            default:
         }
     }
 }

@@ -31,14 +31,14 @@ public class GameBoyAdvance {
     private int lastBIOSPreFetch;
     private Graphics graphics;
 
-    public this(string biosFile) {
+    public this(string biosFile, string romFile) {
         if (biosFile is null) {
             throw new NullPathException("BIOS");
         }
 
         cycleSharer = CycleSharer4(4 * 4);
 
-        memory = MemoryBus(biosFile);
+        memory = MemoryBus(biosFile, romFile);
 
         auto ioRegisters = memory.ioRegisters;
 
@@ -61,14 +61,6 @@ public class GameBoyAdvance {
 
     @property public MemoryBus* memoryBus() {
         return &memory;
-    }
-
-    public void setGamePak(GamePak gamePak) {
-        if (gamePak is null) {
-            throw new Exception("GamePak is null");
-        }
-        gamePak.setUnusedMemoryFallBack(&unusedReadFallBack);
-        //memory.setGamePak(gamePak);
     }
 
     public void useKeyboard() {
