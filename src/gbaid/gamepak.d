@@ -203,7 +203,7 @@ public struct GamePak {
         // Detect save types and size using ID strings in ROM
         auto foundKind = SaveMemoryKind.SRAM;
         auto hasEeprom = false;
-        auto romChars = rom.getArray!ubyte(0, actualRomByteSize);
+        auto romChars = rom.getArray!ubyte(0x0, actualRomByteSize);
         for (size_t i = 0; i < romChars.length; i += 4) {
             foreach (saveId, saveKind; saveKindForId) {
                 if (romChars[i .. min(i + saveId.length, $)] == saveId) {
@@ -216,8 +216,6 @@ public struct GamePak {
             }
         }
         // Allocate the memory
-        import std.stdio : writeln;
-        writeln(foundKind, ' ', hasEeprom);
         allocateNewSave(tuple(foundKind, hasEeprom));
     }
 
@@ -301,7 +299,7 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
         if (memory.length > byteSize) {
             throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[0 .. memory.length] = memory[0 .. memory.length];
+        this.memory[0 .. memory.length] = memory[];
     }
 
     public this(string file) {
@@ -450,7 +448,7 @@ public struct Eeprom {
         if (memory.length > byteSize) {
             throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[0 .. memory.length] = memory[0 .. memory.length];
+        this.memory[0 .. memory.length] = memory[];
     }
 
     public this(string file) {

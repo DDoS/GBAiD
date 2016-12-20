@@ -62,7 +62,7 @@ public struct Memory(uint byteSize, bool readOnly) {
         if (memory.length > byteSize) {
             throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[0 .. memory.length] = memory[0 .. memory.length];
+        this.memory[0 .. memory.length] = memory[];
     }
 
     public this(string file) {
