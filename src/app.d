@@ -70,7 +70,7 @@ public void main(string[] args) {
             save = expandPath(save);
         }
         if (exists(save)) {
-            writeln("Loaded save \"", save, "\"");
+            writeln("Using save \"", save, "\"");
         } else {
             save = null;
             writeln("Save file not found, using new save");
@@ -79,7 +79,12 @@ public void main(string[] args) {
     }
 
     // Create and configure GBA
-    GameBoyAdvance gba = new GameBoyAdvance(bios, save);
+    GameBoyAdvance gba = void;
+    if (save is null) {
+        gba = new GameBoyAdvance(bios, rom, memory);
+    } else {
+        gba = new GameBoyAdvance(bios, rom, save);
+    }
     gba.setDisplayScale(scale);
     gba.setDisplayFilteringMode(filtering);
     gba.setDisplayUpscalingMode(upscaling);

@@ -74,10 +74,6 @@ public struct GamePak {
 
     @disable public this();
 
-    public this(string romFile) {
-        this(romFile, null);
-    }
-
     public this(string romFile, string saveFile) {
         rom = romFile is null ? GameRom(new byte[0]) : GameRom(readFileAndSize(romFile, actualRomByteSize));
         //loadSave(saveFile);
@@ -302,10 +298,10 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
     }
 
     public this(void[] memory) {
-        if (byteSize != memory.length) {
-            throw new Exception(format("The expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        if (memory.length > byteSize) {
+            throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[] = memory[];
+        this.memory[0 .. memory.length] = memory[0 .. memory.length];
     }
 
     public this(string file) {
@@ -450,11 +446,11 @@ public struct Eeprom {
     }
 
     public this(void[] memory) {
-        if (this.memory.length != memory.length) {
-            throw new Exception(format("The expected a memory size of %dB, but got %dB",
-                    this.memory.length, memory.length));
+        auto byteSize = this.memory.length;
+        if (memory.length > byteSize) {
+            throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[] = memory[];
+        this.memory[0 .. memory.length] = memory[0 .. memory.length];
     }
 
     public this(string file) {

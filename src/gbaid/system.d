@@ -31,14 +31,19 @@ public class GameBoyAdvance {
     private int lastBIOSPreFetch;
     private Graphics graphics;
 
-    public this(string biosFile, string romFile) {
+    public this(Save)(string biosFile, string romFile, Save save) {
         if (biosFile is null) {
             throw new NullPathException("BIOS");
         }
 
         cycleSharer = CycleSharer4(4 * 4);
 
-        memory = MemoryBus(biosFile, romFile);
+
+        static if (is(Save == SaveConfiguration) || is(Save == string)) {
+            memory = MemoryBus(biosFile, romFile, save);
+        } else {
+            static assert (0, "Expected a SaveConfiguration value or a file path as a string");
+        }
 
         auto ioRegisters = memory.ioRegisters;
 

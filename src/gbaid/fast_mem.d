@@ -59,10 +59,10 @@ public struct Memory(uint byteSize, bool readOnly) {
     }
 
     public this(void[] memory) {
-        if (byteSize != memory.length) {
-            throw new Exception(format("The expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        if (memory.length > byteSize) {
+            throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[] = memory[];
+        this.memory[0 .. memory.length] = memory[0 .. memory.length];
     }
 
     public this(string file) {
@@ -197,9 +197,14 @@ public struct MemoryBus {
 
     @disable public this();
 
-    public this(string biosFile, string romFile) {
+    public this(string biosFile, string romFile, SaveConfiguration saveConfig) {
         _bios = Bios(biosFile);
-        _gamePak = GamePak(romFile);
+        _gamePak = GamePak(romFile, saveConfig);
+    }
+
+    public this(string biosFile, string romFile, string saveFile) {
+        _bios = Bios(biosFile);
+        _gamePak = GamePak(romFile, saveFile);
     }
 
     @property public Bios* bios() {
