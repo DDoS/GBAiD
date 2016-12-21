@@ -100,7 +100,7 @@ public void main(string[] args) {
         if (save is null) {
             save = setExtension(rom, SAVE_EXTENSION);
         }
-        //gamePak.saveSave(save);
+        gba.saveSave(save);
         writeln("Saved save \"", save, "\"");
     }
 

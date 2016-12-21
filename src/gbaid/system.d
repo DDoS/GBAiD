@@ -129,6 +129,10 @@ public class GameBoyAdvance {
         }
     }
 
+    public void saveSave(string saveFile) {
+        memoryBus.gamePak.saveSave(saveFile);
+    }
+
     private bool biosReadGuard(uint address) {
         if (processor.getProgramCounter() < cast(int) BIOS_SIZE) {
             lastBIOSPreFetch = processor.getPreFetch();

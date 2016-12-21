@@ -9,6 +9,10 @@ import std.algorithm.comparison : min;
 import std.typecons : tuple, Tuple;
 import std.traits : EnumMembers;
 import std.meta : Alias;
+import std.stdio : File;
+import std.bitmanip : littleEndianToNative, nativeToLittleEndian;
+import std.digest.crc : CRC32;
+import std.zlib : compress, uncompress;
 
 import gbaid.fast_mem;
 import gbaid.util;
@@ -20,12 +24,15 @@ public enum uint SAVE_MASK = 0xFFFF;
 public enum uint EEPROM_MASK_HIGH = 0xFFFF00;
 public enum uint EEPROM_MASK_LOW = 0x0;
 
-public enum SaveMemoryKind : string {
-    EEPROM = "EEPROM_V",
-    SRAM = "SRAM_V",
-    FLASH_512K = "FLASH_V|FLASH512_V",
-    FLASH_1M = "FLASH1M_V",
-    UNKNOWN = ""
+private enum int SAVE_CURRENT_VERSION = 1;
+private immutable char[8] SAVE_FORMAT_MAGIC = "GBAiDSav";
+
+public enum SaveMemoryKind : int {
+    EEPROM = 0,
+    SRAM = 1,
+    FLASH_512K = 2,
+    FLASH_1M = 3,
+    UNKNOWN = -1
 }
 
 public enum SaveConfiguration {
@@ -39,7 +46,15 @@ public enum SaveConfiguration {
     AUTO
 }
 
+public enum string[][SaveMemoryKind] saveMemoryIdsForKind = [
+    SaveMemoryKind.EEPROM: ["EEPROM_V"],
+    SaveMemoryKind.SRAM: ["SRAM_V"],
+    SaveMemoryKind.FLASH_512K: ["FLASH_V", "FLASH512_V"],
+    SaveMemoryKind.FLASH_1M: ["FLASH1M_V"],
+];
+
 public alias SaveMemoryConfiguration = Tuple!(SaveMemoryKind, bool);
+public alias RawSaveMemory = Tuple!(SaveMemoryKind, ubyte[]);
 
 public enum SaveMemoryConfiguration[SaveConfiguration] saveMemoryForConfiguration = [
     SaveConfiguration.SRAM: tuple(SaveMemoryKind.SRAM, false),
@@ -52,10 +67,17 @@ public enum SaveMemoryConfiguration[SaveConfiguration] saveMemoryForConfiguratio
     SaveConfiguration.AUTO: tuple(SaveMemoryKind.UNKNOWN, false)
 ];
 
+public enum int[SaveMemoryKind] memoryCapacityForSaveKind = [
+    SaveMemoryKind.EEPROM: EEPROM_SIZE,
+    SaveMemoryKind.SRAM: 32 * BYTES_PER_KIB,
+    SaveMemoryKind.FLASH_512K: 64 * BYTES_PER_KIB,
+    SaveMemoryKind.FLASH_1M: 128 * BYTES_PER_KIB,
+];
+
 public alias GameRom = Rom!MAX_ROM_SIZE;
-public alias Sram = Ram!(32 * BYTES_PER_KIB);
-public alias Flash512K = Flash!(64 * BYTES_PER_KIB);
-public alias Flash1M = Flash!(128 * BYTES_PER_KIB);
+public alias Sram = Ram!(memoryCapacityForSaveKind[SaveMemoryKind.SRAM]);
+public alias Flash512K = Flash!(memoryCapacityForSaveKind[SaveMemoryKind.FLASH_512K]);
+public alias Flash1M = Flash!(memoryCapacityForSaveKind[SaveMemoryKind.FLASH_1M]);
 
 private union SaveMemory {
     private Sram* sram;
@@ -75,8 +97,12 @@ public struct GamePak {
     @disable public this();
 
     public this(string romFile, string saveFile) {
-        rom = romFile is null ? GameRom(new byte[0]) : GameRom(readFileAndSize(romFile, actualRomByteSize));
-        //loadSave(saveFile);
+        rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
+        if (saveFile is null) {
+            allocateNewSave(saveMemoryForConfiguration[SaveConfiguration.AUTO]);
+        } else {
+            loadSave(saveFile);
+        }
     }
 
     public this(string romFile, SaveConfiguration saveConfig) {
@@ -126,7 +152,7 @@ public struct GamePak {
                             return cast(T) _unusedMemory(address);
                         }
                     default:
-                        return cast(T) _unusedMemory(address);
+                        assert (0);
                 }
             default:
                 return cast(T) _unusedMemory(address);
@@ -160,7 +186,7 @@ public struct GamePak {
                         }
                         return;
                     default:
-                        return;
+                        assert (0);
                 }
             default:
                 return;
@@ -190,23 +216,16 @@ public struct GamePak {
     }
 
     private void autoNewSave() {
-        // Get the ID strings for the save kinds
-        SaveMemoryKind[string] saveKindForId;
-        foreach (string saveKind; EnumMembers!SaveMemoryKind) {
-            foreach (saveId; saveKind.splitter('|')) {
-                if (saveId.length <= 0) {
-                    continue;
-                }
-                saveKindForId[saveId] = cast(SaveMemoryKind) saveKind;
-            }
-        }
         // Detect save types and size using ID strings in ROM
         auto foundKind = SaveMemoryKind.SRAM;
         auto hasEeprom = false;
         auto romChars = rom.getArray!ubyte(0x0, actualRomByteSize);
-        for (size_t i = 0; i < romChars.length; i += 4) {
-            foreach (saveId, saveKind; saveKindForId) {
-                if (romChars[i .. min(i + saveId.length, $)] == saveId) {
+        foreach (saveKind, saveIds; saveMemoryIdsForKind) {
+            foreach (saveId; saveIds) {
+                for (size_t i = 0; i < romChars.length; i += 4) {
+                    if (romChars[i .. min(i + saveId.length, $)] != saveId) {
+                        continue;
+                    }
                     if (saveKind == SaveMemoryKind.EEPROM) {
                         hasEeprom = true;
                     } else {
@@ -219,30 +238,64 @@ public struct GamePak {
         allocateNewSave(tuple(foundKind, hasEeprom));
     }
 
-    /*private void loadSave(string saveFile) {
-        save = unusedMemory;
-        eeprom = unusedMemory;
-        Memory[] loaded = loadFromFile(saveFile);
-        foreach (Memory memory; loaded) {
-            if (cast(EEPROM) memory) {
-                eeprom = memory;
-            } else if (cast(Flash) memory || cast(RAM) memory) {
-                save = memory;
-            } else {
-                throw new Exception("Unsupported memory save type: " ~ typeid(memory).name);
+    private void loadSave(string saveFile) {
+        void checkSaveMissing(ref bool found) {
+            if (found) {
+                throw new Exception("Found more than one possible save memory in the save file");
+            }
+            found = true;
+        }
+
+        RawSaveMemory[] memories = saveFile.loadSaveFile();
+        bool foundSave = false;
+        bool foundEeprom = false;
+        foreach (memory; memories) {
+            switch (memory[0]) with (SaveMemoryKind) {
+                case SRAM:
+                    checkSaveMissing(foundSave);
+                    save.sram = new Sram(memory[1]);
+                    saveKind = SRAM;
+                    break;
+                case FLASH_512K:
+                    checkSaveMissing(foundSave);
+                    save.flash512k = new Flash512K(memory[1]);
+                    saveKind = FLASH_512K;
+                    break;
+                case FLASH_1M:
+                    checkSaveMissing(foundSave);
+                    save.flash1m = new Flash1M(memory[1]);
+                    saveKind = FLASH_1M;
+                    break;
+                case EEPROM:
+                    checkSaveMissing(foundEeprom);
+                    eeprom = new Eeprom(memory[1]);
+                    break;
+                default:
+                    throw new Exception(format("Unsupported memory save type: %d", memory[0]));
             }
         }
-    }*/
+    }
 
-    /*public void saveSave(string saveFile) {
-        if (cast(EEPROM) eeprom is null) {
-            saveToFile(saveFile, save);
-        } else if (cast(RAM) save is null && cast(Flash) save is null) {
-            saveToFile(saveFile, eeprom);
-        } else {
-            saveToFile(saveFile, save, eeprom);
+    public void saveSave(string saveFile) {
+        RawSaveMemory[] memories;
+        switch (saveKind) with (SaveMemoryKind) {
+            case SRAM:
+                memories ~= tuple(saveKind, save.sram.getArray!ubyte());
+                break;
+            case FLASH_512K:
+                memories ~= tuple(saveKind, save.flash512k.getArray!ubyte());
+                break;
+            case FLASH_1M:
+                memories ~= tuple(saveKind, save.flash1m.getArray!ubyte());
+                break;
+            default:
+                assert (0);
         }
-    }*/
+        if (eeprom !is null) {
+            memories ~= tuple(SaveMemoryKind.EEPROM, eeprom.getArray!ubyte());
+        }
+        memories.saveSaveFile(saveFile);
+    }
 
     private static void[] readFileAndSize(string file, ref uint size) {
         try {
@@ -393,6 +446,10 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
                 erase(address + sectorOffset, 4 * BYTES_PER_KIB);
             }
         }
+    }
+
+    public T[] getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
+        return cast(T[]) memory[address .. address + size];
     }
 
     private void startTimedCMD(TickDuration timeOut) {
@@ -549,6 +606,10 @@ public struct Eeprom {
         }
     }
 
+    public T[] getArray(T)(uint address = 0x0, uint size = EEPROM_SIZE) if (IsValidSize!T) {
+        return cast(T[]) memory[address .. address + size];
+    }
+
     private static enum Mode {
         NORMAL = 2,
         READ = 1,
@@ -557,95 +618,145 @@ public struct Eeprom {
 }
 
 /*
- TODO: fix endianness
-       add magic and version numbers
-       checksums
+All ints are 32 bit and stored in little endian.
+The CRCs are calculated on the little endian values
 
- Format:
+Format:
     Header:
+        8 bytes: magic number (ASCII string of "GBAiDSav")
+        1 int: version number
+        1 int: option flags
         1 int: number of memory objects (n)
-        n int pairs:
-            1 int: memory type ID
-                0: ROM
-                1: RAM
-                2: Flash
-                3: EEPROM
-            1 int: memory capacity in bytes (c)
+        1 int: CRC of the memory header (excludes magic number)
     Body:
-        n byte groups:
-            c bytes: memory
- */
-/*
-public Memory[] loadFromFile(string filePath) {
-    Memory fromTypeID(int id, void[] contents) {
-        final switch (id) {
-            case 0:
-                return new ROM(contents);
-            case 1:
-                return new RAM(contents);
-            case 2:
-                return new Flash(contents);
-            case 3:
-                return new EEPROM(contents);
-        }
+        n memory blocks:
+            1 int: memory kind ID, as per the SaveMemoryKind enum
+            1 int: compressed memory size in bytes (c)
+            c bytes: memory compressed with zlib
+            1 int: CRC of the memory block
+*/
+
+public RawSaveMemory[] loadSaveFile(string filePath) {
+    // Open the file in binary to read
+    auto file = File(filePath, "rb");
+    // Read the first 8 bytes to make sure it is a save file for GBAiD
+    char[8] magicChars;
+    file.rawRead(magicChars);
+    if (magicChars != SAVE_FORMAT_MAGIC) {
+        throw new Exception(format("Not a GBAiD save file (magic number isn't \"%s\" in ASCII)", SAVE_FORMAT_MAGIC));
     }
-    // open file in binary read
-    File file = File(filePath, "rb");
-    // read size of header
-    int[1] lengthBytes = new int[1];
-    // remove once fixed!
-    file.rawRead(lengthBytes);
-    int length = lengthBytes[0];
-    // read type and capacity information
-    int[] header = new int[length * 2];
-    file.rawRead(header);
-    // read memory objects
-    Memory[] memories = new Memory[length];
-    foreach (i; 0 .. length) {
-        int pair = i * 2;
-        int type = header[pair];
-        int capacity = header[pair + 1];
-        void[] contents = new byte[capacity];
-        file.rawRead(contents);
-        memories[i] = fromTypeID(type, contents);
+    // Read the version number
+    auto versionNumber = file.readLittleEndianInt();
+    // Use the proper reader for the version
+    switch (versionNumber) {
+        case 1:
+            return file.readRawSaveMemories!1();
+        default:
+            throw new Exception(format("Unknown save file version: %d", versionNumber));
     }
-    return memories;
-    // closing is done automatically
 }
 
-public void saveToFile(string filePath, Memory[] memories ...) {
-    int toTypeID(Memory memory) {
-        // order matters because of inheritance, check subclasses first
-        if (cast(EEPROM) memory !is null) {
-            return 3;
-        }
-        if (cast(Flash) memory !is null) {
-            return 2;
-        }
-        if (cast(RAM) memory !is null) {
-            return 1;
-        }
-        if (cast(ROM) memory !is null) {
-            return 0;
-        }
-        throw new Exception("Unsupported memory type: " ~ typeid(memory).name);
+private RawSaveMemory[] readRawSaveMemories(int versionNumber: 1)(File file) {
+    CRC32 hash;
+    hash.put([0x1, 0x0, 0x0, 0x0]);
+    // Read the options flags, which are unused in this version
+    auto optionFlags = file.readLittleEndianInt(&hash);
+    // Read the number of save memories in the file
+    auto memoryCount = file.readLittleEndianInt(&hash);
+    // Read the header CRC checksum
+    ubyte[4] headerCrc;
+    file.rawRead(headerCrc);
+    // Check the CRC
+    if (hash.finish() != headerCrc) {
+        throw new Exception("The save file has a corrupted header, the CRCs do not match");
     }
-    // build the header
-    int length = cast(int) memories.length;
-    int[] header = new int[1 + length * 2];
-    header[0] = length;
-    foreach (int i, Memory memory; memories) {
-        int pair = 1 + i * 2;
-        header[pair] = toTypeID(memory);
-        header[pair + 1] = cast(int) memory.getCapacity();
+    // Read all the raw save memories according to the configurations given by the header
+    RawSaveMemory[] saveMemories;
+    foreach (i; 0 .. memoryCount) {
+        saveMemories ~= file.readRawSaveMemory!versionNumber();
     }
-    // open the file in binary write mode
-    File file = File(filePath, "wb");
-    // write the header
-    file.rawWrite(header);
-    // write the rest of the memory objects
-    foreach (Memory memory; memories) {
-        file.rawWrite(memory.getArray(0));
+    return saveMemories;
+}
+
+private RawSaveMemory readRawSaveMemory(int versionNumber: 1)(File file) {
+    CRC32 hash;
+    // Read the memory kind
+    auto kindId = file.readLittleEndianInt(&hash);
+    // Read the memory compressed size
+    auto compressedSize = file.readLittleEndianInt(&hash);
+    // Read the compressed bytes for the memory
+    ubyte[] memoryCompressed;
+    memoryCompressed.length = compressedSize;
+    file.rawRead(memoryCompressed);
+    hash.put(memoryCompressed);
+    // Read the block CRC checksum
+    ubyte[4] blockCrc;
+    file.rawRead(blockCrc);
+    // Check the CRC
+    if (hash.finish() != blockCrc) {
+        throw new Exception("The save file has a corrupted memory block, the CRCs do not match");
     }
-    // closing is done automatically
-}*/
+    // Get the memory length according to the kind
+    auto saveKind = cast(SaveMemoryKind) kindId;
+    auto uncompressedSize = memoryCapacityForSaveKind[saveKind];
+    // Uncompress the memory
+    auto memoryUncompressed = cast(ubyte[]) memoryCompressed.uncompress(uncompressedSize);
+    // Check that the uncompressed length matches the one for the kind
+    if (memoryUncompressed.length != uncompressedSize) {
+        throw new Exception(format("The uncompressed save memory has a different length than its kind: %d != %d",
+                memoryUncompressed.length, uncompressedSize));
+    }
+    return tuple(saveKind, memoryUncompressed);
+}
+
+public void saveSaveFile(RawSaveMemory[] saveMemories, string filePath) {
+    // Open the file in binary to write
+    auto file = File(filePath, "wb");
+    // First we write the magic
+    file.rawWrite(SAVE_FORMAT_MAGIC);
+    // Next we write the current version
+    CRC32 hash;
+    file.writeLittleEndianInt(SAVE_CURRENT_VERSION, &hash);
+    // Next we write the option flags, which are empty since they are unused
+    file.writeLittleEndianInt(0, &hash);
+    // Next we write the number of memory blocks
+    file.writeLittleEndianInt(cast(int) saveMemories.length, &hash);
+    // Next we write the header CRC
+    file.rawWrite(hash.finish());
+    // Finally write the memory blocks
+    foreach (saveMemory; saveMemories) {
+        file.writeRawSaveMemory(saveMemory);
+    }
+}
+
+private void writeRawSaveMemory(File file, RawSaveMemory saveMemory) {
+    CRC32 hash;
+    // Write the memory kind
+    file.writeLittleEndianInt(saveMemory[0], &hash);
+    // Compress the save memory
+    auto memoryCompressed = saveMemory[1].compress();
+    // Write the memory compressed size
+    file.writeLittleEndianInt(cast(int) memoryCompressed.length, &hash);
+    // Write the compressed bytes for the memory
+    hash.put(memoryCompressed);
+    file.rawWrite(memoryCompressed);
+    // Write the block CRC
+    file.rawWrite(hash.finish());
+}
+
+private int readLittleEndianInt(File file, CRC32* hash = null) {
+    ubyte[4] numberBytes;
+    file.rawRead(numberBytes);
+    if (hash !is null) {
+        hash.put(numberBytes);
+    }
+    return numberBytes.littleEndianToNative!int();
+}
+
+private void writeLittleEndianInt(File file, int i, CRC32* hash = null) {
+    auto numberBytes = i.nativeToLittleEndian();
+    if (hash !is null) {
+        hash.put(numberBytes);
+    }
+    file.rawWrite(numberBytes);
+}

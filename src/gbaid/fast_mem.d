@@ -83,7 +83,7 @@ public struct Memory(uint byteSize, bool readOnly) {
         }
     }
 
-    public Mod!(T[]) getArray(T)(uint address, uint size) if (IsValidSize!T) {
+    public Mod!(T[]) getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
         return cast(Mod!(T[])) memory[address .. address + size];
     }
 
