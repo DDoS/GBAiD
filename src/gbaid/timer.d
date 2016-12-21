@@ -13,10 +13,10 @@ public class Timers {
     private InterruptHandler interruptHandler;
     private Thread thread;
     private bool running = false;
-    private ushort reloadValue(int timer) = 0;
-    private int control(int timer) = 0;
-    private int subTicks(int timer) = 0;
-    private ushort ticks(int timer) = 0;
+    mixin privateFields!(ushort, "reloadValue", 0, 4);
+    mixin privateFields!(int, "control", 0, 4);
+    mixin privateFields!(int, "subTicks", 0, 4);
+    mixin privateFields!(ushort, "ticks", 0, 4);
 
     public this(CycleSharer4* cycleSharer, IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         assert (cycleSharer.cycleBatchSize < ushort.max);

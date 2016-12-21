@@ -162,6 +162,19 @@ public char[] x64_to_x86(string x64) {
     return x86;
 }
 
+public mixin template privateFields(T, string name, alias init, uint count) if (count > 0) {
+    import std.conv : to;
+    import std.traits : fullyQualifiedName;
+    mixin("private " ~ T.stringof ~ " " ~ name ~ (count - 1).to!string() ~ " = " ~ fullyQualifiedName!init ~ ";");
+
+    static if (count == 1) {
+        import std.meta : Alias;
+        mixin("private alias " ~ name ~ "(uint index) = Alias!(mixin(\"" ~ name ~ "\" ~ index.to!string()));");
+    } else static if (count > 1) {
+        mixin privateFields!(T, name, init, count - 1);
+    }
+}
+
 public class NullPathException : Exception {
     public this(string type) {
         super("Path to \"" ~ type ~ "\" file is null");

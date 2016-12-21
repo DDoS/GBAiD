@@ -17,11 +17,11 @@ public class DMAs {
     private HaltHandler haltHandler;
     private Thread thread;
     private bool running = false;
-    private int sourceAddress(int channel) = 0;
-    private int destinationAddress(int channel) = 0;
-    private int wordCount(int channel) = 0;
-    private int control(int channel) = 0;
-    private Timing timing(int channel) = Timing.DISABLED;
+    mixin privateFields!(int, "sourceAddress", 0, 4);
+    mixin privateFields!(int, "destinationAddress", 0, 4);
+    mixin privateFields!(int, "wordCount", 0, 4);
+    mixin privateFields!(int, "control", 0, 4);
+    mixin privateFields!(Timing, "timing", Timing.DISABLED, 4);
     private shared int triggered = 0;
 
     public this(CycleSharer4* cycleSharer, MemoryBus* memory, IoRegisters* ioRegisters,
