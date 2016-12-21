@@ -60,11 +60,11 @@ public class DMAs {
     }
 
     public void signalVBLANK() {
-        triggerDMAs(Timing.VBLANK);
+        triggerDMAs!(Timing.VBLANK);
     }
 
     public void signalHBLANK() {
-        triggerDMAs(Timing.HBLANK);
+        triggerDMAs!(Timing.HBLANK);
     }
 
     private void onPostWrite(int channel)
@@ -80,22 +80,26 @@ public class DMAs {
             sourceAddress!channel = ioRegisters.getUnMonitored!int(address - 8).formatSourceAddress!channel();
             destinationAddress!channel = ioRegisters.getUnMonitored!int(address - 4).formatDestinationAddress!channel();
             wordCount!channel = newControl.getWordCount!channel();
-            triggerDMAs(Timing.IMMEDIATE);
+            triggerDMAs!(Timing.IMMEDIATE);
         }
     }
 
-    private void triggerDMAs(Timing trigger) {
+    private void triggerDMAs(Timing trigger)() {
         if (timing!0 == trigger) {
             triggered.atomicOp!"|="(1 << 0);
+            haltHandler.dmaHalt(true);
         }
         if (timing!1 == trigger) {
             triggered.atomicOp!"|="(1 << 1);
+            haltHandler.dmaHalt(true);
         }
         if (timing!2 == trigger) {
             triggered.atomicOp!"|="(1 << 2);
+            haltHandler.dmaHalt(true);
         }
         if (timing!3 == trigger) {
             triggered.atomicOp!"|="(1 << 3);
+            haltHandler.dmaHalt(true);
         }
     }
 
@@ -109,21 +113,17 @@ public class DMAs {
                 cycleSharer.wasteCycles!2();
                 continue;
             }
-            // Halt for the DMAs
-            haltHandler.dmaHalt(true);
             // Run the triggered DMAs with respect to priority
             if (updateChannel!0()) {
-                break;
+                continue;
             }
             if (updateChannel!1()) {
-                break;
+                continue;
             }
             if (updateChannel!2()) {
-                break;
+                continue;
             }
-            if (updateChannel!3()) {
-                break;
-            }
+            updateChannel!3();
         }
     }
 
@@ -163,14 +163,14 @@ public class DMAs {
             interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
         }
 
-        triggered.atomicOp!"&="(~(1 << channel));
+        haltHandler.dmaHalt(triggered.atomicOp!"&="(~(1 << channel)) != 0);
     }
 
     private void copyWord(int channel)() {
         int control = control!channel;
 
         int type = void;
-        int sourceAddressControl = getBits(control, 7, 8);
+        int sourceAddressControl = control.getBits(7, 8);
         int destinationAddressControl = void;
         switch (timing!channel) with(Timing) {
             case DISABLED:
@@ -183,7 +183,7 @@ public class DMAs {
                 // TODO: implement video capture
                 assert (0);
             default:
-                type = getBit(control, 10);
+                type = control.getBit(10);
                 destinationAddressControl = getBits(control, 5, 6);
         }
         int increment = type ? 4 : 2;
@@ -194,8 +194,8 @@ public class DMAs {
             memory.set!short(destinationAddress!channel, memory.get!short(sourceAddress!channel));
         }
 
-        modifyAddress(sourceAddress!channel, sourceAddressControl, increment);
-        modifyAddress(destinationAddress!channel, destinationAddressControl, increment);
+        sourceAddress!channel.modifyAddress(sourceAddressControl, increment);
+        destinationAddress!channel.modifyAddress(destinationAddressControl, increment);
         wordCount!channel--;
     }
 }
@@ -244,7 +244,7 @@ private int formatDestinationAddress(int channel)(int destinationAddress) {
 }
 
 private int getWordCount(int channel)(int fullControl) {
-    if (getBits(fullControl, 28, 29) == 3) {
+    if (fullControl.getBits(28, 29) == 3) {
         static if (channel == 1 || channel == 2) {
             return 0x4;
         } else static if (channel == 3) {
@@ -270,10 +270,10 @@ private int getWordCount(int channel)(int fullControl) {
 }
 
 private Timing getTiming(int channel)(int fullControl) {
-    if (!checkBit(fullControl, 31)) {
+    if (!fullControl.checkBit(31)) {
         return Timing.DISABLED;
     }
-    final switch (getBits(fullControl, 28, 29)) {
+    final switch (fullControl.getBits(28, 29)) {
         case 0:
             return Timing.IMMEDIATE;
         case 1:
