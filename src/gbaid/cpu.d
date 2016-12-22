@@ -487,7 +487,7 @@ public struct Registers {
 
     debug (outputInstructions) {
         private enum uint queueMaxSize = 1024;
-        private Executor[queueMaxSize] lastInstructions = new Executor[queueMaxSize];
+        private Executor[queueMaxSize] lastInstructions;
         private uint queueSize = 0;
         private uint index = 0;
 

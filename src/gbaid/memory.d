@@ -43,6 +43,8 @@ private template SizeBase2Power(T) {
     }
 }
 
+private alias AlignmentMask(T) = Alias!(~((1 << SizeBase2Power!T) - 1));
+
 public enum SaveConfiguration {
     SRAM,
     SRAM_EEPROM,
@@ -122,21 +124,22 @@ public struct Memory(uint byteSize, bool readOnly) {
     }
 
     public Mod!T get(T)(uint address) if (IsValidSize!T) {
-        return *cast(Mod!T*) (memory.ptr + address);
+        return *cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T));
     }
 
     static if (!readOnly) {
         public void set(T)(uint address, T v) if (IsValidSize!T) {
-            *cast(Mod!T*) (memory.ptr + address) = v;
+            *cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T)) = v;
         }
     }
 
     public Mod!(T[]) getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
+        address &= AlignmentMask!T;
         return cast(Mod!(T[])) memory[address .. address + size];
     }
 
     public Mod!(T*) getPointer(T)(uint address) if (IsValidSize!T) {
-        return cast(Mod!T*) (memory.ptr + address);
+        return cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T));
     }
 
     private template Mod(T) {
