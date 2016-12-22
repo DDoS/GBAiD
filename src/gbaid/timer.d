@@ -3,7 +3,7 @@ module gbaid.timer;
 import core.thread;
 
 import gbaid.cycle;
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.util;
 

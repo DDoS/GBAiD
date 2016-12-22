@@ -4,7 +4,7 @@ import core.atomic : MemoryOrder, atomicLoad, atomicOp;
 import core.thread;
 
 import gbaid.cycle;
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.util;

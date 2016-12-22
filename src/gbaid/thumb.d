@@ -3,7 +3,7 @@ module gbaid.thumb;
 import std.conv;
 import std.string;
 
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.cpu;
 import gbaid.util;
 

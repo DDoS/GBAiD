@@ -7,14 +7,14 @@ import derelict.sdl2.sdl;
 
 import gbaid.display;
 import gbaid.cpu;
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.dma;
 import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.input;
 import gbaid.timer;
 import gbaid.cycle;
-import gbaid.gamepak;
+import gbaid.save;
 import gbaid.graphics;
 import gbaid.util;
 

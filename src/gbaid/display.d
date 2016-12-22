@@ -6,7 +6,7 @@ import core.sync.mutex;
 import std.algorithm;
 
 import gbaid.cycle;
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.dma;
 import gbaid.interrupt;
 import gbaid.util;

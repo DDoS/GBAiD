@@ -1,6 +1,6 @@
 module gbaid.interrupt;
 
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.cpu;
 import gbaid.halt;
 import gbaid.util;

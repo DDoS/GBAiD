@@ -9,6 +9,9 @@ import std.range;
 import std.algorithm;
 import std.conv : to;
 
+public enum uint BYTES_PER_KIB = 1024;
+public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
+
 public uint ucast(byte v) {
     return cast(uint) v & 0xFF;
 }

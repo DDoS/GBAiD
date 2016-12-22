@@ -9,7 +9,7 @@ import std.string;
 import std.traits;
 
 import gbaid.cycle;
-import gbaid.fast_mem;
+import gbaid.memory;
 import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
