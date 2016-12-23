@@ -81,27 +81,6 @@ public class Display {
         frameLock.unlock();
     }
 
-    private void reloadInternalAffineReferencePoint(int layer)() {
-        enum affineLayer = layer - 2;
-        int layerAddressOffset = affineLayer << 4;
-        int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
-        internalAffineReferenceX[affineLayer] = dx >> 4;
-        int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
-        internalAffineReferenceY[affineLayer] = dy >> 4;
-    }
-
-    private void onAffineReferencePointPostWrite(int layer, bool y)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
-        enum affineLayer = layer - 2;
-        newValue <<= 4;
-        newValue >>= 4;
-        static if (y) {
-            internalAffineReferenceY[affineLayer] = newValue;
-        } else {
-            internalAffineReferenceX[affineLayer] = newValue;
-        }
-    }
-
     private void run() {
         scope (exit) {
             cycleSharer.hasStopped!0();
@@ -110,30 +89,23 @@ public class Display {
             // Acquire the lock on the frame first
             frameLock.lock();
             foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
-                // Draw visible lines now
-                setHBLANK(line, false);
+                // Start with the events for a line starting to be drawn
+                startLineDrawEvents(line);
+                // First draw the line if it is visible
                 if (line < VERTICAL_RESOLUTION) {
                     drawLine(line);
                 }
-                // Wait 4 cycles for each dot in the visible part of the line
+                // Wait 4 cycles for each dot drawn
                 foreach (dot; 0 .. HORIZONTAL_RESOLUTION) {
                     cycleSharer.takeCycles!0(4);
                 }
-                // Update the control flags dependent on the line being drawn
-                setVCOUNT(line);
-                checkVMATCH(line);
-                // Check if we are done drawing the frame
+                // Now do the events for a line drawing ending
+                endLineDrawEvents(line);
+                // Release the lock on the frame if we are done drawing it
                 if (line == VERTICAL_RESOLUTION - 1) {
-                    // Release the lock on the frame
                     frameLock.unlock();
-                    // We also need to reset the transformation data
-                    reloadInternalAffineReferencePoint!2();
-                    reloadInternalAffineReferencePoint!3();
-                    // Finally we need to signal the end of the drawing
-                    signalVBLANK();
                 }
-                // Wait 4 cycles for each dot in the blank part of the line
-                setHBLANK(line, true);
+                // Wait 4 cycles for each dot blanked
                 foreach (dot; 0 .. BLANKING_RESOLUTION) {
                     cycleSharer.takeCycles!0(4);
                 }
@@ -1293,41 +1265,82 @@ public class Display {
         return cast(Mode) (displayControl & 0b111);
     }
 
-    private void setHBLANK(int line, bool state) {
-        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
-        setBit(displayStatus, 1, state);
-        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
-        if (state) {
-            if (line < VERTICAL_RESOLUTION) {
-                dmas.signalHBLANK();
-            }
-            if (checkBit(displayStatus, 4)) {
-                interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
-            }
+    private void reloadInternalAffineReferencePoint(int layer)() {
+        enum affineLayer = layer - 2;
+        int layerAddressOffset = affineLayer << 4;
+        int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
+        internalAffineReferenceX[affineLayer] = dx >> 4;
+        int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
+        internalAffineReferenceY[affineLayer] = dy >> 4;
+    }
+
+    private void onAffineReferencePointPostWrite(int layer, bool y)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
+        enum affineLayer = layer - 2;
+        newValue <<= 4;
+        newValue >>= 4;
+        static if (y) {
+            internalAffineReferenceY[affineLayer] = newValue;
+        } else {
+            internalAffineReferenceX[affineLayer] = newValue;
         }
     }
 
-    private void setVCOUNT(int line) {
-        ioRegisters.setUnMonitored!byte(0x6, cast(byte) line);
+    private void endLineDrawEvents(int line) {
+        // Set the HBLANK bit in the display status
         int displayStatus = ioRegisters.getUnMonitored!short(0x4);
-        setBit(displayStatus, 0, line >= VERTICAL_RESOLUTION && line < VERTICAL_TIMING_RESOLUTION - 1);
-        setBit(displayStatus, 2, getBits(displayStatus, 8, 15) == line);
+        displayStatus.setBit(1, true);
         ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
+        // Run the DMAs if within the visible vertical lines
+        if (line < VERTICAL_RESOLUTION) {
+            dmas.signalHBLANK();
+        }
+        // Trigger the HBLANK interrupt if enabled
+        if (displayStatus.checkBit(4)) {
+            interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
+        }
     }
 
-    private void checkVMATCH(int line) {
-        int displayStatus = ioRegisters.getUnMonitored!int(0x4);
-        if (checkBit(displayStatus, 5) && getBits(displayStatus, 8, 15) == line) {
+    private void startLineDrawEvents(int line) {
+        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
+        // Clear the HBLANK bit in the display status
+        displayStatus.setBit(1, false);
+        // Update the VCOUNT register
+        ioRegisters.setUnMonitored!byte(0x6, cast(byte) line);
+        // Update the VMATCH bit in the display status
+        auto vmatch = displayStatus.getBits(8, 15) == line;
+        displayStatus.setBit(2, vmatch);
+        // Trigger the VMATCH interrupt if enabled
+        if (vmatch && displayStatus.checkBit(5)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
-    }
-
-    private void signalVBLANK() {
-        dmas.signalVBLANK();
-        int displayStatus = ioRegisters.getUnMonitored!int(0x4);
-        if (checkBit(displayStatus, 3)) {
-            interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
+        // Check for VBLANK start or end
+        switch (line) {
+            case VERTICAL_RESOLUTION: {
+                // Set the VBLANK bit in the display status
+                displayStatus.setBit(0, true);
+                // Signal VBLANK to the DMAs
+                dmas.signalVBLANK();
+                // Trigger the VBLANK interrupt if enabled
+                if (displayStatus.checkBit(3)) {
+                    interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
+                }
+                break;
+            }
+            case VERTICAL_TIMING_RESOLUTION - 1: {
+                // Clear the VBLANK bit
+                displayStatus.setBit(0, false);
+                // Reload the transformation data
+                reloadInternalAffineReferencePoint!2();
+                reloadInternalAffineReferencePoint!3();
+                break;
+            }
+            default: {
+                break;
+            }
         }
+        // Write back the modified display status
+        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
     }
 
     private static enum Mode {
