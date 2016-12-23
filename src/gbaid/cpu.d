@@ -97,14 +97,34 @@ public class ARM7TDMI {
             branch();
             // start ticking
             while (running) {
+                // Take the cycles for the instruction
                 cycleSharer.takeCycles!1(2);
-                if (irqSignal) {
+                // Check for an IRQ
+                if (irqSignal && !registers.getFlag(CPSRFlag.I)) {
+                    // Branch to the handler
                     branchIRQ();
+                    continue;
                 }
-                tick();
+                // Fetch the next instruction in the pipeline
+                int nextInstruction = fetchInstruction();
+                // Decode the second instruction in the pipeline
+                int nextDecoded = instruction;
+                instruction = nextInstruction;
+                // Execute the last instruction in the pipeline
+                final switch (registers.getSet()) {
+                    case Set.ARM:
+                        executeARMInstruction(&registers, memory, decoded);
+                        break;
+                    case Set.THUMB:
+                        executeTHUMBInstruction(&registers, memory, decoded);
+                        break;
+                }
+                decoded = nextDecoded;
+                // Wait if the instruction caused a halt
                 while (haltSignal && running) {
                     cycleSharer.wasteCycles!1();
                 }
+                // Then go to the next instruction
                 if (registers.wasPCModified()) {
                     branch();
                 } else {
@@ -127,20 +147,9 @@ public class ARM7TDMI {
         registers.incrementPC();
         // fetch second and decode first
         int nextInstruction = fetchInstruction();
-        decoded = decodeInstruction(instruction);
+        decoded = instruction;
         instruction = nextInstruction;
         registers.incrementPC();
-    }
-
-    private void tick() {
-        // fetch
-        int nextInstruction = fetchInstruction();
-        // decode
-        int nextDecoded = decodeInstruction(instruction);
-        instruction = nextInstruction;
-        // execute
-        executeInstruction(decoded);
-        decoded = nextDecoded;
     }
 
     private int fetchInstruction() {
@@ -152,26 +161,7 @@ public class ARM7TDMI {
         }
     }
 
-    private int decodeInstruction(int instruction) {
-        // Does nothing since this only helps if we execute fetch/decode and execute in parallel
-        return instruction;
-    }
-
-    private void executeInstruction(int instruction) {
-        final switch (registers.getSet()) {
-            case Set.ARM:
-                executeARMInstruction(&registers, memory, instruction);
-                break;
-            case Set.THUMB:
-                executeTHUMBInstruction(&registers, memory, instruction);
-                break;
-        }
-    }
-
     private void branchIRQ() {
-        if (registers.getFlag(CPSRFlag.I)) {
-            return;
-        }
         registers.set(Mode.IRQ, Register.SPSR, registers.get(Register.CPSR));
         registers.set(Mode.IRQ, Register.LR, registers.getExecutedPC() + 4);
         registers.set(Register.PC, 0x18);
