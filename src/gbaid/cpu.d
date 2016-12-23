@@ -97,7 +97,7 @@ public class ARM7TDMI {
             branch();
             // start ticking
             while (running) {
-                cycleSharer.takeCycles!1(4);
+                cycleSharer.takeCycles!1(2);
                 if (irqSignal) {
                     branchIRQ();
                 }
