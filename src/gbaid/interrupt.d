@@ -19,18 +19,29 @@ public class InterruptHandler {
     }
 
     public void requestInterrupt(int source) {
-        if ((ioRegisters.getUnMonitored!int(0x208) & 0b1) && checkBit(ioRegisters.getUnMonitored!short(0x200), source)) {
-            int flags = ioRegisters.getUnMonitored!short(0x202);
-            setBit(flags, source, 1);
-            ioRegisters.setUnMonitored!short(0x202, cast(short) flags);
-            processor.irq(true);
-            haltHandler.softwareHalt(false);
+        if (!(ioRegisters.getUnMonitored!int(0x208) & 0b1)
+                || !ioRegisters.getUnMonitored!short(0x200).checkBit(source)) {
+            return;
         }
+        int flags = ioRegisters.getUnMonitored!short(0x202);
+        flags.setBit(source, 1);
+        ioRegisters.setUnMonitored!short(0x202, cast(short) flags);
+        processor.irq(true);
+        haltHandler.softwareHalt(false);
     }
 
     private bool onInterruptAcknowledgePreWrite(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
-        value = ioRegisters.getUnMonitored!int(0x200) & ~value | value & 0xFFFF;
-        processor.irq((value & 0x3FFF0000) != 0);
+        enum int acknowledgeMask = 0x3FFF0000;
+        // Ignore a write outside the acknowledge mask
+        if (!(mask & acknowledgeMask)) {
+            return true;
+        }
+        // Mask out all but the bits of the interrupt acknowledge register
+        int acknowledgeValue = value & acknowledgeMask;
+        // Invert the mask to clear the bits of the interrupts being acknowledged, and merge with the lower half
+        value = ioRegisters.getUnMonitored!int(0x200) & acknowledgeMask & ~acknowledgeValue | value & 0xFFFF;
+        // Trigger another IRQ if the bit is still set and it is enabled
+        processor.irq((value & (value << 16) & acknowledgeMask) != 0);
         return true;
     }
 

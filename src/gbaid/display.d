@@ -1287,10 +1287,9 @@ public class Display {
     }
 
     private void endLineDrawEvents(int line) {
-        // Set the HBLANK bit in the display status
         int displayStatus = ioRegisters.getUnMonitored!short(0x4);
+        // Set the HBLANK bit in the display status
         displayStatus.setBit(1, true);
-        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
         // Run the DMAs if within the visible vertical lines
         if (line < VERTICAL_RESOLUTION) {
             dmas.signalHBLANK();
@@ -1299,6 +1298,8 @@ public class Display {
         if (displayStatus.checkBit(4)) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
         }
+        // Write back the modified display status
+        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
     }
 
     private void startLineDrawEvents(int line) {
