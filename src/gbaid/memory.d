@@ -381,8 +381,8 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
     }
 
     private void erase(uint address, uint size) {
-        auto byteMemory = cast(byte*) memory.ptr;
-        foreach (i; address .. address + size) {
+        auto byteMemory = cast(byte*) (memory.ptr + address);
+        foreach (i; 0 .. size) {
             *byteMemory = cast(byte) 0xFF;
             byteMemory++;
         }
