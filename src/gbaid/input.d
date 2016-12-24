@@ -1,8 +1,5 @@
 module gbaid.input;
 
-import core.thread;
-import core.time;
-
 import derelict.sdl2.sdl;
 
 import gbaid.memory;
@@ -10,71 +7,57 @@ import gbaid.interrupt;
 import gbaid.util;
 
 public class Keypad {
-    private static TickDuration INPUT_PERIOD;
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private InputSource source;
-    private Thread thread;
-    private bool running = false;
-
-    static this() {
-        INPUT_PERIOD = TickDuration.from!"nsecs"(16666667);
-    }
+    private bool created = false;
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
-        source = new Keyboard();
+        changeInput!Keyboard();
     }
 
     public void changeInput(T : InputSource)() {
         if (!(cast(T) source)) {
-            if (running) {
+            if (created) {
                 source.destroy();
             }
             source = new T();
-            if (running) {
+            if (created) {
                 source.create();
             }
         }
     }
 
-    public void start() {
-        if (thread is null) {
-            thread = new Thread(&run);
-            thread.name = "Input";
-            running = true;
-            source.create();
-            thread.start();
+    public void create() {
+        if (created) {
+            return;
         }
+        source.create();
+        created = true;
     }
 
-    public void stop() {
-        if (thread !is null) {
-            running = false;
-            thread.join();
-            source.destroy();
-            thread = null;
+    public void destroy() {
+        if (!created) {
+            return;
         }
+        source.destroy();
+        created = false;
     }
 
-    private void run() {
-        Timer timer = new Timer();
-        while (running) {
-            timer.start();
-            int state = ~updateState();
-            int control = ioRegisters.getUnMonitored!short(0x132);
-            if (checkBit(control, 14)) {
-                int requested = control & 0x3FF;
-                if (checkBit(control, 15)) {
-                    if ((state & requested) == requested) {
-                        interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
-                    }
-                } else if (state & requested) {
+    public void poll() {
+        int state = ~updateState();
+        int control = ioRegisters.getUnMonitored!short(0x132);
+        if (checkBit(control, 14)) {
+            int requested = control & 0x3FF;
+            if (checkBit(control, 15)) {
+                if ((state & requested) == requested) {
                     interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
                 }
+            } else if (state & requested) {
+                interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
             }
-            timer.waitUntil(INPUT_PERIOD);
         }
     }
 

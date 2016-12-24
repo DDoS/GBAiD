@@ -1,5 +1,7 @@
 module gbaid.system;
 
+import core.time : TickDuration;
+
 import std.stdio;
 import std.string;
 
@@ -96,18 +98,30 @@ public class GameBoyAdvance {
             SDL_Init(0);
 
             graphics.create();
+            keypad.create();
 
-            keypad.start();
             timers.start();
             dmas.start();
             processor.start();
             display.start();
 
+            enum cyclesPerFrame = (240 + 68) * (160 + 68) * 4;
+            enum nanoSecondsPerCycle = 2.0 ^^ -24 * 1e9;
+            auto frameDuration = TickDuration.from!"nsecs"(cast(size_t) (cyclesPerFrame * nanoSecondsPerCycle));
+
+            Timer timer = new Timer();
             while (!graphics.isCloseRequested()) {
-                enum cyclesForAFrame = (240 + 68) * (160 + 68) * 4;
-                cycleSharer.giveCycles(cyclesForAFrame);
+                timer.start();
+                // Give enough cycles to emulate an entire frame
+                cycleSharer.giveCycles(cyclesPerFrame);
+                // Update the input state
+                keypad.poll();
+                // Wait for the frame to be drawn, then display it
                 graphics.draw(display.lockFrame());
                 display.unlockFrame();
+                // Wait for the actual duration of a frame
+                timer.waitUntil(frameDuration);
+                // Wait for any cycles not depleted
                 cycleSharer.waitForCycleDepletion();
             }
 
@@ -120,9 +134,9 @@ public class GameBoyAdvance {
             processor.stop();
             dmas.stop();
             timers.stop();
-            keypad.stop();
             display.stop();
 
+            keypad.destroy();
             graphics.destroy();
 
             SDL_Quit();

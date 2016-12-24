@@ -2,6 +2,8 @@ module gbaid.cycle;
 
 import core.atomic : MemoryOrder, atomicLoad, atomicStore, atomicOp;
 import core.thread : Thread;
+import core.sync.condition : Condition;
+import core.sync.mutex : Mutex;
 
 import gbaid.util;
 
@@ -11,6 +13,7 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
     public struct CycleSharer {
         private enum sharersMask = (1 << numberOfSharers) - 1;
         public immutable size_t cycleBatchSize;
+        private Condition waitForCycles;
         private shared size_t availableCycles = 0;
         private ptrdiff_t distributedCycle(uint id) = 0;
         private shared uint doneWithBatch = 0;
@@ -22,6 +25,9 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
 
         public void giveCycles(size_t cycles) {
             availableCycles.atomicOp!"+="(cycles);
+            synchronized (waitForCycles.mutex) {
+                waitForCycles.notifyAll();
+            }
         }
 
         public void waitForCycleDepletion() {
@@ -68,11 +74,22 @@ public template CycleSharer(uint numberOfSharers) if (numberOfSharers > 0 && num
                 enum barrierCondition = id == 0 ? "!= (sharersMask & runningSharers.atomicLoad!(MemoryOrder.raw))"
                         : "& sharerBit";
                 while (mixin("doneWithBatch.atomicLoad!(MemoryOrder.raw) " ~ barrierCondition)) {
+                    // Let the other sharers go to sleep if we run out of available cycles
+                    static if (id > 0) {
+                        while (availableCycles.atomicLoad!(MemoryOrder.raw) < cycleBatchSize) {
+                            synchronized (waitForCycles.mutex) {
+                                waitForCycles.wait();
+                            }
+                        }
+                    }
                 }
                 // The first sharer takes care of distributing a new batch of cycles
                 static if (id == 0) {
-                    // Wait if necessary for cycles to become available
+                    // If we run out of available cycles, wait for more
                     while (availableCycles.atomicLoad!(MemoryOrder.raw) < cycleBatchSize) {
+                        synchronized (waitForCycles.mutex) {
+                            waitForCycles.wait();
+                        }
                     }
                     // Take the cycles from the available ones
                     availableCycles.atomicOp!"-="(cycleBatchSize);
