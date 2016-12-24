@@ -84,15 +84,15 @@ public class ARM7TDMI {
             cycleSharer.hasStopped!1();
         }
         try {
+            // initialize to ARM in system mode
+            registers.setFlag(CPSRFlag.T, Set.ARM);
+            registers.setMode(Mode.SYSTEM);
             // initialize the stack pointers
             registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
             registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
             registers.set(Mode.USER, Register.SP, 0x3007F00);
-            // initialize to ARM in system mode
-            registers.setFlag(CPSRFlag.T, Set.ARM);
-            registers.setMode(Mode.SYSTEM);
             // set first instruction
-            registers.set(Register.PC, entryPointAddress);
+            registers.setPC(entryPointAddress);
             // branch to instruction
             branch();
             // start ticking
@@ -111,7 +111,7 @@ public class ARM7TDMI {
                 int nextDecoded = instruction;
                 instruction = nextInstruction;
                 // Execute the last instruction in the pipeline
-                final switch (registers.getSet()) {
+                final switch (registers.instructionSet) {
                     case Set.ARM:
                         executeARMInstruction(&registers, memory, decoded);
                         break;
@@ -153,18 +153,18 @@ public class ARM7TDMI {
     }
 
     private int fetchInstruction() {
-        final switch (registers.getSet()) {
+        final switch (registers.instructionSet) {
             case Set.ARM:
-                return memory.get!int(registers.get(Register.PC));
+                return memory.get!int(registers.getPC());
             case Set.THUMB:
-                return memory.get!short(registers.get(Register.PC)).mirror();
+                return memory.get!short(registers.getPC()).mirror();
         }
     }
 
     private void branchIRQ() {
-        registers.set(Mode.IRQ, Register.SPSR, registers.get(Register.CPSR));
+        registers.set(Mode.IRQ, Register.SPSR, registers.getCPSR());
         registers.set(Mode.IRQ, Register.LR, registers.getExecutedPC() + 4);
-        registers.set(Register.PC, 0x18);
+        registers.setPC(0x18);
         registers.setFlag(CPSRFlag.I, 1);
         registers.setFlag(CPSRFlag.T, Set.ARM);
         registers.setMode(Mode.IRQ);
@@ -174,61 +174,89 @@ public class ARM7TDMI {
 
 public struct Registers {
     private int[37] registers;
+    private Mode _mode;
+    private Set _set;
     private bool modifiedPC = false;
 
+    @property public Mode mode() {
+        return _mode;
+    }
+
+    @property public Set instructionSet() {
+        return _set;
+    }
+
     public int get(int register) {
-        return get(getMode(), register);
+        return get(_mode, register);
     }
 
     public int get(Mode mode, int register) {
         return registers[getRegisterIndex(mode, register)];
     }
 
+    public int getPC() {
+        return registers[Register.PC];
+    }
+
+    public int getCPSR() {
+        return registers[Register.CPSR];
+    }
+
     public void set(int register, int value) {
-        set(getMode(), register, value);
+        set(_mode, register, value);
     }
 
     public void set(Mode mode, int register, int value) {
+        registers[getRegisterIndex(mode, register)] = value;
         if (register == Register.PC) {
             modifiedPC = true;
+        } else if (register == Register.CPSR) {
+            _mode = cast(Mode) value.getBits(0, 4);
+            _set = cast(Set) value.getBit(CPSRFlag.T);
         }
-        registers[getRegisterIndex(mode, register)] = value;
+    }
+
+    public void setPC(int value) {
+        registers[Register.PC] = value;
+        modifiedPC = true;
+    }
+
+    public void setCPSR(int value) {
+        registers[Register.CPSR] = value;
+        _mode = cast(Mode) value.getBits(0, 4);
+        _set = cast(Set) value.getBit(CPSRFlag.T);
     }
 
     public int getFlag(CPSRFlag flag) {
-        return getBit(registers[Register.CPSR], flag);
+        return registers[Register.CPSR].getBit(flag);
     }
 
     public void setFlag(CPSRFlag flag, int b) {
-        setBit(registers[Register.CPSR], flag, b);
+        registers[Register.CPSR].setBit(flag, b);
+        if (flag == CPSRFlag.T) {
+            _set = cast(Set) b;
+        }
     }
 
     public void setAPSRFlags(int n, int z) {
-        setBits(registers[Register.CPSR], 30, 31, z | n << 1);
+        registers[Register.CPSR].setBits(30, 31, z | n << 1);
     }
 
     public void setAPSRFlags(int n, int z, int c) {
-        setBits(registers[Register.CPSR], 29, 31, c | z << 1 | n << 2);
+        registers[Register.CPSR].setBits(29, 31, c | z << 1 | n << 2);
     }
 
     public void setAPSRFlags(int n, int z, int c, int v) {
-        setBits(registers[Register.CPSR], 28, 31, v | c << 1 | z << 2 | n << 3);
-    }
-
-    public Mode getMode() {
-        return cast(Mode) (registers[Register.CPSR] & 0b11111);
+        registers[Register.CPSR].setBits(28, 31, v | c << 1 | z << 2 | n << 3);
     }
 
     public void setMode(Mode mode) {
-        setBits(registers[Register.CPSR], 0, 4, mode);
-    }
-
-    public Set getSet() {
-        return cast(Set) registers[Register.CPSR].getBit(5);
+        registers[Register.CPSR].setBits(0, 4, mode);
+        _mode = mode;
     }
 
     public void incrementPC() {
-        final switch (getSet()) {
+        final switch (_set) {
             case Set.ARM:
                 registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
                 break;
@@ -239,7 +267,7 @@ public struct Registers {
     }
 
     public int getExecutedPC() {
-        final switch (getSet()) {
+        final switch (_set) {
             case Set.ARM:
                 return registers[Register.PC] - 8;
             case Set.THUMB:
@@ -409,6 +437,9 @@ public struct Registers {
     }
 
     private static int getRegisterIndex(Mode mode, int register) {
+        if (register < 8) {
+            return register;
+        }
         /*
             R0 - R15: 0 - 15
             CPSR: 16
@@ -486,15 +517,14 @@ public struct Registers {
         }
 
         public void logInstruction(int address, int code, string mnemonic) {
-            Set set = getSet();
-            if (set == Set.THUMB) {
+            if (_set == Set.THUMB) {
                 code &= 0xFFFF;
             }
-            lastInstructions[index].mode = getMode();
+            lastInstructions[index].mode = _mode;
             lastInstructions[index].address = address;
             lastInstructions[index].code = code;
             lastInstructions[index].mnemonic = mnemonic;
-            lastInstructions[index].set = set;
+            lastInstructions[index].set = _set;
             index = (index + 1) % queueMaxSize;
             if (queueSize < queueMaxSize) {
                 queueSize++;

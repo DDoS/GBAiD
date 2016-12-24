@@ -402,7 +402,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
     if (!(address & 0b1)) {
         registers.setFlag(CPSRFlag.T, Set.ARM);
     }
-    registers.set(Register.PC, address & ~1);
+    registers.setPC(address & ~1);
 }
 
 @("unsupported")
@@ -416,7 +416,7 @@ private void loadPCRelative()(Registers* registers, MemoryBus* memory, int instr
     debug (outputInstructions) registers.logInstruction(instruction, "LDR");
     int rd = getBits(instruction, 8, 10);
     int offset = (instruction & 0xFF) * 4;
-    int pc = registers.get(Register.PC);
+    int pc = registers.getPC();
     int address = (pc & ~3) + offset;
     registers.set(rd, address.rotateRead(memory.get!int(address)));
 }
@@ -554,7 +554,7 @@ private void getRelativeAddresss(bool stackPointer)(Registers* registers, Memory
         registers.set(rd, registers.get(Register.SP) + offset);
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "ADD");
-        registers.set(rd, (registers.get(Register.PC) & ~3) + offset);
+        registers.set(rd, (registers.getPC() & ~3) + offset);
     }
 }
 
@@ -589,7 +589,7 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers* registers, M
             }
         }
         static if (pcAndLR) {
-            registers.set(Register.PC, memory.get!int(sp) & ~1);
+            registers.setPC(memory.get!int(sp) & ~1);
             sp += 4;
         }
     } else {
@@ -654,7 +654,7 @@ private void conditionalBranch(int code)(Registers* registers, MemoryBus* memory
     // sign extend the offset
     offset <<= 24;
     offset >>= 24;
-    registers.set(Register.PC, registers.get(Register.PC) + offset * 2);
+    registers.setPC(registers.getPC() + offset * 2);
 }
 
 @("unsupported")
@@ -664,9 +664,9 @@ private template conditionalBranch(int code) if (code == 14 || code == 15) {
 
 private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
-    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
-    registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 2);
-    registers.set(Register.PC, 0x8);
+    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.getCPSR());
+    registers.set(Mode.SUPERVISOR, Register.LR, registers.getPC() - 2);
+    registers.setPC(0x8);
     registers.setFlag(CPSRFlag.I, 1);
     registers.setFlag(CPSRFlag.T, Set.ARM);
     registers.setMode(Mode.SUPERVISOR);
@@ -678,7 +678,7 @@ private void unconditionalBranch()(Registers* registers, MemoryBus* memory, int 
     // sign extend the offset
     offset <<= 21;
     offset >>= 21;
-    registers.set(Register.PC, registers.get(Register.PC) + offset * 2);
+    registers.setPC(registers.getPC() + offset * 2);
 }
 
 private template longBranchWithLink(int code) if (code.getBits(1, 31) == 0) {
@@ -690,14 +690,14 @@ private void longBranchWithLink(bool high)(Registers* registers, MemoryBus* memo
     static if (high) {
         debug (outputInstructions) registers.logInstruction(instruction, "BL");
         int address = registers.get(Register.LR) + (offset << 1);
-        registers.set(Register.LR, registers.get(Register.PC) - 2 | 1);
-        registers.set(Register.PC, address);
+        registers.set(Register.LR, registers.getPC() - 2 | 1);
+        registers.setPC(address);
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "BL_");
         // sign extend the offset
         offset <<= 21;
         offset >>= 21;
-        registers.set(Register.LR, registers.get(Register.PC) + (offset << 12));
+        registers.set(Register.LR, registers.getPC() + (offset << 12));
     }
 }
 

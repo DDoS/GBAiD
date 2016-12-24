@@ -386,7 +386,7 @@ private void setDataProcessingFlags(bool pcSpecial)(Registers* registers, int rd
     int negative = res < 0;
     static if (pcSpecial) {
         if (rd == Register.PC) {
-            registers.set(Register.CPSR, registers.get(Register.SPSR));
+            registers.setCPSR(registers.get(Register.SPSR));
         } else {
             registers.setAPSRFlags(negative, zero, carry, overflow);
         }
@@ -415,15 +415,15 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad:
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MRS");
     int rd = instruction.getBits(12, 15);
-    registers.set(rd, registers.get(Register.CPSR));
+    registers.set(rd, registers.getCPSR());
 }
 
 private void psrTransfer(alias decodeOperand, bool useSPSR: false, bool notLoad: true)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
-    int mask = instruction.getPsrMask() & (0xF0000000 | (registers.getMode() != Mode.USER ? 0xFF : 0));
-    int cpsr = registers.get(Register.CPSR);
-    registers.set(Register.CPSR, cpsr & ~mask | op & mask);
+    int mask = instruction.getPsrMask() & (0xF0000000 | (registers.mode != Mode.USER ? 0xFF : 0));
+    int cpsr = registers.getCPSR();
+    registers.setCPSR(cpsr & ~mask | op & mask);
 }
 
 private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: false)(Registers* registers, MemoryBus* memory, int instruction)
@@ -474,7 +474,7 @@ private void branchAndExchange()(Registers* registers, MemoryBus* memory, int in
     if (address & 0b1) {
         registers.setFlag(CPSRFlag.T, Set.THUMB);
     }
-    registers.set(Register.PC, address & ~1);
+    registers.setPC(address & ~1);
 }
 
 private mixin template decodeOpMultiply() {
@@ -800,11 +800,11 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
         Mode mode = Mode.USER;
         static if (load) {
             if (registerList.checkBit(15)) {
-                mode = registers.getMode();
+                mode = registers.mode;
             }
         }
     } else {
-        Mode mode = registers.getMode();
+        Mode mode = registers.mode;
     }
     // Memory transfer
     int baseAddress = registers.get(rn);
@@ -826,7 +826,7 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     // Loading and load PSR flag is set, restore CPSR
     static if (loadPSR && load) {
         if (registerList.checkBit(15)) {
-            registers.set(Register.CPSR, registers.get(Register.SPSR));
+            registers.setCPSR(registers.get(Register.SPSR));
         }
     }
     // Writeback the new address into the base if needed
@@ -841,8 +841,8 @@ private void branchAndBranchWithLink(int code: 0)(Registers* registers, MemoryBu
     // sign extend the offset
     offset <<= 8;
     offset >>= 8;
-    int pc = registers.get(Register.PC);
-    registers.set(Register.PC, pc + offset * 4);
+    int pc = registers.getPC();
+    registers.setPC(pc + offset * 4);
 }
 
 private void branchAndBranchWithLink(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -851,25 +851,25 @@ private void branchAndBranchWithLink(int code: 1)(Registers* registers, MemoryBu
     // sign extend the offset
     offset <<= 8;
     offset >>= 8;
-    int pc = registers.get(Register.PC);
+    int pc = registers.getPC();
     registers.set(Register.LR, pc - 4);
-    registers.set(Register.PC, pc + offset * 4);
+    registers.setPC(pc + offset * 4);
 }
 
 private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
-    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.get(Register.CPSR));
-    registers.set(Mode.SUPERVISOR, Register.LR, registers.get(Register.PC) - 4);
-    registers.set(Register.PC, 0x8);
+    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.getCPSR());
+    registers.set(Mode.SUPERVISOR, Register.LR, registers.getPC() - 4);
+    registers.setPC(0x8);
     registers.setFlag(CPSRFlag.I, 1);
     registers.setMode(Mode.SUPERVISOR);
 }
 
 private void undefined(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UND");
-    registers.set(Mode.UNDEFINED, Register.SPSR, registers.get(Register.CPSR));
-    registers.set(Mode.UNDEFINED, Register.LR, registers.get(Register.PC) - 4);
-    registers.set(Register.PC, 0x4);
+    registers.set(Mode.UNDEFINED, Register.SPSR, registers.getCPSR());
+    registers.set(Mode.UNDEFINED, Register.LR, registers.getPC() - 4);
+    registers.setPC(0x4);
     registers.setFlag(CPSRFlag.I, 1);
     registers.setMode(Mode.UNDEFINED);
 }
