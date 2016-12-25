@@ -10,6 +10,8 @@ import gbaid.memory;
 import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
+private enum uint AVERAGE_CPI = 2;
+
 public class ARM7TDMI {
     private MemoryBus* memory;
     private uint entryPointAddress = 0x0;
@@ -77,9 +79,9 @@ public class ARM7TDMI {
             return 0;
         }
         // Otherwise use up 2 cycles per instruction
-        while (cycles >= 2) {
+        while (cycles >= AVERAGE_CPI) {
             // Take the cycles for the instruction
-            cycles -= 2;
+            cycles -= AVERAGE_CPI;
             // Check for an IRQ
             if (irqSignal && !registers.getFlag(CPSRFlag.I)) {
                 // Branch to the handler

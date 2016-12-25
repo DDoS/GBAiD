@@ -1,6 +1,9 @@
 module gbaid.system;
 
 import core.time : TickDuration;
+import core.thread : Thread;
+import core.sync.mutex : Mutex;
+import core.sync.condition : Condition;
 
 import std.stdio;
 import std.string;
@@ -19,6 +22,17 @@ import gbaid.save;
 import gbaid.graphics;
 import gbaid.util;
 
+private enum size_t CYCLES_PER_FRAME = (Display.HORIZONTAL_RESOLUTION + Display.BLANKING_RESOLUTION)
+        * (Display.VERTICAL_RESOLUTION + Display.BLANKING_RESOLUTION) * Display.CYCLES_PER_DOT;
+private enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
+private enum size_t CYCLE_BATCHES_PER_FRAME = CYCLES_PER_FRAME / CYCLE_BATCH_SIZE;
+private enum double NS_PER_CYCLE = 2.0 ^^ -24 * 1e9;
+private const TickDuration FRAME_DURATION;
+
+public static this() {
+    FRAME_DURATION = TickDuration.from!"nsecs"(cast(size_t) (CYCLES_PER_FRAME * NS_PER_CYCLE));
+}
+
 public class GameBoyAdvance {
     private MemoryBus memory;
     private ARM7TDMI processor;
@@ -30,6 +44,8 @@ public class GameBoyAdvance {
     private DMAs dmas;
     private int lastBIOSPreFetch;
     private Graphics graphics;
+    private Condition frameSync;
+    private bool coreRunning = false;
 
     public this(Save)(string biosFile, string romFile, Save save) {
         if (biosFile is null) {
@@ -59,10 +75,8 @@ public class GameBoyAdvance {
         processor.setEntryPointAddress(BIOS_START);
 
         graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
-    }
 
-    @property public MemoryBus* memoryBus() {
-        return &memory;
+        frameSync = new Condition(new Mutex());
     }
 
     public void useKeyboard() {
@@ -86,63 +100,79 @@ public class GameBoyAdvance {
     }
 
     public void run() {
-        try {
-            if (!DerelictSDL2.isLoaded) {
-                DerelictSDL2.load();
-            }
-            SDL_Init(0);
+        if (!DerelictSDL2.isLoaded) {
+            DerelictSDL2.load();
+        }
+        SDL_Init(0);
+        graphics.create();
 
-            graphics.create();
-            keypad.create();
-
-            timers.init();
-            dmas.init();
-            processor.init();
-            display.init();
-
-            enum cyclesPerFrame = (240 + 68) * (160 + 68) * 4;
-            enum cycleBatchSize = 4 * 4;
-            enum cycleBatchesPerFrame = cyclesPerFrame / cycleBatchSize;
-            enum nanoSecondsPerCycle = 2.0 ^^ -24 * 1e9;
-            auto frameDuration = TickDuration.from!"nsecs"(cast(size_t) (cyclesPerFrame * nanoSecondsPerCycle));
-
-            Timer timer = new Timer();
-            size_t displayCycles = cycleBatchSize;
-            size_t processorCycles = cycleBatchSize;
-            size_t dmasCycles = cycleBatchSize;
-            size_t timersCycles = cycleBatchSize;
-
-            while (!graphics.isCloseRequested()) {
-                timer.start();
-                // Update the input state
-                keypad.poll();
-                // Run all the system components for a frame, using tick batching
-                foreach (i; 0 .. cycleBatchesPerFrame) {
-                    displayCycles = display.run(displayCycles) + cycleBatchSize;
-                    processorCycles = processor.run(processorCycles) + cycleBatchSize;
-                    dmasCycles = dmas.run(dmasCycles) + cycleBatchSize;
-                    timersCycles = timers.run(timersCycles) + cycleBatchSize;
-                }
-                // Display the frame once drawn
-                graphics.draw(display.getFrame());
-                // Wait for the actual duration of a frame
-                timer.waitUntil(frameDuration);
-            }
-
-        } catch (Exception ex) {
-            writeln("Emulator encountered an exception, system stopping...");
-            writeln("Exception: ", ex.msg);
-        } finally {
-
-            keypad.destroy();
+        scope (exit) {
             graphics.destroy();
-
             SDL_Quit();
+        }
+
+        auto coreThread = new Thread(&systemCore);
+        coreThread.name = "GBA";
+        coreRunning = true;
+        coreThread.start();
+
+        auto timer = new Timer();
+        short[Display.FRAME_SIZE] frame;
+        while (!graphics.isCloseRequested()) {
+            timer.start();
+            // Signal the emulator to emulate a frame
+            synchronized (frameSync.mutex) {
+                frameSync.notify();
+            }
+            // Display the frame once drawn
+            display.getFrame(frame);
+            graphics.draw(frame);
+            // Wait for the actual duration of a frame
+            timer.waitUntil(FRAME_DURATION);
+        }
+
+        coreRunning = false;
+        synchronized (frameSync.mutex) {
+            frameSync.notify();
+        }
+        coreThread.join();
+    }
+
+    private void systemCore() {
+        keypad.create();
+        scope (exit) {
+            keypad.destroy();
+        }
+
+        timers.init();
+        dmas.init();
+        processor.init();
+        display.init();
+
+        size_t displayCycles = CYCLE_BATCH_SIZE;
+        size_t processorCycles = CYCLE_BATCH_SIZE;
+        size_t dmasCycles = CYCLE_BATCH_SIZE;
+        size_t timersCycles = CYCLE_BATCH_SIZE;
+
+        while (coreRunning) {
+            // Wait for a signal to emulate a frame
+            synchronized (frameSync.mutex) {
+                frameSync.wait();
+            }
+            // Update the input state
+            keypad.poll();
+            // Run all the system components using tick batching
+            foreach (i; 0 .. CYCLE_BATCHES_PER_FRAME) {
+                displayCycles = display.run(displayCycles) + CYCLE_BATCH_SIZE;
+                processorCycles = processor.run(processorCycles) + CYCLE_BATCH_SIZE;
+                dmasCycles = dmas.run(dmasCycles) + CYCLE_BATCH_SIZE;
+                timersCycles = timers.run(timersCycles) + CYCLE_BATCH_SIZE;
+            }
         }
     }
 
     public void saveSave(string saveFile) {
-        memoryBus.gamePak.saveSave(saveFile);
+        memory.gamePak.saveSave(saveFile);
     }
 
     private bool biosReadGuard(uint address) {

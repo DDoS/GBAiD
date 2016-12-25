@@ -1,6 +1,6 @@
 module gbaid.display;
 
-import core.sync.mutex;
+import core.sync.mutex : Mutex;
 
 import std.algorithm;
 
@@ -15,10 +15,11 @@ version (D_InlineAsm_X86_64) version = UseASM;
 public class Display {
     public static enum uint HORIZONTAL_RESOLUTION = 240;
     public static enum uint VERTICAL_RESOLUTION = 160;
+    public static enum uint BLANKING_RESOLUTION = 68;
+    public static enum uint CYCLES_PER_DOT = 4;
+    public static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum uint LAYER_COUNT = 6;
-    private static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum short TRANSPARENT = cast(short) 0x8000;
-    private static enum uint BLANKING_RESOLUTION = 68;
     private static enum uint HORIZONTAL_TIMING_RESOLUTION = HORIZONTAL_RESOLUTION + BLANKING_RESOLUTION;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
     private IoRegisters* ioRegisters;
@@ -33,7 +34,7 @@ public class Display {
     private int[2] internalAffineReferenceY;
     private int line = 0;
     private int dot = 0;
-    //private Mutex frameLock;
+    private Mutex frameLock;
 
     public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
@@ -44,7 +45,7 @@ public class Display {
         this.interruptHandler = interruptHandler;
         this.dmas = dmas;
 
-        //frameLock = new Mutex();
+        frameLock = new Mutex();
 
         ioRegisters.setPostWriteMonitor!0x28(&onAffineReferencePointPostWrite!(2, false));
         ioRegisters.setPostWriteMonitor!0x2C(&onAffineReferencePointPostWrite!(2, true));
@@ -52,58 +53,55 @@ public class Display {
         ioRegisters.setPostWriteMonitor!0x3C(&onAffineReferencePointPostWrite!(3, true));
     }
 
-    public short[] getFrame() {
-        return frame;
+    public void getFrame(short[] destination) {
+        frameLock.lock();
+        destination[] = frame[];
+        frameLock.unlock();
     }
-
-    //public short[] lockFrame() {
-    //    frameLock.lock();
-    //    return frame;
-    //}
-
-    //public void unlockFrame() {
-    //    frameLock.unlock();
-    //}
 
     public void init() {
     }
 
     public size_t run(size_t cycles) {
         // Use up 4 cycles per dot
-        while (cycles >= 4) {
+        while (cycles >= CYCLES_PER_DOT) {
             // Take the cycles
-            cycles -= 4;
+            cycles -= CYCLES_PER_DOT;
             // Do stuff for the first visible dot and first blanked dot
             if (dot == 0) {
-                // Increment the line count
-                line += 1;
-                // Wrap back to zero if we reach the end
-                if (line == VERTICAL_TIMING_RESOLUTION) {
-                    line = 0;
-                }
                 // Run the events for a line starting to be drawn
                 startLineDrawEvents(line);
                 // Draw the line if it is visible
                 if (line < VERTICAL_RESOLUTION) {
                     // Acquire the lock on the frame before we start drawing
-                    //if (line == 0) {
-                    //    frameLock.lock();
-                    //}
+                    if (line == 0) {
+                        frameLock.lock();
+                    }
                     drawLine(line);
                 }
             } else if (dot == HORIZONTAL_RESOLUTION) {
                 // Release the lock on the frame if we are done drawing it
-                //if (line == VERTICAL_RESOLUTION - 1) {
-                //    frameLock.unlock();
-                //}
+                if (line == VERTICAL_RESOLUTION - 1) {
+                    frameLock.unlock();
+                }
                 // Run the events for a line drawing ending
                 endLineDrawEvents(line);
             }
-            // Increment the dot count
-            dot += 1;
-            // Wrap back to zero if we reach the end
-            if (dot == HORIZONTAL_TIMING_RESOLUTION) {
+            // Increment the dot and line counts
+            if (dot == HORIZONTAL_TIMING_RESOLUTION - 1) {
+                // Reset the dot count if it is the last one
                 dot = 0;
+                // Increment the line count
+                if (line == VERTICAL_TIMING_RESOLUTION - 1) {
+                    // Reset the line count back to zero if we reach the end
+                    line = 0;
+                } else {
+                    // Else just increment the line count
+                    line++;
+                }
+            } else {
+                // If not the last, just increment it
+                dot++;
             }
         }
         return cycles;
