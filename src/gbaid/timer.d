@@ -1,26 +1,18 @@
 module gbaid.timer;
 
-import core.thread;
-
-import gbaid.cycle;
 import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.util;
 
 public class Timers {
-    private CycleSharer4* cycleSharer;
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
-    private Thread thread;
-    private bool running = false;
     mixin privateFields!(ushort, "reloadValue", 0, 4);
     mixin privateFields!(int, "control", 0, 4);
     mixin privateFields!(int, "subTicks", 0, 4);
     mixin privateFields!(ushort, "ticks", 0, 4);
 
-    public this(CycleSharer4* cycleSharer, IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
-        assert (cycleSharer.cycleBatchSize < ushort.max);
-        this.cycleSharer = cycleSharer;
+    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
 
@@ -35,38 +27,16 @@ public class Timers {
         ioRegisters.setPostWriteMonitor!0x10C(&onPostWrite!3);
     }
 
-    public void start() {
-        if (thread is null) {
-            thread = new Thread(&run);
-            thread.name = "Timers";
-            running = true;
-            thread.start();
-        }
+    public void init() {
     }
 
-    public void stop() {
-        running = false;
-        if (thread !is null) {
-            thread.join(false);
-            thread = null;
-        }
-    }
-
-    public bool isRunning() {
-        return running;
-    }
-
-    private void run() {
-        scope (exit) {
-            cycleSharer.hasStopped!3();
-        }
-        while (running) {
-            auto cycles = cast(ushort) cycleSharer.takeBatchCycles!3();
-            auto previousOverflows = updateTimer!0(cycles, 0);
-            previousOverflows = updateTimer!1(cycles, previousOverflows);
-            previousOverflows = updateTimer!2(cycles, previousOverflows);
-            updateTimer!3(cycles, previousOverflows);
-        }
+    public size_t run(size_t cycles) {
+        auto shortCycles = cast(ushort) cycles;
+        auto previousOverflows = updateTimer!0(shortCycles, 0);
+        previousOverflows = updateTimer!1(shortCycles, previousOverflows);
+        previousOverflows = updateTimer!2(shortCycles, previousOverflows);
+        updateTimer!3(shortCycles, previousOverflows);
+        return 0;
     }
 
     private int updateTimer(int timer)(ushort cycles, int previousOverflows) {

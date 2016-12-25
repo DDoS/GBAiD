@@ -15,13 +15,11 @@ import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.input;
 import gbaid.timer;
-import gbaid.cycle;
 import gbaid.save;
 import gbaid.graphics;
 import gbaid.util;
 
 public class GameBoyAdvance {
-    private CycleSharer4 cycleSharer;
     private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -38,9 +36,6 @@ public class GameBoyAdvance {
             throw new NullPathException("BIOS");
         }
 
-        cycleSharer = CycleSharer4(4 * 4);
-
-
         static if (is(Save == SaveConfiguration) || is(Save == string)) {
             memory = MemoryBus(biosFile, romFile, save);
         } else {
@@ -49,13 +44,13 @@ public class GameBoyAdvance {
 
         auto ioRegisters = memory.ioRegisters;
 
-        processor = new ARM7TDMI(&cycleSharer, &memory);
+        processor = new ARM7TDMI(&memory);
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
-        timers = new Timers(&cycleSharer, ioRegisters, interruptHandler);
-        dmas = new DMAs(&cycleSharer, &memory, ioRegisters, interruptHandler, haltHandler);
-        display = new Display(&cycleSharer, ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
+        timers = new Timers(ioRegisters, interruptHandler);
+        dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
+        display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;
         memory.biosReadFallback = &biosReadFallback;
@@ -100,41 +95,44 @@ public class GameBoyAdvance {
             graphics.create();
             keypad.create();
 
-            timers.start();
-            dmas.start();
-            processor.start();
-            display.start();
+            timers.init();
+            dmas.init();
+            processor.init();
+            display.init();
 
             enum cyclesPerFrame = (240 + 68) * (160 + 68) * 4;
+            enum cycleBatchSize = 4 * 4;
+            enum cycleBatchesPerFrame = cyclesPerFrame / cycleBatchSize;
             enum nanoSecondsPerCycle = 2.0 ^^ -24 * 1e9;
             auto frameDuration = TickDuration.from!"nsecs"(cast(size_t) (cyclesPerFrame * nanoSecondsPerCycle));
 
             Timer timer = new Timer();
+            size_t displayCycles = cycleBatchSize;
+            size_t processorCycles = cycleBatchSize;
+            size_t dmasCycles = cycleBatchSize;
+            size_t timersCycles = cycleBatchSize;
+
             while (!graphics.isCloseRequested()) {
                 timer.start();
-                // Give enough cycles to emulate an entire frame
-                cycleSharer.giveCycles(cyclesPerFrame);
                 // Update the input state
                 keypad.poll();
-                // Wait for the frame to be drawn, then display it
-                graphics.draw(display.lockFrame());
-                display.unlockFrame();
+                // Run all the system components for a frame, using tick batching
+                foreach (i; 0 .. cycleBatchesPerFrame) {
+                    displayCycles = display.run(displayCycles) + cycleBatchSize;
+                    processorCycles = processor.run(processorCycles) + cycleBatchSize;
+                    dmasCycles = dmas.run(dmasCycles) + cycleBatchSize;
+                    timersCycles = timers.run(timersCycles) + cycleBatchSize;
+                }
+                // Display the frame once drawn
+                graphics.draw(display.getFrame());
                 // Wait for the actual duration of a frame
                 timer.waitUntil(frameDuration);
-                // Wait for any cycles not depleted
-                cycleSharer.waitForCycleDepletion();
             }
 
         } catch (Exception ex) {
             writeln("Emulator encountered an exception, system stopping...");
             writeln("Exception: ", ex.msg);
         } finally {
-            cycleSharer.giveCycles(size_t.max);
-
-            processor.stop();
-            dmas.stop();
-            timers.stop();
-            display.stop();
 
             keypad.destroy();
             graphics.destroy();

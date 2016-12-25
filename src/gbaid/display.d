@@ -1,11 +1,9 @@
 module gbaid.display;
 
-import core.thread;
 import core.sync.mutex;
 
 import std.algorithm;
 
-import gbaid.cycle;
 import gbaid.memory;
 import gbaid.dma;
 import gbaid.interrupt;
@@ -21,25 +19,24 @@ public class Display {
     private static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint BLANKING_RESOLUTION = 68;
+    private static enum uint HORIZONTAL_TIMING_RESOLUTION = HORIZONTAL_RESOLUTION + BLANKING_RESOLUTION;
     private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
-    private CycleSharer4* cycleSharer;
     private IoRegisters* ioRegisters;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
-    private Thread thread;
-    private bool running = false;
     private short[FRAME_SIZE] frame;
     private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines;
     private int[2] internalAffineReferenceX;
     private int[2] internalAffineReferenceY;
-    private Mutex frameLock;
+    private int line = 0;
+    private int dot = 0;
+    //private Mutex frameLock;
 
-    public this(CycleSharer4* cycleSharer, IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
+    public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
-        this.cycleSharer = cycleSharer;
         this.ioRegisters = ioRegisters;
         this.palette = palette;
         this.vram = vram;
@@ -47,7 +44,7 @@ public class Display {
         this.interruptHandler = interruptHandler;
         this.dmas = dmas;
 
-        frameLock = new Mutex();
+        //frameLock = new Mutex();
 
         ioRegisters.setPostWriteMonitor!0x28(&onAffineReferencePointPostWrite!(2, false));
         ioRegisters.setPostWriteMonitor!0x2C(&onAffineReferencePointPostWrite!(2, true));
@@ -55,62 +52,61 @@ public class Display {
         ioRegisters.setPostWriteMonitor!0x3C(&onAffineReferencePointPostWrite!(3, true));
     }
 
-    public void start() {
-        if (thread is null) {
-            thread = new Thread(&run);
-            thread.name = "Display";
-            running = true;
-            thread.start();
-        }
-    }
-
-    public void stop() {
-        running = false;
-        if (thread !is null) {
-            thread.join(false);
-            thread = null;
-        }
-    }
-
-    public short[] lockFrame() {
-        frameLock.lock();
+    public short[] getFrame() {
         return frame;
     }
 
-    public void unlockFrame() {
-        frameLock.unlock();
+    //public short[] lockFrame() {
+    //    frameLock.lock();
+    //    return frame;
+    //}
+
+    //public void unlockFrame() {
+    //    frameLock.unlock();
+    //}
+
+    public void init() {
     }
 
-    private void run() {
-        scope (exit) {
-            cycleSharer.hasStopped!0();
-        }
-        while (running) {
-            // Acquire the lock on the frame first
-            frameLock.lock();
-            foreach (line; 0 .. VERTICAL_TIMING_RESOLUTION) {
-                // Start with the events for a line starting to be drawn
+    public size_t run(size_t cycles) {
+        // Use up 4 cycles per dot
+        while (cycles >= 4) {
+            // Take the cycles
+            cycles -= 4;
+            // Do stuff for the first visible dot and first blanked dot
+            if (dot == 0) {
+                // Increment the line count
+                line += 1;
+                // Wrap back to zero if we reach the end
+                if (line == VERTICAL_TIMING_RESOLUTION) {
+                    line = 0;
+                }
+                // Run the events for a line starting to be drawn
                 startLineDrawEvents(line);
-                // First draw the line if it is visible
+                // Draw the line if it is visible
                 if (line < VERTICAL_RESOLUTION) {
+                    // Acquire the lock on the frame before we start drawing
+                    //if (line == 0) {
+                    //    frameLock.lock();
+                    //}
                     drawLine(line);
                 }
-                // Wait 4 cycles for each dot drawn
-                foreach (dot; 0 .. HORIZONTAL_RESOLUTION) {
-                    cycleSharer.takeCycles!0(4);
-                }
-                // Now do the events for a line drawing ending
-                endLineDrawEvents(line);
+            } else if (dot == HORIZONTAL_RESOLUTION) {
                 // Release the lock on the frame if we are done drawing it
-                if (line == VERTICAL_RESOLUTION - 1) {
-                    frameLock.unlock();
-                }
-                // Wait 4 cycles for each dot blanked
-                foreach (dot; 0 .. BLANKING_RESOLUTION) {
-                    cycleSharer.takeCycles!0(4);
-                }
+                //if (line == VERTICAL_RESOLUTION - 1) {
+                //    frameLock.unlock();
+                //}
+                // Run the events for a line drawing ending
+                endLineDrawEvents(line);
+            }
+            // Increment the dot count
+            dot += 1;
+            // Wrap back to zero if we reach the end
+            if (dot == HORIZONTAL_TIMING_RESOLUTION) {
+                dot = 0;
             }
         }
+        return cycles;
     }
 
     private void drawLine(int line) {

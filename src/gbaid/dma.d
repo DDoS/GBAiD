@@ -1,32 +1,23 @@
 module gbaid.dma;
 
-import core.atomic : MemoryOrder, atomicLoad, atomicOp;
-import core.thread;
-
-import gbaid.cycle;
 import gbaid.memory;
 import gbaid.interrupt;
 import gbaid.halt;
 import gbaid.util;
 
 public class DMAs {
-    private CycleSharer4* cycleSharer;
     private MemoryBus* memory;
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
-    private Thread thread;
-    private bool running = false;
     mixin privateFields!(int, "sourceAddress", 0, 4);
     mixin privateFields!(int, "destinationAddress", 0, 4);
     mixin privateFields!(int, "wordCount", 0, 4);
     mixin privateFields!(int, "control", 0, 4);
     mixin privateFields!(Timing, "timing", Timing.DISABLED, 4);
-    private shared int triggered = 0;
+    private int triggered = 0;
 
-    public this(CycleSharer4* cycleSharer, MemoryBus* memory, IoRegisters* ioRegisters,
-            InterruptHandler interruptHandler, HaltHandler haltHandler) {
-        this.cycleSharer = cycleSharer;
+    public this(MemoryBus* memory, IoRegisters* ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
@@ -36,27 +27,6 @@ public class DMAs {
         ioRegisters.setPostWriteMonitor!0xC4(&onPostWrite!1);
         ioRegisters.setPostWriteMonitor!0xD0(&onPostWrite!2);
         ioRegisters.setPostWriteMonitor!0xDC(&onPostWrite!3);
-    }
-
-    public void start() {
-        if (thread is null) {
-            thread = new Thread(&run);
-            thread.name = "DMAs";
-            running = true;
-            thread.start();
-        }
-    }
-
-    public void stop() {
-        running = false;
-        if (thread !is null) {
-            thread.join(false);
-            thread = null;
-        }
-    }
-
-    public bool isRunning() {
-        return running;
     }
 
     public void signalVBLANK() {
@@ -86,61 +56,70 @@ public class DMAs {
 
     private void triggerDMAs(Timing trigger)() {
         if (timing!0 == trigger) {
-            triggered.atomicOp!"|="(1 << 0);
+            triggered |= 1 << 0;
             haltHandler.dmaHalt(true);
         }
         if (timing!1 == trigger) {
-            triggered.atomicOp!"|="(1 << 1);
+            triggered |= 1 << 1;
             haltHandler.dmaHalt(true);
         }
         if (timing!2 == trigger) {
-            triggered.atomicOp!"|="(1 << 2);
+            triggered |= 1 << 2;
             haltHandler.dmaHalt(true);
         }
         if (timing!3 == trigger) {
-            triggered.atomicOp!"|="(1 << 3);
+            triggered |= 1 << 3;
             haltHandler.dmaHalt(true);
         }
     }
 
-    private void run() {
-        scope (exit) {
-            cycleSharer.hasStopped!2();
-        }
-        while (running) {
-            // Check if any of the DMAs are triggered
-            if (triggered.atomicLoad!(MemoryOrder.raw) == 0) {
-                cycleSharer.wasteCycles!2();
-                continue;
-            }
-            // Run the triggered DMAs with respect to priority
-            if (updateChannel!0()) {
-                continue;
-            }
-            if (updateChannel!1()) {
-                continue;
-            }
-            if (updateChannel!2()) {
-                continue;
-            }
-            updateChannel!3();
-        }
+    public void init() {
     }
 
-    private bool updateChannel(int channel)() {
-        // Only run if triggered
-        if (!triggered.atomicOp!"&"(1 << channel)) {
-            return false;
+    public size_t run(size_t cycles) {
+        // Check if any of the DMAs are triggered
+        if (triggered == 0) {
+            // If not then discard all the cycles
+            return 0;
         }
-        // Copy a single word
-        cycleSharer.takeCycles!2(3);
-        copyWord!channel();
-        // Finalize the DMA when the transfer is complete
-        if (wordCount!channel <= 0) {
-            cycleSharer.takeCycles!2(3);
-            finalizeDMA!channel();
+        // Run the DMAs with respect to priority
+        if (updateChannel!0(cycles)) {
+            // More cycles left, move to down in priority
+            if (updateChannel!1(cycles)) {
+                // More cycles left, move to down in priority
+                if (updateChannel!2(cycles)) {
+                    // More cycles left, move to down in priority
+                    updateChannel!3(cycles);
+                    // Out of DMAs to run, waste all the cycles left
+                    return 0;
+                }
+            }
         }
-        return true;
+        return cycles;
+    }
+
+    private bool updateChannel(int channel)(ref size_t cycles) {
+        // Only run if triggered and enabled
+        if (!(triggered & (1 << channel)) || !control!channel.checkBit(15)) {
+            // No transfer to do
+            return true;
+        }
+        // Use 3 cycles per word and for the finalization step
+        while (cycles >= 3) {
+            // Take the cycles
+            cycles -= 3;
+            if (wordCount!channel > 0) {
+                // Copy a single word
+                copyWord!channel();
+            } else {
+                // Finalize the DMA when the transfer is complete
+                finalizeDMA!channel();
+                // The transfer is complete
+                return true;
+            }
+        }
+        // The transfer is incomplete because we ran out of cycles
+        return false;
     }
 
     private void finalizeDMA(int channel)() {
@@ -153,17 +132,21 @@ public class DMAs {
             if (getBits(control, 5, 6) == 3) {
                 destinationAddress!channel = ioRegisters.getUnMonitored!int(dmaAddress - 4).formatDestinationAddress!channel();
             }
+            // Only keep the trigger for repeating DMAs if the timing is immediate
+            if (timing!channel != Timing.IMMEDIATE) {
+                haltHandler.dmaHalt((triggered &= ~(1 << channel)) != 0);
+            }
         } else {
             // Clear the DMA enable bit
             ioRegisters.setUnMonitored!short(dmaAddress + 2, cast(short) (control & 0x7FFF));
             timing!channel = Timing.DISABLED;
+            // Always clear the trigger for single-run DMAs
+            haltHandler.dmaHalt((triggered &= ~(1 << channel)) != 0);
         }
         // Trigger DMA end interrupt if enabled
         if (checkBit(control, 14)) {
             interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
         }
-
-        haltHandler.dmaHalt(triggered.atomicOp!"&="(~(1 << channel)) != 0);
     }
 
     private void copyWord(int channel)() {
@@ -298,4 +281,8 @@ private enum Timing {
     HBLANK,
     SOUND_FIFO,
     VIDEO_CAPTURE
+}
+
+private enum ChannelRunResult {
+    DISABLED, NOT_ENOUGH_CYCLES, RAN
 }

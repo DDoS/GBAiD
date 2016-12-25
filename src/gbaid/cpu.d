@@ -1,58 +1,30 @@
 module gbaid.cpu;
 
-import core.thread;
-
 import std.stdio;
 import std.algorithm.searching;
 import std.conv;
 import std.string;
 import std.traits;
 
-import gbaid.cycle;
 import gbaid.memory;
 import gbaid.arm, gbaid.thumb;
 import gbaid.util;
 
 public class ARM7TDMI {
-    private CycleSharer4* cycleSharer;
     private MemoryBus* memory;
     private uint entryPointAddress = 0x0;
-    private Thread thread;
-    private bool running = false;
     private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
     private int instruction;
     private int decoded;
 
-    public this(CycleSharer4* cycleSharer, MemoryBus* memory) {
-        this.cycleSharer = cycleSharer;
+    public this(MemoryBus* memory) {
         this.memory = memory;
     }
 
     public void setEntryPointAddress(uint entryPointAddress) {
         this.entryPointAddress = entryPointAddress;
-    }
-
-    public void start() {
-        if (thread is null) {
-            thread = new Thread(&run);
-            thread.name = "CPU";
-            running = true;
-            thread.start();
-        }
-    }
-
-    public void stop() {
-        running = false;
-        if (thread !is null) {
-            thread.join(false);
-            thread = null;
-        }
-    }
-
-    public bool isRunning() {
-        return running;
     }
 
     public void halt(bool state) {
@@ -79,66 +51,68 @@ public class ARM7TDMI {
         return decoded;
     }
 
-    private void run() {
-        scope (exit) {
-            cycleSharer.hasStopped!1();
-        }
-        try {
-            // initialize to ARM in system mode
-            registers.setFlag(CPSRFlag.T, Set.ARM);
-            registers.setMode(Mode.SYSTEM);
-            // initialize the stack pointers
-            registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
-            registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
-            registers.set(Mode.USER, Register.SP, 0x3007F00);
-            // set first instruction
-            registers.setPC(entryPointAddress);
-            // branch to instruction
-            branch();
-            // start ticking
-            while (running) {
-                // Take the cycles for the instruction
-                cycleSharer.takeCycles!1(2);
-                // Check for an IRQ
-                if (irqSignal && !registers.getFlag(CPSRFlag.I)) {
-                    // Branch to the handler
-                    branchIRQ();
-                    continue;
-                }
-                // Fetch the next instruction in the pipeline
-                int nextInstruction = fetchInstruction();
-                // Decode the second instruction in the pipeline
-                int nextDecoded = instruction;
-                instruction = nextInstruction;
-                // Execute the last instruction in the pipeline
-                final switch (registers.instructionSet) {
-                    case Set.ARM:
-                        executeARMInstruction(&registers, memory, decoded);
-                        break;
-                    case Set.THUMB:
-                        executeTHUMBInstruction(&registers, memory, decoded);
-                        break;
-                }
-                decoded = nextDecoded;
-                // Wait if the instruction caused a halt
-                while (haltSignal && running) {
-                    cycleSharer.wasteCycles!1();
-                }
-                // Then go to the next instruction
-                if (registers.wasPCModified()) {
-                    branch();
-                } else {
-                    registers.incrementPC();
-                }
-            }
-        } catch (Exception ex) {
-            writeln("ARM CPU encountered an exception, thread stopping...");
-            writeln("Exception: ", ex.msg);
+    public void init() {
+        // Initialize to ARM in system mode
+        registers.setFlag(CPSRFlag.T, Set.ARM);
+        registers.setMode(Mode.SYSTEM);
+        // Initialize the stack pointers
+        registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
+        registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
+        registers.set(Mode.USER, Register.SP, 0x3007F00);
+        // Set first instruction
+        registers.setPC(entryPointAddress);
+        // Branch to instruction
+        branch();
+    }
+
+    public size_t run(size_t cycles) {
+        scope (failure) {
             debug (outputInstructions) {
                 registers.dumpInstructions();
                 registers.dumpRegisters();
             }
         }
+        // Discard all the cycles if halted
+        if (haltSignal) {
+            return 0;
+        }
+        // Otherwise use up 2 cycles per instruction
+        while (cycles >= 2) {
+            // Take the cycles for the instruction
+            cycles -= 2;
+            // Check for an IRQ
+            if (irqSignal && !registers.getFlag(CPSRFlag.I)) {
+                // Branch to the handler
+                branchIRQ();
+                continue;
+            }
+            // Fetch the next instruction in the pipeline
+            int nextInstruction = fetchInstruction();
+            // Decode the second instruction in the pipeline
+            int nextDecoded = instruction;
+            instruction = nextInstruction;
+            // Execute the last instruction in the pipeline
+            final switch (registers.instructionSet) {
+                case Set.ARM:
+                    executeARMInstruction(&registers, memory, decoded);
+                    break;
+                case Set.THUMB:
+                    executeTHUMBInstruction(&registers, memory, decoded);
+                    break;
+            }
+            decoded = nextDecoded;
+            // Then go to the next instruction
+            if (registers.wasPCModified()) {
+                branch();
+            } else {
+                registers.incrementPC();
+            }
+            // Discard all the cycles if the instruction caused a halt
+            if (haltSignal) {
+                return 0;
+            }
+        }
+        return cycles;
     }
 
     private void branch() {
