@@ -2,84 +2,19 @@ module gbaid.input;
 
 import derelict.sdl2.sdl;
 
-import gbaid.memory;
-import gbaid.interrupt;
+import gbaid.keypad;
 import gbaid.util;
 
-public class Keypad {
-    private IoRegisters* ioRegisters;
-    private InterruptHandler interruptHandler;
-    private InputSource source;
-    private bool created = false;
+public interface InputSource {
+    public void create();
 
-    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
-        this.ioRegisters = ioRegisters;
-        this.interruptHandler = interruptHandler;
-        changeInput!Keyboard();
-    }
+    public void destroy();
 
-    public void changeInput(T : InputSource)() {
-        if (!(cast(T) source)) {
-            if (created) {
-                source.destroy();
-            }
-            source = new T();
-            if (created) {
-                source.create();
-            }
-        }
-    }
-
-    public void create() {
-        if (created) {
-            return;
-        }
-        source.create();
-        created = true;
-    }
-
-    public void destroy() {
-        if (!created) {
-            return;
-        }
-        source.destroy();
-        created = false;
-    }
-
-    public void poll() {
-        int state = ~updateState();
-        int control = ioRegisters.getUnMonitored!short(0x132);
-        if (checkBit(control, 14)) {
-            int requested = control & 0x3FF;
-            if (checkBit(control, 15)) {
-                if ((state & requested) == requested) {
-                    interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
-                }
-            } else if (state & requested) {
-                interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
-            }
-        }
-    }
-
-    private int updateState() {
-        int keypadState = ~source.getKeypadState() & 0x3FF;
-        ioRegisters.setUnMonitored!short(0x130, cast(short) keypadState);
-        return keypadState;
-    }
-}
-
-public abstract class InputSource {
-    protected void create() {
-    }
-
-    protected void destroy() {
-    }
-
-    public abstract int getKeypadState();
+    public KeypadState pollKeypad();
 }
 
 public class Keyboard : InputSource {
-    private int[10] buttonMap = [
+    private int[10] buttonCodeMap = [
         SDL_SCANCODE_P,
         SDL_SCANCODE_L,
         SDL_SCANCODE_TAB,
@@ -92,23 +27,29 @@ public class Keyboard : InputSource {
         SDL_SCANCODE_LSHIFT
     ];
 
-    public void map(Button gbaButton, int key) {
-        buttonMap[gbaButton] = key;
+    public void map(Button button, int key) {
+        buttonCodeMap[button] = key;
     }
 
-    protected override int getKeypadState() {
+    public override void create() {
+    }
+
+    public override void destroy() {
+    }
+
+    public override KeypadState pollKeypad() {
         const ubyte* keyboard = SDL_GetKeyboardState(null);
-        int keypadState = 0;
-        foreach (i, button; buttonMap) {
-            keypadState |= keyboard[button] << i;
+        KeypadState state;
+        foreach (buttonIndex, buttonCode; buttonCodeMap) {
+            state.setPressed(cast(Button) buttonIndex, cast(bool) keyboard[buttonCode]);
         }
-        return keypadState;
+        return state;
     }
 }
 
 public class Controller : InputSource {
     private SDL_GameController* controller = null;
-    private int[10] buttonMap = [
+    private int[10] buttonCodeMap = [
         SDL_CONTROLLER_BUTTON_A,
         SDL_CONTROLLER_BUTTON_B,
         SDL_CONTROLLER_BUTTON_BACK,
@@ -133,16 +74,16 @@ public class Controller : InputSource {
         StickMapping(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 0x3000, true)
     ];
 
-    public void map(Button gbaButton, int controllerButton) {
-        buttonMap[gbaButton] = controllerButton;
+    public void map(Button button, int controllerButton) {
+        buttonCodeMap[button] = controllerButton;
     }
 
-    public void map(Button gbaButton, int controllerAxis, float percent, bool direction) {
+    public void map(Button button, int controllerAxis, float percent, bool direction) {
         int threshold = cast(int) ((percent < 0 ? 0 : percent > 1 ? 1 : percent) * 0xFFFF - 0x8000);
-        stickMap[gbaButton] = StickMapping(controllerAxis, threshold, direction);
+        stickMap[button] = StickMapping(controllerAxis, threshold, direction);
     }
 
-    protected override void create() {
+    public override void create() {
         if (controller) {
             return;
         }
@@ -164,31 +105,31 @@ public class Controller : InputSource {
         throw new InputException("No controller found");
     }
 
-    protected override void destroy() {
+    public override void destroy() {
         if (controller) {
             SDL_GameControllerClose(controller);
         }
     }
 
-    protected override int getKeypadState() {
+    public override KeypadState pollKeypad() {
+        KeypadState state;
         if (!controller) {
-            return 0;
+            return state;
         }
-        int keypadState = 0;
-        foreach (i, button; buttonMap) {
-            if (button != SDL_CONTROLLER_BUTTON_INVALID) {
-                keypadState |= SDL_GameControllerGetButton(controller, button) << i;
+        foreach (buttonIndex, buttonCode; buttonCodeMap) {
+            if (buttonCode != SDL_CONTROLLER_BUTTON_INVALID) {
+                state.setPressed(cast(Button) buttonIndex, cast(bool) SDL_GameControllerGetButton(controller, buttonCode));
             }
         }
-        foreach (i, stick; stickMap) {
+        foreach (buttonIndex, stick; stickMap) {
             if (stick.axis != SDL_CONTROLLER_AXIS_INVALID) {
                 int amplitude = SDL_GameControllerGetAxis(controller, stick.axis);
                 if ((stick.direction ? amplitude : -amplitude) >= stick.threshold) {
-                    keypadState |= 1 << i;
+                    state.setPressed(cast(Button) buttonIndex, true);
                 }
             }
         }
-        return keypadState;
+        return state;
     }
 
     private static struct StickMapping {
@@ -196,19 +137,6 @@ public class Controller : InputSource {
         private int threshold;
         private bool direction;
     }
-}
-
-public enum Button {
-    A = 0,
-    B = 1,
-    SELECT = 2,
-    START = 3,
-    RIGHT = 4,
-    LEFT = 5,
-    UP = 6,
-    DOWN = 7,
-    R = 8,
-    L = 9
 }
 
 public class InputException : Exception {

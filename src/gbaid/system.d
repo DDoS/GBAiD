@@ -1,14 +1,6 @@
 module gbaid.system;
 
 import core.time : TickDuration;
-import core.thread : Thread;
-import core.sync.mutex : Mutex;
-import core.sync.condition : Condition;
-
-import std.stdio;
-import std.string;
-
-import derelict.sdl2.sdl;
 
 import gbaid.display;
 import gbaid.cpu;
@@ -16,24 +8,17 @@ import gbaid.memory;
 import gbaid.dma;
 import gbaid.interrupt;
 import gbaid.halt;
-import gbaid.input;
+import gbaid.keypad;
 import gbaid.timer;
 import gbaid.save;
-import gbaid.graphics;
 import gbaid.util;
 
-private enum size_t CYCLES_PER_FRAME = (Display.HORIZONTAL_RESOLUTION + Display.BLANKING_RESOLUTION)
-        * (Display.VERTICAL_RESOLUTION + Display.BLANKING_RESOLUTION) * Display.CYCLES_PER_DOT;
-private enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
-private enum size_t CYCLE_BATCHES_PER_FRAME = CYCLES_PER_FRAME / CYCLE_BATCH_SIZE;
-private enum double NS_PER_CYCLE = 2.0 ^^ -24 * 1e9;
-private const TickDuration FRAME_DURATION;
-
-public static this() {
-    FRAME_DURATION = TickDuration.from!"nsecs"(cast(size_t) (CYCLES_PER_FRAME * NS_PER_CYCLE));
-}
-
 public class GameBoyAdvance {
+    public static enum size_t CYCLES_PER_FRAME = (Display.HORIZONTAL_RESOLUTION + Display.BLANKING_RESOLUTION)
+            * (Display.VERTICAL_RESOLUTION + Display.BLANKING_RESOLUTION) * Display.CYCLES_PER_DOT;
+    private static enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
+    private enum double NS_PER_CYCLE = 2.0 ^^ -24 * 1e9;
+    public static const TickDuration FRAME_DURATION;
     private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -43,9 +28,15 @@ public class GameBoyAdvance {
     private Timers timers;
     private DMAs dmas;
     private int lastBIOSPreFetch;
-    private Graphics graphics;
-    private Condition frameSync;
-    private bool coreRunning = false;
+    private size_t displayCycles = 0;
+    private size_t processorCycles = 0;
+    private size_t dmasCycles = 0;
+    private size_t timersCycles = 0;
+    private size_t keypadCycles = 0;
+
+    public static this() {
+        FRAME_DURATION = TickDuration.from!"nsecs"(cast(size_t) (CYCLES_PER_FRAME * NS_PER_CYCLE));
+    }
 
     public this(Save)(string biosFile, string romFile, Save save) {
         if (biosFile is null) {
@@ -58,9 +49,13 @@ public class GameBoyAdvance {
             static assert (0, "Expected a SaveConfiguration value or a file path as a string");
         }
 
+        memory.biosReadGuard = &nullBiosReadGuard;
+        memory.biosReadFallback = &biosReadFallback;
+        memory.unusedMemory = &unusedReadFallBack;
+
         auto ioRegisters = memory.ioRegisters;
 
-        processor = new ARM7TDMI(&memory);
+        processor = new ARM7TDMI(&memory, BIOS_START);
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
@@ -69,110 +64,42 @@ public class GameBoyAdvance {
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;
-        memory.biosReadFallback = &biosReadFallback;
-        memory.unusedMemory = &unusedReadFallBack;
-
-        processor.setEntryPointAddress(BIOS_START);
-
-        graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
-
-        frameSync = new Condition(new Mutex());
     }
 
-    public void useKeyboard() {
-        keypad.changeInput!Keyboard();
+    public void setKeypadState(KeypadState state) {
+        keypad.setState(state);
     }
 
-    public void useController() {
-        keypad.changeInput!Controller();
+    public void getFrame(short[] frame) {
+        display.getFrame(frame);
     }
 
-    public void setDisplayScale(float scale) {
-        graphics.setScale(scale);
-    }
-
-    public void setDisplayFilteringMode(FilteringMode mode) {
-        graphics.setFilteringMode(mode);
-    }
-
-    public void setDisplayUpscalingMode(UpscalingMode mode) {
-        graphics.setUpscalingMode(mode);
-    }
-
-    public void run() {
-        if (!DerelictSDL2.isLoaded) {
-            DerelictSDL2.load();
-        }
-        SDL_Init(0);
-        graphics.create();
-
-        scope (exit) {
-            graphics.destroy();
-            SDL_Quit();
+    public void emulate(size_t cycles = CYCLES_PER_FRAME) {
+        auto fullBatches = cycles / CYCLE_BATCH_SIZE;
+        foreach (i; 0 .. fullBatches) {
+            displayCycles = display.emulate(displayCycles + CYCLE_BATCH_SIZE);
+            processorCycles = processor.emulate(processorCycles + CYCLE_BATCH_SIZE);
+            dmasCycles = dmas.emulate(dmasCycles + CYCLE_BATCH_SIZE);
+            timersCycles = timers.emulate(timersCycles + CYCLE_BATCH_SIZE);
+            keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
         }
 
-        auto coreThread = new Thread(&systemCore);
-        coreThread.name = "GBA";
-        coreRunning = true;
-        coreThread.start();
-
-        auto timer = new Timer();
-        short[Display.FRAME_SIZE] frame;
-        while (!graphics.isCloseRequested()) {
-            timer.start();
-            // Signal the emulator to emulate a frame
-            synchronized (frameSync.mutex) {
-                frameSync.notify();
-            }
-            // Display the frame once drawn
-            display.getFrame(frame);
-            graphics.draw(frame);
-            // Wait for the actual duration of a frame
-            timer.waitUntil(FRAME_DURATION);
-        }
-
-        coreRunning = false;
-        synchronized (frameSync.mutex) {
-            frameSync.notify();
-        }
-        coreThread.join();
-    }
-
-    private void systemCore() {
-        keypad.create();
-        scope (exit) {
-            keypad.destroy();
-        }
-
-        timers.init();
-        dmas.init();
-        processor.init();
-        display.init();
-
-        size_t displayCycles = CYCLE_BATCH_SIZE;
-        size_t processorCycles = CYCLE_BATCH_SIZE;
-        size_t dmasCycles = CYCLE_BATCH_SIZE;
-        size_t timersCycles = CYCLE_BATCH_SIZE;
-
-        while (coreRunning) {
-            // Wait for a signal to emulate a frame
-            synchronized (frameSync.mutex) {
-                frameSync.wait();
-            }
-            // Update the input state
-            keypad.poll();
-            // Run all the system components using tick batching
-            foreach (i; 0 .. CYCLE_BATCHES_PER_FRAME) {
-                displayCycles = display.run(displayCycles) + CYCLE_BATCH_SIZE;
-                processorCycles = processor.run(processorCycles) + CYCLE_BATCH_SIZE;
-                dmasCycles = dmas.run(dmasCycles) + CYCLE_BATCH_SIZE;
-                timersCycles = timers.run(timersCycles) + CYCLE_BATCH_SIZE;
-            }
+        auto partialBatch = cycles % CYCLE_BATCH_SIZE;
+        if (partialBatch > 0) {
+            displayCycles = display.emulate(displayCycles + partialBatch);
+            processorCycles = processor.emulate(processorCycles + partialBatch);
+            dmasCycles = dmas.emulate(dmasCycles + partialBatch);
+            timersCycles = timers.emulate(timersCycles + partialBatch);
+            keypadCycles = keypad.emulate(keypadCycles + partialBatch);
         }
     }
 
     public void saveSave(string saveFile) {
         memory.gamePak.saveSave(saveFile);
+    }
+
+    private bool nullBiosReadGuard(uint address) {
+        return true;
     }
 
     private bool biosReadGuard(uint address) {

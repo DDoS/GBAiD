@@ -59,10 +59,7 @@ public class Display {
         frameLock.unlock();
     }
 
-    public void init() {
-    }
-
-    public size_t run(size_t cycles) {
+    public size_t emulate(size_t cycles) {
         // Use up 4 cycles per dot
         while (cycles >= CYCLES_PER_DOT) {
             // Take the cycles

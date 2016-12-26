@@ -14,19 +14,25 @@ private enum uint AVERAGE_CPI = 2;
 
 public class ARM7TDMI {
     private MemoryBus* memory;
-    private uint entryPointAddress = 0x0;
     private Registers registers;
     private bool haltSignal = false;
     private bool irqSignal = false;
     private int instruction;
     private int decoded;
 
-    public this(MemoryBus* memory) {
+    public this(MemoryBus* memory, uint entryPointAddress = 0x0) {
         this.memory = memory;
-    }
-
-    public void setEntryPointAddress(uint entryPointAddress) {
-        this.entryPointAddress = entryPointAddress;
+        // Initialize to ARM in system mode
+        registers.setFlag(CPSRFlag.T, Set.ARM);
+        registers.setMode(Mode.SYSTEM);
+        // Initialize the stack pointers
+        registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
+        registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
+        registers.set(Mode.USER, Register.SP, 0x3007F00);
+        // Set first instruction
+        registers.setPC(entryPointAddress);
+        // Branch to instruction
+        branch();
     }
 
     public void halt(bool state) {
@@ -53,23 +59,9 @@ public class ARM7TDMI {
         return decoded;
     }
 
-    public void init() {
-        // Initialize to ARM in system mode
-        registers.setFlag(CPSRFlag.T, Set.ARM);
-        registers.setMode(Mode.SYSTEM);
-        // Initialize the stack pointers
-        registers.set(Mode.SUPERVISOR, Register.SP, 0x3007FE0);
-        registers.set(Mode.IRQ, Register.SP, 0x3007FA0);
-        registers.set(Mode.USER, Register.SP, 0x3007F00);
-        // Set first instruction
-        registers.setPC(entryPointAddress);
-        // Branch to instruction
-        branch();
-    }
-
-    public size_t run(size_t cycles) {
-        scope (failure) {
-            debug (outputInstructions) {
+    public size_t emulate(size_t cycles) {
+        debug (outputInstructions) {
+            scope (failure) {
                 registers.dumpInstructions();
                 registers.dumpRegisters();
             }

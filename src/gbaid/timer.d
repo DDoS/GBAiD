@@ -27,10 +27,7 @@ public class Timers {
         ioRegisters.setPostWriteMonitor!0x10C(&onPostWrite!3);
     }
 
-    public void init() {
-    }
-
-    public size_t run(size_t cycles) {
+    public size_t emulate(size_t cycles) {
         auto shortCycles = cast(ushort) cycles;
         auto previousOverflows = updateTimer!0(shortCycles, 0);
         previousOverflows = updateTimer!1(shortCycles, previousOverflows);

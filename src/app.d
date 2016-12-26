@@ -1,15 +1,23 @@
+import core.thread : Thread;
+import core.sync.barrier : Barrier;
+
 import std.stdio;
 import std.getopt;
 import std.string;
 import std.file;
 import std.path;
 
+import derelict.sdl2.sdl;
+
 import gbaid.system;
 import gbaid.memory;
+import gbaid.display;
+import gbaid.keypad;
+import gbaid.input;
 import gbaid.graphics;
 import gbaid.util;
 
-private immutable string SAVE_EXTENSION = ".gsf";
+private enum string SAVE_EXTENSION = ".gsf";
 
 public void main(string[] args) {
     // Parse comand line arguments
@@ -85,15 +93,65 @@ public void main(string[] args) {
     } else {
         gba = new GameBoyAdvance(bios, rom, save);
     }
-    gba.setDisplayScale(scale);
-    gba.setDisplayFilteringMode(filtering);
-    gba.setDisplayUpscalingMode(upscaling);
-    if (controller) {
-        gba.useController();
+
+    // Load and initialize SDL
+    if (!DerelictSDL2.isLoaded) {
+        DerelictSDL2.load();
+    }
+    SDL_Init(0);
+
+    // Create the graphics and input
+    auto graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
+    graphics.setScale(scale);
+    graphics.setFilteringMode(filtering);
+    graphics.setUpscalingMode(upscaling);
+
+    auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
+
+    graphics.create();
+    input.create();
+    scope (exit) {
+        input.destroy();
+        graphics.destroy();
+        SDL_Quit();
     }
 
-    // Run GBA
-    gba.run();
+    // Synchronization for the worker and main thread
+    auto frameBarrier = new Barrier(2);
+
+    // Declare a function for the GBA thread worker
+    auto gbaRunning = true;
+    void gbaRun() {
+        while (gbaRunning) {
+            gba.emulate();
+            frameBarrier.wait();
+        }
+    }
+
+    // Start the GBA worker
+    auto gbaThread = new Thread(&gbaRun);
+    gbaThread.name = "GBA";
+    gbaThread.start();
+
+    // Every frame interval, signal the worker to emulate a frame, then draw it
+    auto timer = new Timer();
+    short[Display.FRAME_SIZE] frame;
+    while (!graphics.isCloseRequested()) {
+        timer.start();
+        // Pass the keypad button state to the GBA
+        gba.setKeypadState(input.pollKeypad());
+        // Display the frame once drawn
+        frameBarrier.wait();
+        gba.getFrame(frame);
+        graphics.draw(frame);
+        // Wait for the actual duration of a frame
+        timer.waitUntil(GameBoyAdvance.FRAME_DURATION);
+    }
+
+    // Shutdown the worker
+    gbaRunning = false;
+    frameBarrier.wait();
+    gbaThread.join();
 
     // Save Game Pak save
     if (!noSave) {

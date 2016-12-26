@@ -73,10 +73,7 @@ public class DMAs {
         }
     }
 
-    public void init() {
-    }
-
-    public size_t run(size_t cycles) {
+    public size_t emulate(size_t cycles) {
         // Check if any of the DMAs are triggered
         if (triggered == 0) {
             // If not then discard all the cycles
