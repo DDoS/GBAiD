@@ -1,9 +1,10 @@
-module gbaid.dma;
+module gbaid.gba.dma;
 
-import gbaid.memory;
-import gbaid.interrupt;
-import gbaid.halt;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.interrupt;
+import gbaid.gba.halt;
 
 public class DMAs {
     private MemoryBus* memory;

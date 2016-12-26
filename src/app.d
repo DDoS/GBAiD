@@ -9,13 +9,10 @@ import std.path;
 
 import derelict.sdl2.sdl;
 
-import gbaid.system;
-import gbaid.memory;
-import gbaid.display;
-import gbaid.keypad;
-import gbaid.input;
-import gbaid.graphics;
 import gbaid.util;
+import gbaid.gba;
+import gbaid.input;
+import gbaid.render.renderer;
 
 private enum string SAVE_EXTENSION = ".gsf";
 
@@ -100,19 +97,19 @@ public void main(string[] args) {
     }
     SDL_Init(0);
 
-    // Create the graphics and input
-    auto graphics = new Graphics(Display.HORIZONTAL_RESOLUTION, Display.VERTICAL_RESOLUTION);
-    graphics.setScale(scale);
-    graphics.setFilteringMode(filtering);
-    graphics.setUpscalingMode(upscaling);
+    // Create the renderer and input
+    auto renderer = new FrameRenderer(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    renderer.setScale(scale);
+    renderer.setFilteringMode(filtering);
+    renderer.setUpscalingMode(upscaling);
 
     auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
 
-    graphics.create();
+    renderer.create();
     input.create();
     scope (exit) {
         input.destroy();
-        graphics.destroy();
+        renderer.destroy();
         SDL_Quit();
     }
 
@@ -135,17 +132,17 @@ public void main(string[] args) {
 
     // Every frame interval, signal the worker to emulate a frame, then draw it
     auto timer = new Timer();
-    short[Display.FRAME_SIZE] frame;
-    while (!graphics.isCloseRequested()) {
+    short[DISPLAY_WIDTH * DISPLAY_HEIGHT] frame;
+    while (!renderer.isCloseRequested()) {
         timer.start();
         // Pass the keypad button state to the GBA
         gba.setKeypadState(input.pollKeypad());
         // Display the frame once drawn
         frameBarrier.wait();
         gba.getFrame(frame);
-        graphics.draw(frame);
+        renderer.draw(frame);
         // Wait for the actual duration of a frame
-        timer.waitUntil(GameBoyAdvance.FRAME_DURATION);
+        timer.waitUntil(FRAME_DURATION);
     }
 
     // Shutdown the worker

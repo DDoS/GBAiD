@@ -1,24 +1,19 @@
-module gbaid.system;
+module gbaid.gba.system;
 
-import core.time : TickDuration;
-
-import gbaid.display;
-import gbaid.cpu;
-import gbaid.memory;
-import gbaid.dma;
-import gbaid.interrupt;
-import gbaid.halt;
-import gbaid.keypad;
-import gbaid.timer;
-import gbaid.save;
 import gbaid.util;
 
+import gbaid.gba.display;
+import gbaid.gba.cpu;
+import gbaid.gba.memory;
+import gbaid.gba.dma;
+import gbaid.gba.interrupt;
+import gbaid.gba.halt;
+import gbaid.gba.keypad;
+import gbaid.gba.timer;
+import gbaid.gba.save;
+
 public class GameBoyAdvance {
-    public static enum size_t CYCLES_PER_FRAME = (Display.HORIZONTAL_RESOLUTION + Display.BLANKING_RESOLUTION)
-            * (Display.VERTICAL_RESOLUTION + Display.BLANKING_RESOLUTION) * Display.CYCLES_PER_DOT;
     private static enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
-    private enum double NS_PER_CYCLE = 2.0 ^^ -24 * 1e9;
-    public static const TickDuration FRAME_DURATION;
     private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -33,10 +28,6 @@ public class GameBoyAdvance {
     private size_t dmasCycles = 0;
     private size_t timersCycles = 0;
     private size_t keypadCycles = 0;
-
-    public static this() {
-        FRAME_DURATION = TickDuration.from!"nsecs"(cast(size_t) (CYCLES_PER_FRAME * NS_PER_CYCLE));
-    }
 
     public this(Save)(string biosFile, string romFile, Save save) {
         if (biosFile is null) {

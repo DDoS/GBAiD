@@ -1,4 +1,4 @@
-module gbaid.gl20;
+module gbaid.render.gl20;
 
 import std.stdio;
 import std.conv;
@@ -11,8 +11,9 @@ import std.algorithm;
 import derelict.sdl2.sdl;
 import derelict.opengl3.gl3;
 
-import gbaid.gl;
 import gbaid.util;
+
+import gbaid.render.gl;
 
 /**
  * An OpenGL 2.0 implementation of {@link org.spout.renderer.api.gl.Context}.
@@ -239,7 +240,7 @@ public class GL20Context : Context {
         return event.type == SDL_QUIT;
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -394,7 +395,7 @@ public class GL20FrameBuffer : FrameBuffer {
         checkForGLError();
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -685,7 +686,7 @@ public class GL20Program : Program {
         return uniforms.keys;
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -779,7 +780,7 @@ public class GL20RenderBuffer : RenderBuffer {
         checkForGLError();
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -886,7 +887,7 @@ public class GL20Shader : Shader {
         textureLayouts[unit] = sampler;
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -1113,7 +1114,7 @@ public class GL20Texture : Texture {
         checkForGLError();
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }
@@ -1366,7 +1367,7 @@ public class GL20VertexArray : VertexArray {
         checkForGLError();
     }
 
-    public gbaid.gl.GLVersion getGLVersion() {
+    public gbaid.render.gl.GLVersion getGLVersion() {
         return GL20;
     }
 }

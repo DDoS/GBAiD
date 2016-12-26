@@ -2,8 +2,9 @@ module gbaid.input;
 
 import derelict.sdl2.sdl;
 
-import gbaid.keypad;
 import gbaid.util;
+
+import gbaid.gba.keypad;
 
 public interface InputSource {
     public void create();

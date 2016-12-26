@@ -1,4 +1,4 @@
-module gbaid.memory;
+module gbaid.gba.memory;
 
 import core.time : TickDuration;
 
@@ -9,8 +9,9 @@ import std.algorithm.comparison : min;
 import std.file : read, FileException;
 import std.format : format;
 
-import gbaid.save;
 import gbaid.util;
+
+import gbaid.gba.save;
 
 public alias Ram(uint byteSize) = Memory!(byteSize, false);
 public alias Rom(uint byteSize) = Memory!(byteSize, true);

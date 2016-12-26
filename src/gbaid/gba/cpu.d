@@ -1,14 +1,14 @@
-module gbaid.cpu;
+module gbaid.gba.cpu;
 
-import std.stdio;
-import std.algorithm.searching;
-import std.conv;
-import std.string;
-import std.traits;
+import std.algorithm.searching : count;
+import std.string : format;
+import std.traits : hasUDA;
 
-import gbaid.memory;
-import gbaid.arm, gbaid.thumb;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.arm;
+import gbaid.gba.thumb;
 
 private enum uint AVERAGE_CPI = 2;
 
@@ -615,8 +615,8 @@ public void addSubTable(string bits, alias instructionFamily, alias nullInstruct
             }
             // Check if there's a conflict first
             if (table[index] !is &nullInstruction) {
-                throw new Exception("The entry at index " ~ tableBitValue.to!string ~
-                    " in sub-table with bits \"" ~ bits ~ "\" conflicts with a previously added one");
+                throw new Exception(format("The entry at index %d in sub-table with bits \"%s\" conflicts with "
+                        ~ "a previously added one", tableBitValue, bits));
             }
             table[index] = subTable[tableBitValue];
         }

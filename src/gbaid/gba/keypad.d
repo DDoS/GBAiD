@@ -1,8 +1,10 @@
-module gbaid.keypad;
+module gbaid.gba.keypad;
 
-import gbaid.memory;
-import gbaid.interrupt;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.interrupt;
+import gbaid.gba.display : CYCLES_PER_FRAME;
 
 public enum Button {
     A = 0,
@@ -34,7 +36,6 @@ public struct KeypadState {
 }
 
 public class Keypad {
-    private enum ptrdiff_t CYCLES_PER_FRAME = (240 + 68) * (160 + 68) * 4;
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private KeypadState state;

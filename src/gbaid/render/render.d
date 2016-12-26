@@ -1,10 +1,10 @@
-module gbaid.graphics;
+module gbaid.render.renderer;
 
-import gbaid.gl, gbaid.gl20;
-import gbaid.shader;
-import gbaid.util;
+import gbaid.render.gl;
+import gbaid.render.gl20;
+import gbaid.render.shader;
 
-public class Graphics {
+public class FrameRenderer {
     private Context context = null;
     private Program program = null;
     private Texture texture = null;

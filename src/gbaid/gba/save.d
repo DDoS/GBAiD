@@ -1,4 +1,4 @@
-module gbaid.save;
+module gbaid.gba.save;
 
 import std.format : format;
 import std.typecons : tuple, Tuple;

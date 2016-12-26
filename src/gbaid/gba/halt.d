@@ -1,6 +1,6 @@
-module gbaid.halt;
+module gbaid.gba.halt;
 
-import gbaid.cpu;
+import gbaid.gba.cpu;
 
 public class HaltHandler {
     private ARM7TDMI processor;

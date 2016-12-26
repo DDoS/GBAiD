@@ -1,8 +1,9 @@
-module gbaid.timer;
+module gbaid.gba.timer;
 
-import gbaid.memory;
-import gbaid.interrupt;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.interrupt;
 
 public class Timers {
     private IoRegisters* ioRegisters;

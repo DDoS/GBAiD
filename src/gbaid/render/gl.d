@@ -1,9 +1,10 @@
-module gbaid.gl;
+module gbaid.render.gl;
 
 import std.regex;
 import std.file;
 import std.string;
 import std.conv;
+
 import derelict.opengl3.gl3 : glGetError;
 
 /**

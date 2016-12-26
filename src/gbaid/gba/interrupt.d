@@ -1,9 +1,10 @@
-module gbaid.interrupt;
+module gbaid.gba.interrupt;
 
-import gbaid.memory;
-import gbaid.cpu;
-import gbaid.halt;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.cpu;
+import gbaid.gba.halt;
 
 public class InterruptHandler {
     private IoRegisters* ioRegisters;

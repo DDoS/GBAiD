@@ -1,11 +1,11 @@
-module gbaid.thumb;
+module gbaid.gba.thumb;
 
-import std.conv;
-import std.string;
+import std.string : format;
 
-import gbaid.memory;
-import gbaid.cpu;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.cpu;
 
 private enum THUMB_OPCODE_BIT_COUNT = 10;
 // Using enum leads to a severe performance penalty for some reason...

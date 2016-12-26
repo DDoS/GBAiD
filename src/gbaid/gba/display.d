@@ -1,35 +1,39 @@
-module gbaid.display;
+module gbaid.gba.display;
 
 import core.sync.mutex : Mutex;
 
-import std.algorithm;
+import std.algorithm.comparison : min;
+import std.algorithm.mutation : swap;
 
-import gbaid.memory;
-import gbaid.dma;
-import gbaid.interrupt;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.dma;
+import gbaid.gba.interrupt;
 
 version (D_InlineAsm_X86) version = UseASM;
 version (D_InlineAsm_X86_64) version = UseASM;
 
+public enum uint DISPLAY_WIDTH = 240;
+public enum uint DISPLAY_HEIGHT = 160;
+public enum size_t CYCLES_PER_FRAME = (DISPLAY_WIDTH + Display.BLANK_LENGTH)
+        * (DISPLAY_HEIGHT + Display.BLANK_LENGTH) * Display.CYCLES_PER_DOT;
+
 public class Display {
-    public static enum uint HORIZONTAL_RESOLUTION = 240;
-    public static enum uint VERTICAL_RESOLUTION = 160;
-    public static enum uint BLANKING_RESOLUTION = 68;
+    private enum uint BLANK_LENGTH = 68;
     public static enum uint CYCLES_PER_DOT = 4;
-    public static enum uint FRAME_SIZE = HORIZONTAL_RESOLUTION * VERTICAL_RESOLUTION;
     private static enum uint LAYER_COUNT = 6;
     private static enum short TRANSPARENT = cast(short) 0x8000;
-    private static enum uint HORIZONTAL_TIMING_RESOLUTION = HORIZONTAL_RESOLUTION + BLANKING_RESOLUTION;
-    private static enum uint VERTICAL_TIMING_RESOLUTION = VERTICAL_RESOLUTION + BLANKING_RESOLUTION;
+    private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
+    private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
     private IoRegisters* ioRegisters;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
-    private short[FRAME_SIZE] frame;
-    private short[HORIZONTAL_RESOLUTION][LAYER_COUNT] lines;
+    private short[DISPLAY_WIDTH * DISPLAY_HEIGHT] frame;
+    private short[DISPLAY_WIDTH][LAYER_COUNT] lines;
     private int[2] internalAffineReferenceX;
     private int[2] internalAffineReferenceY;
     private int line = 0;
@@ -69,27 +73,27 @@ public class Display {
                 // Run the events for a line starting to be drawn
                 startLineDrawEvents(line);
                 // Draw the line if it is visible
-                if (line < VERTICAL_RESOLUTION) {
+                if (line < DISPLAY_HEIGHT) {
                     // Acquire the lock on the frame before we start drawing
                     if (line == 0) {
                         frameLock.lock();
                     }
                     drawLine(line);
                 }
-            } else if (dot == HORIZONTAL_RESOLUTION) {
+            } else if (dot == DISPLAY_WIDTH) {
                 // Release the lock on the frame if we are done drawing it
-                if (line == VERTICAL_RESOLUTION - 1) {
+                if (line == DISPLAY_HEIGHT - 1) {
                     frameLock.unlock();
                 }
                 // Run the events for a line drawing ending
                 endLineDrawEvents(line);
             }
             // Increment the dot and line counts
-            if (dot == HORIZONTAL_TIMING_RESOLUTION - 1) {
+            if (dot == TIMING_WIDTH - 1) {
                 // Reset the dot count if it is the last one
                 dot = 0;
                 // Increment the line count
-                if (line == VERTICAL_TIMING_RESOLUTION - 1) {
+                if (line == TIMING_HEIGTH - 1) {
                     // Reset the line count back to zero if we reach the end
                     line = 0;
                 } else {
@@ -169,21 +173,21 @@ public class Display {
     }
 
     private void lineBlank(int line) {
-        uint p = line * HORIZONTAL_RESOLUTION;
-        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+        uint p = line * DISPLAY_WIDTH;
+        foreach (column; 0 .. DISPLAY_WIDTH) {
             frame[p++] = cast(short) 0xFFFF;
         }
     }
 
     private void lineTransparent(short[] buffer) {
-        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+        foreach (column; 0 .. DISPLAY_WIDTH) {
             buffer[column] = TRANSPARENT;
         }
     }
 
     private void lineBackgroundText(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
                 buffer[column] = TRANSPARENT;
             }
             return;
@@ -357,7 +361,7 @@ public class Display {
             version (X86_64) mixin (x64);
             version (X86) mixin (x64_to_x86(x64));
         } else {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
 
                 int x = (column + xOffset) & totalWidth;
 
@@ -420,7 +424,7 @@ public class Display {
 
     private void lineBackgroundAffine(int line, short[] buffer, int layer, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -593,7 +597,7 @@ public class Display {
             version (X86_64) mixin (x64);
             version (X86) mixin (x64_to_x86(x64));
         } else {
-            for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+            for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
                 int x = dx >> 8;
                 int y = dy >> 8;
 
@@ -647,7 +651,7 @@ public class Display {
 
     private void lineBackgroundBitmap16Single(int line, short[] buffer, int bgEnables, lazy int frame) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -674,11 +678,11 @@ public class Display {
         int dx = internalAffineReferenceX[0];
         int dy = internalAffineReferenceY[0];
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
 
-            if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
+            if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
                 buffer[column] = TRANSPARENT;
                 continue;
             }
@@ -688,7 +692,7 @@ public class Display {
                 y -= y % mosaicSizeY;
             }
 
-            int address = x + y * HORIZONTAL_RESOLUTION << 1;
+            int address = x + y * DISPLAY_WIDTH << 1;
 
             short color = vram.get!short(address) & 0x7FFF;
             buffer[column] = color;
@@ -700,7 +704,7 @@ public class Display {
 
     private void lineBackgroundBitmap8Double(int line, short[] buffer, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -729,11 +733,11 @@ public class Display {
 
         int addressBase = frame ? 0xA000 : 0x0;
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
 
-            if (x < 0 || x >= HORIZONTAL_RESOLUTION || y < 0 || y >= VERTICAL_RESOLUTION) {
+            if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
                 buffer[column] = TRANSPARENT;
                 continue;
             }
@@ -743,7 +747,7 @@ public class Display {
                 y -= y % mosaicSizeY;
             }
 
-            int address = x + y * HORIZONTAL_RESOLUTION + addressBase;
+            int address = x + y * DISPLAY_WIDTH + addressBase;
 
             int paletteIndex = vram.get!byte(address) & 0xFF;
             if (paletteIndex == 0) {
@@ -762,7 +766,7 @@ public class Display {
 
     private void lineBackgroundBitmap16Double(int line, short[] buffer, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+            foreach (column; 0 .. DISPLAY_WIDTH) {
                 buffer[column] = TRANSPARENT;
             }
 
@@ -791,7 +795,7 @@ public class Display {
 
         int addressBase = frame ? 0xA000 : 0x0;
 
-        for (int column = 0; column < HORIZONTAL_RESOLUTION; column++, dx += pa, dy += pc) {
+        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
 
@@ -816,7 +820,7 @@ public class Display {
     }
 
     private void lineObjects(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
-        foreach (column; 0 .. HORIZONTAL_RESOLUTION) {
+        foreach (column; 0 .. DISPLAY_WIDTH) {
             colorBuffer[column] = TRANSPARENT;
             infoBuffer[column] = 3;
         }
@@ -853,7 +857,7 @@ public class Display {
             int size = getBits(attribute1, 14, 15);
 
             int y = attribute0 & 0xFF;
-            if (y >= VERTICAL_RESOLUTION) {
+            if (y >= DISPLAY_HEIGHT) {
                 y -= 256;
             }
 
@@ -919,7 +923,7 @@ public class Display {
             }
 
             int x = attribute1 & 0x1FF;
-            if (x >= HORIZONTAL_RESOLUTION) {
+            if (x >= DISPLAY_WIDTH) {
                 x -= 512;
             }
 
@@ -956,7 +960,7 @@ public class Display {
 
                 int column = objectX + x;
 
-                if (column >= HORIZONTAL_RESOLUTION) {
+                if (column >= DISPLAY_WIDTH) {
                     continue;
                 }
 
@@ -1056,7 +1060,7 @@ public class Display {
 
         int[5] layerMap = [3, 2, 1, 0, 4];
 
-        for (int column = 0, p = line * HORIZONTAL_RESOLUTION; column < HORIZONTAL_RESOLUTION; column++, p++) {
+        for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
 
             int objInfo = lines[5][column];
             int objPriority = objInfo & 0b11;
@@ -1282,7 +1286,7 @@ public class Display {
         // Set the HBLANK bit in the display status
         displayStatus.setBit(1, true);
         // Run the DMAs if within the visible vertical lines
-        if (line < VERTICAL_RESOLUTION) {
+        if (line < DISPLAY_HEIGHT) {
             dmas.signalHBLANK();
         }
         // Trigger the HBLANK interrupt if enabled
@@ -1308,7 +1312,7 @@ public class Display {
         }
         // Check for VBLANK start or end
         switch (line) {
-            case VERTICAL_RESOLUTION: {
+            case DISPLAY_HEIGHT: {
                 // Set the VBLANK bit in the display status
                 displayStatus.setBit(0, true);
                 // Signal VBLANK to the DMAs
@@ -1319,7 +1323,7 @@ public class Display {
                 }
                 break;
             }
-            case VERTICAL_TIMING_RESOLUTION - 1: {
+            case TIMING_HEIGTH - 1: {
                 // Clear the VBLANK bit
                 displayStatus.setBit(0, false);
                 // Reload the transformation data

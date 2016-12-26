@@ -1,4 +1,4 @@
-module gbaid.shader;
+module gbaid.render.shader;
 
 public enum string TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE =
 `

@@ -1,10 +1,11 @@
-module gbaid.arm;
+module gbaid.gba.arm;
 
-import std.string;
+import std.string : format;
 
-import gbaid.memory;
-import gbaid.cpu;
 import gbaid.util;
+
+import gbaid.gba.memory;
+import gbaid.gba.cpu;
 
 private enum ARM_OPCODE_BIT_COUNT = 12;
 // Using enum leads to a severe performance penalty for some reason...
