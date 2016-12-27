@@ -5,6 +5,7 @@
 	"authors": ["Aleksi \"DDoS\" Sapon"],
 	"license": "MIT",
 	"targetPath": "bin",
+    "stringImportPaths": ["src/gbaid/gba/assembly"],
 	"dependencies": {
 		"derelict-sdl2":"2.0.0",
 		"derelict-gl3":"1.0.18"

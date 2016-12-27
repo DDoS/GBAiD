@@ -1,12 +1,9 @@
 module gbaid.util;
 
-import core.time;
-import core.thread;
-import core.sync.condition;
+import core.time : Duration, TickDuration, hnsecs;
+import core.thread : Thread;
 
-import std.path;
-import std.range;
-import std.algorithm;
+import std.path : expandTilde, absolutePath, buildNormalizedPath;
 import std.conv : to;
 
 public enum uint BYTES_PER_KIB = 1024;
@@ -143,26 +140,6 @@ public string toDString(inout(char)* cs, size_t length) {
 
 public string expandPath(string relative) {
     return buildNormalizedPath(absolutePath(expandTilde(relative)));
-}
-
-// Very basic conversion for the purpose of this project only
-// Only converts 64 registers to 32 bit
-public char[] x64_to_x86(string x64) {
-    size_t length = x64.length;
-    char[] x86 = new char[length];
-    foreach (i; 0 .. length - 2) {
-        if (x64[i] == 'R' && x64[i + 2] == 'X') {
-            char c = x64[i + 1];
-            if (c == 'A' || c == 'B' || c == 'C' || c == 'D') {
-                x86[i] = 'E';
-                continue;
-            }
-        }
-        x86[i] = x64[i];
-    }
-    x86[length - 1] = x64[length - 1];
-    x86[length - 2] = x64[length - 2];
-    return x86;
 }
 
 public mixin template privateFields(T, string name, alias init, uint count) if (count > 0) {
