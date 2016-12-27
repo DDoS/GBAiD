@@ -1,6 +1,8 @@
 module gbaid.gba.cpu;
 
+import std.array : array;
 import std.algorithm.searching : count;
+import std.algorithm.iteration : splitter;
 import std.string : format;
 import std.traits : hasUDA;
 
@@ -216,6 +218,10 @@ public struct Registers {
 
     public void setAPSRFlags(int n, int z, int c, int v) {
         registers[Register.CPSR].setBits(28, 31, v | c << 1 | z << 2 | n << 3);
+    }
+
+    public template setApsrFlags(string bits) {
+        mixin(genApsrSetterSignature(bits.count(',')) ~ genApsrSetterImpl(array(bits.splitter(","))));
     }
 
     public void setMode(Mode mode) {
@@ -690,8 +696,102 @@ public enum CPSRFlag {
     Z = 30,
     C = 29,
     V = 28,
-    Q = 27,
     I = 7,
     F = 6,
     T = 5,
+}
+
+private string genApsrSetterSignature(size_t argCount) {
+    argCount += 1;
+    auto signature = "public void setApsrFlags(";
+    foreach (i; 0 .. argCount) {
+        signature ~= format("int i%d", i);
+        if (i + 1 < argCount) {
+            signature ~= ", ";
+        }
+    }
+    return signature ~ ") ";
+}
+
+private string genApsrSetterImpl(string[] flagSets) {
+    int mask = 0;
+    foreach (flagSet; flagSets) {
+        foreach (flag; flagSet) {
+            int bitMask = getApsrFlagMask(flag);
+            if (mask & bitMask) {
+                throw new Exception("Duplicate flag: " ~ flag);
+            }
+            mask |= bitMask;
+        }
+    }
+
+    auto code = "auto newFlags = ";
+    foreach (int i, flagSet; flagSets) {
+        code ~= genApsrSetterImplExtractBits(i, flagSet);
+        if (i + 1 < flagSets.length) {
+            code ~= " | ";
+        }
+    }
+    code ~= ";\n";
+    code ~= format("    registers[Register.CPSR] = registers[Register.CPSR] & 0x%08X | (newFlags << 28);\n",
+            ~(mask << 28));
+    return format("{\n    %s}", code);
+}
+
+private string genApsrSetterImplExtractBits(int argIndex, string flagSet) {
+    int[] shifts;
+    int[] masks;
+    foreach (i, flag; flagSet) {
+        auto flagIndex = getApsrFlagIndex(flag);
+        if (flagIndex < 0) {
+            continue;
+        }
+        auto shift = cast(int) (flagSet.length - 1 - i) - flagIndex;
+        auto mask = 1 << flagIndex;
+        if (shifts.length > 0 && shifts[$ - 1] == shift) {
+            masks[$ - 1] |= mask;
+        } else {
+            shifts ~= shift;
+            masks ~= mask;
+        }
+    }
+
+    auto code = "";
+    foreach (i, shift; shifts) {
+        string shiftOp = void;
+        if (shift > 0) {
+            shiftOp = format(" >>> %d", shift);
+        } else if (shift < 0) {
+            shiftOp = format(" << %d", -shift);
+        } else {
+            shiftOp = "";
+        }
+        code ~= format("(i%d%s) & 0b%04b", argIndex, shiftOp, masks[i]);
+        if (i < shifts.length - 1) {
+            code ~= " | ";
+        }
+    }
+    return code;
+}
+
+private int getApsrFlagMask(char flag) {
+    auto bitIndex = getApsrFlagIndex(flag);
+    return bitIndex < 0 ? 0 : (1 << bitIndex);
+}
+
+private int getApsrFlagIndex(char flag) {
+    switch (flag) {
+        case 'N':
+            return 3;
+        case 'Z':
+            return 2;
+        case 'C':
+            return 1;
+        case 'V':
+            return 0;
+        case '0':
+            return -1;
+        default:
+            throw new Exception("Unknown flag: " ~ flag);
+    }
 }

@@ -161,8 +161,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -175,8 +180,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -190,9 +200,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedSub(op1, op2, res);
-        carry = !borrowedSub(op1, op2, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = !borrowedSub(op1, op2, res);
+            int overflow = overflowedSub(op1, op2, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -205,9 +221,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedSub(op2, op1, res);
-        carry = !borrowedSub(op2, op1, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = !borrowedSub(op2, op1, res);
+            int overflow = overflowedSub(op2, op1, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -220,9 +242,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedAdd(op1, op2, res);
-        carry = carriedAdd(op1, op2, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = carriedAdd(op1, op2, res);
+            int overflow = overflowedAdd(op1, op2, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -236,9 +264,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
-        carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
+            int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -252,9 +286,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
-        carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
+            int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -268,9 +308,15 @@ private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
-        carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
+            int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
+            registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
+        }
     }
 }
 
@@ -281,8 +327,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 8, bool setFlags: 
     // Operation
     int res = op1 & op2;
     // Flag updates
-    int overflow = registers.getFlag(CPSRFlag.V);
-    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
+    int negative = res < 0;
+    int zero = res == 0;
+    registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: true)
@@ -292,8 +339,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 9, bool setFlags: 
     // Operation
     int res = op1 ^ op2;
     // Flag updates
-    int overflow = registers.getFlag(CPSRFlag.V);
-    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
+    int negative = res < 0;
+    int zero = res == 0;
+    registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags: true)
@@ -303,9 +351,11 @@ private void dataProcessing(alias decodeOperands, int opCode: 10, bool setFlags:
     // Operation
     int res = op1 - op2;
     // Flag updates
-    int overflow = overflowedSub(op1, op2, res);
+    int negative = res < 0;
+    int zero = res == 0;
     carry = !borrowedSub(op1, op2, res);
-    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
+    int overflow = overflowedSub(op1, op2, res);
+    registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags: true)
@@ -315,9 +365,11 @@ private void dataProcessing(alias decodeOperands, int opCode: 11, bool setFlags:
     // Operation
     int res = op1 + op2;
     // Flag updates
-    int overflow = overflowedAdd(op1, op2, res);
+    int negative = res < 0;
+    int zero = res == 0;
     carry = carriedAdd(op1, op2, res);
-    registers.setDataProcessingFlags!false(rd, res, overflow, carry);
+    int overflow = overflowedAdd(op1, op2, res);
+    registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
 }
 
 private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
@@ -329,8 +381,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -343,8 +400,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -357,8 +419,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -371,8 +438,13 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
-        int overflow = registers.getFlag(CPSRFlag.V);
-        registers.setDataProcessingFlags!true(rd, res, overflow, carry);
+        if (rd == Register.PC) {
+            registers.setCPSR(registers.get(Register.SPSR));
+        } else {
+            int negative = res < 0;
+            int zero = res == 0;
+            registers.setApsrFlags!"N,Z,C"(negative, zero, carry);
+        }
     }
 }
 
@@ -380,20 +452,6 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
 private template dataProcessing(alias decodeOperands, int opCode, bool setFlags)
         if (opCode >= 8 && opCode <= 11 && !setFlags) {
     private alias dataProcessing = unsupported;
-}
-
-private void setDataProcessingFlags(bool pcSpecial)(Registers* registers, int rd, int res, int overflow, int carry) {
-    int zero = res == 0;
-    int negative = res < 0;
-    static if (pcSpecial) {
-        if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
-        } else {
-            registers.setAPSRFlags(negative, zero, carry, overflow);
-        }
-    } else {
-        registers.setAPSRFlags(negative, zero, carry, overflow);
-    }
 }
 
 private mixin template decodeOpPsrTransfer_Imm() {
@@ -556,7 +614,7 @@ private template multiply(bool long_, bool notUnsigned, bool accumulate, bool se
 private void setMultiplyIntResult(bool setFlags)(Registers* registers, int rd, int res) {
     registers.set(rd, res);
     static if (setFlags) {
-        registers.setAPSRFlags(res < 0, res == 0);
+        registers.setApsrFlags!"N,Z"(res < 0, res == 0);
     }
 }
 
@@ -566,7 +624,7 @@ private void setMultiplyLongResult(bool setFlags)(Registers* registers, int rd, 
     registers.set(rn, resLo);
     registers.set(rd, resHi);
     static if (setFlags) {
-        registers.setAPSRFlags(res < 0, res == 0);
+        registers.setApsrFlags!"N,Z"(res < 0, res == 0);
     }
 }
 

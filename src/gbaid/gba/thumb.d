@@ -132,7 +132,7 @@ private void moveShiftedRegister(int code)(Registers* registers, MemoryBus* memo
     int carry;
     op = registers.applyShift!false(code, shift, op, carry);
     registers.set(rd, op);
-    registers.setAPSRFlags(op < 0, op == 0, carry);
+    registers.setApsrFlags!"N,Z,C"(op < 0, op == 0, carry);
 }
 
 @("unsupported")
@@ -169,7 +169,7 @@ private void addAndSubtract(bool immediate, bool subtract)(Registers* registers,
         int overflow = overflowedAdd(op1, op2, res);
     }
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0, carry, overflow);
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carry, overflow);
 }
 
 private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
@@ -184,14 +184,14 @@ private void moveCompareAddAndSubtractImmediate(int code: 0)(Registers* register
     debug (outputInstructions) registers.logInstruction(instruction, "MOV");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!false;
     registers.set(rd, op2);
-    registers.setAPSRFlags(op2 < 0, op2 == 0);
+    registers.setApsrFlags!"N,Z"(op2 < 0, op2 == 0);
 }
 
 private void moveCompareAddAndSubtractImmediate(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int v = op1 - op2;
-    registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
 private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -199,7 +199,7 @@ private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* register
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 + op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 }
 
 private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -207,7 +207,7 @@ private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers* register
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
     int res = op1 - op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
 }
 
 private mixin template decodeOpAluOperations() {
@@ -221,7 +221,7 @@ private void aluOperations(int code: 0)(Registers* registers, MemoryBus* memory,
     mixin decodeOpAluOperations;
     int res = op1 & op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private void aluOperations(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -229,7 +229,7 @@ private void aluOperations(int code: 1)(Registers* registers, MemoryBus* memory,
     mixin decodeOpAluOperations;
     int res = op1 ^ op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private void aluOperationsShift(int type)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -248,7 +248,7 @@ private void aluOperationsShift(int type)(Registers* registers, MemoryBus* memor
     int carry;
     int res = registers.applyShift!true(type, op2 & 0xFF, op1, carry);
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0, carry);
+    registers.setApsrFlags!"N,Z,C"(res < 0, res == 0, carry);
 }
 
 // LSL
@@ -270,7 +270,7 @@ private void aluOperations(int code: 5)(Registers* registers, MemoryBus* memory,
     int tmp = op1 + op2;
     int res = tmp + carry;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0,
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0,
         carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res),
         overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
 }
@@ -282,7 +282,7 @@ private void aluOperations(int code: 6)(Registers* registers, MemoryBus* memory,
     int tmp = op1 - op2;
     int res = tmp - !carry;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0,
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0,
         !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res),
         overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
 }
@@ -291,7 +291,7 @@ private void aluOperations(int code: 8)(Registers* registers, MemoryBus* memory,
     debug (outputInstructions) registers.logInstruction(instruction, "TST");
     mixin decodeOpAluOperations;
     int v = op1 & op2;
-    registers.setAPSRFlags(v < 0, v == 0);
+    registers.setApsrFlags!"N,Z"(v < 0, v == 0);
 }
 
 private void aluOperations(int code: 9)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -299,21 +299,21 @@ private void aluOperations(int code: 9)(Registers* registers, MemoryBus* memory,
     mixin decodeOpAluOperations;
     int res = 0 - op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
+    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
 }
 
 private void aluOperations(int code: 10)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpAluOperations;
     int v = op1 - op2;
-    registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
 private void aluOperations(int code: 11)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOpAluOperations;
     int v = op1 + op2;
-    registers.setAPSRFlags(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
+    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
 }
 
 private void aluOperations(int code: 12)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -321,7 +321,7 @@ private void aluOperations(int code: 12)(Registers* registers, MemoryBus* memory
     mixin decodeOpAluOperations;
     int res = op1 | op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private void aluOperations(int code: 13)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -329,7 +329,7 @@ private void aluOperations(int code: 13)(Registers* registers, MemoryBus* memory
     mixin decodeOpAluOperations;
     int res = op1 * op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private void aluOperations(int code: 14)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -337,7 +337,7 @@ private void aluOperations(int code: 14)(Registers* registers, MemoryBus* memory
     mixin decodeOpAluOperations;
     int res = op1 & ~op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private void aluOperations(int code: 15)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -345,7 +345,7 @@ private void aluOperations(int code: 15)(Registers* registers, MemoryBus* memory
     mixin decodeOpAluOperations;
     int res = ~op2;
     registers.set(rd, res);
-    registers.setAPSRFlags(res < 0, res == 0);
+    registers.setApsrFlags!"N,Z"(res < 0, res == 0);
 }
 
 private mixin template decodeOpHiRegisterOperationsAndBranchExchange(bool highDestination, bool highSource) {
@@ -382,7 +382,7 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
     int op1 = registers.get(rd);
     int op2 = registers.get(rs);
     int v = op1 - op2;
-    registers.setAPSRFlags(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
