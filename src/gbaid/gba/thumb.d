@@ -6,6 +6,7 @@ import gbaid.util;
 
 import gbaid.gba.memory;
 import gbaid.gba.cpu;
+import gbaid.gba.assembly;
 
 private enum THUMB_OPCODE_BIT_COUNT = 10;
 // Using enum leads to a severe performance penalty for some reason...
@@ -158,18 +159,33 @@ private void addAndSubtract(bool immediate, bool subtract)(Registers* registers,
     static if (subtract) {
         // SUB
         debug (outputInstructions) registers.logInstruction(instruction, "SUB");
-        int res = op1 - op2;
-        int carry = !borrowedSub(op1, op2, res);
-        int overflow = overflowedSub(op1, op2, res);
+        static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+            int res = void;
+            int flags = void;
+            mixin (SUB_WITH_FLAGS_ASM);
+            registers.setApsrFlags!"NZCV"(flags);
+        } else {
+            int res = op1 - op2;
+            int carry = !borrowedSub(op1, op2, res);
+            int overflow = overflowedSub(op1, op2, res);
+            registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carry, overflow);
+        }
     } else {
         // ADD
         debug (outputInstructions) registers.logInstruction(instruction, "ADD");
-        int res = op1 + op2;
-        int carry = carriedAdd(op1, op2, res);
-        int overflow = overflowedAdd(op1, op2, res);
+        static if (__traits(compiles, ADD_WITH_FLAGS_ASM)) {
+            int res = void;
+            int flags = void;
+            mixin (ADD_WITH_FLAGS_ASM);
+            registers.setApsrFlags!"NZCV"(flags);
+        } else {
+            int res = op1 + op2;
+            int carry = carriedAdd(op1, op2, res);
+            int overflow = overflowedAdd(op1, op2, res);
+            registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carry, overflow);
+        }
     }
     registers.set(rd, res);
-    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carry, overflow);
 }
 
 private mixin template decodeOpMoveCompareAddAndSubtractImmediate(bool op1) {
@@ -190,24 +206,45 @@ private void moveCompareAddAndSubtractImmediate(int code: 0)(Registers* register
 private void moveCompareAddAndSubtractImmediate(int code: 1)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-    int v = op1 - op2;
-    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (SUB_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int v = op1 - op2;
+        registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    }
 }
 
 private void moveCompareAddAndSubtractImmediate(int code: 2)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADD");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-    int res = op1 + op2;
+    static if (__traits(compiles, ADD_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (ADD_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int res = op1 + op2;
+        registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
+    }
     registers.set(rd, res);
-    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, carriedAdd(op1, op2, res), overflowedAdd(op1, op2, res));
 }
 
 private void moveCompareAddAndSubtractImmediate(int code: 3)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SUB");
     mixin decodeOpMoveCompareAddAndSubtractImmediate!true;
-    int res = op1 - op2;
+    static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (SUB_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int res = op1 - op2;
+        registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
+    }
     registers.set(rd, res);
-    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(op1, op2, res), overflowedSub(op1, op2, res));
 }
 
 private mixin template decodeOpAluOperations() {
@@ -297,23 +334,45 @@ private void aluOperations(int code: 8)(Registers* registers, MemoryBus* memory,
 private void aluOperations(int code: 9)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "NEG");
     mixin decodeOpAluOperations;
-    int res = 0 - op2;
+    static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+        int op1 = 0;
+        int res = void;
+        int flags = void;
+        mixin (SUB_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int res = 0 - op2;
+        registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
+    }
     registers.set(rd, res);
-    registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0, !borrowedSub(0, op2, res), overflowedSub(0, op2, res));
 }
 
 private void aluOperations(int code: 10)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMP");
     mixin decodeOpAluOperations;
-    int v = op1 - op2;
-    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (SUB_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int v = op1 - op2;
+        registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    }
 }
 
 private void aluOperations(int code: 11)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "CMN");
     mixin decodeOpAluOperations;
-    int v = op1 + op2;
-    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
+    static if (__traits(compiles, ADD_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (ADD_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int v = op1 + op2;
+        registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, carriedAdd(op1, op2, v), overflowedAdd(op1, op2, v));
+    }
 }
 
 private void aluOperations(int code: 12)(Registers* registers, MemoryBus* memory, int instruction) {
@@ -381,8 +440,15 @@ private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestinat
     mixin decodeOpHiRegisterOperationsAndBranchExchange!(highDestination, highSource);
     int op1 = registers.get(rd);
     int op2 = registers.get(rs);
-    int v = op1 - op2;
-    registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    static if (__traits(compiles, SUB_WITH_FLAGS_ASM)) {
+        int res = void;
+        int flags = void;
+        mixin (SUB_WITH_FLAGS_ASM);
+        registers.setApsrFlags!"NZCV"(flags);
+    } else {
+        int v = op1 - op2;
+        registers.setApsrFlags!"N,Z,C,V"(v < 0, v == 0, !borrowedSub(op1, op2, v), overflowedSub(op1, op2, v));
+    }
 }
 
 private void hiRegisterOperationsAndBranchExchange(int opCode, bool highDestination, bool highSource)
