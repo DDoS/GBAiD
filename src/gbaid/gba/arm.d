@@ -1,5 +1,7 @@
 module gbaid.gba.arm;
 
+import core.bitop : popcnt;
+
 import std.string : format;
 
 import gbaid.util;
@@ -872,7 +874,7 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
         address = baseAddress;
         mixin (genBlockDataTransferOperation(preIncr, load));
     } else {
-        baseAddress -= 4 * registerList.bitCount();
+        baseAddress -= 4 * registerList.popcnt();
         address = baseAddress;
         // Load order is always in increasing memory order, even when
         // using down-increment. This means we use bit counting to find

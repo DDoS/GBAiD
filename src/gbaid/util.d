@@ -62,12 +62,6 @@ public int mirror(short s) {
     return s << 16 | s & 0xFFFF;
 }
 
-public int bitCount(int i) {
-    i = i - (i >>> 1 & 0x55555555);
-    i = (i & 0x33333333) + (i >>> 2 & 0x33333333);
-    return (i + (i >>> 4) & 0x0F0F0F0F) * 0x01010101 >>> 24;
-}
-
 public int rotateRight(int i, int shift) {
     return i >>> shift | i << 32 - shift;
 }

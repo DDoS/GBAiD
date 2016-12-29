@@ -1,5 +1,7 @@
 module gbaid.gba.thumb;
 
+import core.bitop : popcnt;
+
 import std.string : format;
 
 import gbaid.util;
@@ -660,7 +662,7 @@ private void pushAndPopRegisters(bool pop, bool pcAndLR)(Registers* registers, M
         }
     } else {
         debug (outputInstructions) registers.logInstruction(instruction, "PUSH");
-        sp -= 4 * (registerList.bitCount() + pcAndLR);
+        sp -= 4 * (registerList.popcnt() + pcAndLR);
         int address = sp;
         foreach (i; 0 .. 8) {
             if (registerList.checkBit(i)) {
