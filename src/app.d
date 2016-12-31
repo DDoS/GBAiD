@@ -12,6 +12,7 @@ import derelict.sdl2.sdl;
 import gbaid.util;
 import gbaid.gba;
 import gbaid.input;
+import gbaid.audio;
 import gbaid.render.renderer;
 
 private enum string SAVE_EXTENSION = ".gsf";
@@ -97,18 +98,23 @@ public void main(string[] args) {
     }
     SDL_Init(0);
 
-    // Create the renderer and input
+    // Create the renderer, audio and input
     auto renderer = new FrameRenderer(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     renderer.setScale(scale);
     renderer.setFilteringMode(filtering);
     renderer.setUpscalingMode(upscaling);
 
+    auto audio = new Audio();
+    gba.setAudioReceiver(&audio.queueAudio, 512);
+
     auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
 
     renderer.create();
+    audio.create();
     input.create();
     scope (exit) {
         input.destroy();
+        audio.destroy();
         renderer.destroy();
         SDL_Quit();
     }

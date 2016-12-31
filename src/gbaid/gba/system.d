@@ -9,6 +9,7 @@ import gbaid.gba.dma;
 import gbaid.gba.interrupt;
 import gbaid.gba.halt;
 import gbaid.gba.keypad;
+import gbaid.gba.sound;
 import gbaid.gba.timer;
 import gbaid.gba.save;
 
@@ -20,6 +21,7 @@ public class GameBoyAdvance {
     private HaltHandler haltHandler;
     private Display display;
     private Keypad keypad;
+    private SoundChip soundChip;
     private Timers timers;
     private DMAs dmas;
     private int lastBIOSPreFetch;
@@ -27,6 +29,7 @@ public class GameBoyAdvance {
     private size_t processorCycles = 0;
     private size_t dmasCycles = 0;
     private size_t timersCycles = 0;
+    private size_t soundChipCycles = 0;
     private size_t keypadCycles = 0;
 
     public this(Save)(string biosFile, string romFile, Save save) {
@@ -53,8 +56,13 @@ public class GameBoyAdvance {
         timers = new Timers(ioRegisters, interruptHandler);
         dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
+        soundChip = new SoundChip();
 
         memory.biosReadGuard = &biosReadGuard;
+    }
+
+    public void setAudioReceiver(AudioReceiver receiver, uint sampleBatchLength) {
+        soundChip.receiver(receiver, sampleBatchLength);
     }
 
     public void setKeypadState(KeypadState state) {
@@ -72,6 +80,7 @@ public class GameBoyAdvance {
             processorCycles = processor.emulate(processorCycles + CYCLE_BATCH_SIZE);
             dmasCycles = dmas.emulate(dmasCycles + CYCLE_BATCH_SIZE);
             timersCycles = timers.emulate(timersCycles + CYCLE_BATCH_SIZE);
+            soundChipCycles = soundChip.emulate(soundChipCycles + CYCLE_BATCH_SIZE);
             keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
         }
 
@@ -81,6 +90,7 @@ public class GameBoyAdvance {
             processorCycles = processor.emulate(processorCycles + partialBatch);
             dmasCycles = dmas.emulate(dmasCycles + partialBatch);
             timersCycles = timers.emulate(timersCycles + partialBatch);
+            soundChipCycles = soundChip.emulate(soundChipCycles + partialBatch);
             keypadCycles = keypad.emulate(keypadCycles + partialBatch);
         }
     }
