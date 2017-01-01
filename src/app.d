@@ -105,7 +105,7 @@ public void main(string[] args) {
     renderer.setUpscalingMode(upscaling);
 
     auto audio = new Audio();
-    gba.setAudioReceiver(&audio.queueAudio, 512);
+    gba.setAudioReceiver(&audio.queueAudio, 128);
 
     auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
 
