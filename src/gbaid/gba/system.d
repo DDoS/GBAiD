@@ -73,7 +73,7 @@ public class GameBoyAdvance {
         keypad.setState(state);
     }
 
-    public void emulate(size_t cycles = CYCLES_PER_FRAME) {
+    public void emulate(size_t cycles) {
         auto fullBatches = cycles / CYCLE_BATCH_SIZE;
         foreach (i; 0 .. fullBatches) {
             displayCycles = display.emulate(displayCycles + CYCLE_BATCH_SIZE);

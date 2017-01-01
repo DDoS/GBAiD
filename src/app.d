@@ -125,7 +125,7 @@ public void main(string[] args) {
         auto timer = new Timer();
         while (gbaRunning) {
             timer.start();
-            gba.emulate();
+            gba.emulate(CYCLES_PER_FRAME);
             timer.waitUntil(FRAME_DURATION);
         }
     }
