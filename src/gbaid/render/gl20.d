@@ -21,10 +21,11 @@ import gbaid.render.gl;
  * @see org.spout.renderer.api.gl.Context
  */
 public class GL20Context : Context {
-    private string title;
-    private uint width;
-    private uint height;
-    private bool resizable;
+    private string title = "";
+    private uint width = 100;
+    private uint height = 100;
+    private bool resizable = false;
+    private bool useVsync = false;
     private SDL_Window* window;
     private SDL_GLContext glContext;
 
@@ -60,8 +61,8 @@ public class GL20Context : Context {
         if (glContext is null) {
             throw new Exception("Failed to create OpenGL context: " ~ toDString(SDL_GetError()));
         }
-        // Set the swap interval to immediate
-        SDL_GL_SetSwapInterval(0);
+        // Set the swap interval
+        SDL_GL_SetSwapInterval(useVsync ? 1 : 0);
         // Load the GL1.1+ features if needed
         if (DerelictGL3.loadedVersion == derelict.opengl3.types.GLVersion.GL11) {
             DerelictGL3.reload();
@@ -149,6 +150,13 @@ public class GL20Context : Context {
             if (height != null) {
                 *height = this.height;
             }
+        }
+    }
+
+    public override void enableVsync(bool enable) {
+        useVsync = enable;
+        if (isCreated()) {
+            SDL_GL_SetSwapInterval(useVsync ? 1 : 0);
         }
     }
 

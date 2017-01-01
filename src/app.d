@@ -1,5 +1,4 @@
 import core.thread : Thread;
-import core.sync.barrier : Barrier;
 
 import std.stdio;
 import std.getopt;
@@ -100,6 +99,7 @@ public void main(string[] args) {
 
     // Create the renderer, audio and input
     auto renderer = new FrameRenderer(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    renderer.useVsync = true;
     renderer.setScale(scale);
     renderer.setFilteringMode(filtering);
     renderer.setUpscalingMode(upscaling);
@@ -119,15 +119,14 @@ public void main(string[] args) {
         SDL_Quit();
     }
 
-    // Synchronization for the worker and main thread
-    auto frameBarrier = new Barrier(2);
-
     // Declare a function for the GBA thread worker
     auto gbaRunning = true;
     void gbaRun() {
+        auto timer = new Timer();
         while (gbaRunning) {
+            timer.start();
             gba.emulate();
-            frameBarrier.wait();
+            timer.waitUntil(FRAME_DURATION);
         }
     }
 
@@ -136,24 +135,16 @@ public void main(string[] args) {
     gbaThread.name = "GBA";
     gbaThread.start();
 
-    // Every frame interval, signal the worker to emulate a frame, then draw it
-    auto timer = new Timer();
-    short[DISPLAY_WIDTH * DISPLAY_HEIGHT] frame;
+    // Update the input then draw the next frame, waiting for it if needed
     while (!renderer.isCloseRequested()) {
-        timer.start();
         // Pass the keypad button state to the GBA
         gba.setKeypadState(input.pollKeypad());
-        // Display the frame once drawn
-        frameBarrier.wait();
-        gba.getFrame(frame);
-        renderer.draw(frame);
-        // Wait for the actual duration of a frame
-        timer.waitUntil(FRAME_DURATION);
+        // Draw the lastest frame
+        renderer.draw(gba.frameSwapper.nextFrame);
     }
 
     // Shutdown the worker
     gbaRunning = false;
-    frameBarrier.wait();
     gbaThread.join();
 
     // Save Game Pak save
@@ -166,7 +157,7 @@ public void main(string[] args) {
     }
 
     // TODO:
+    //       fix flash save memory
     //       possible bug in pokemon emerald at 00000364
-    //       sound
     //       implement optional RTC
 }

@@ -12,7 +12,7 @@ public class SoundChip {
     private uint sampleBatchIndex = 0;
     private uint timeValue = 0;
 
-    @property public void receiver(AudioReceiver receiver, uint sampleBatchLength) {
+    public void receiver(AudioReceiver receiver, uint sampleBatchLength) {
         _receiver = receiver;
         sampleBatch.length = sampleBatchLength;
     }

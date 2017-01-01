@@ -15,12 +15,23 @@ public class FrameRenderer {
     private VertexArray vertexArray = null;
     private immutable uint frameWidth, frameHeight;
     private int windowWidth, windowHeight;
+    private bool _useVsync = false;
     private FilteringMode filteringMode = FilteringMode.NONE;
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
 
     public this(uint frameWidth, uint frameHeight) {
         this.frameWidth = frameWidth;
         this.frameHeight = frameHeight;
+        windowWidth = frameWidth;
+        windowHeight = frameHeight;
+    }
+
+    @property public void useVsync(bool use) {
+        _useVsync = use;
+
+        if (context !is null) {
+            context.enableVsync(use);
+        }
     }
 
     public void setScale(float scale) {
@@ -53,6 +64,7 @@ public class FrameRenderer {
         context.setWindowTitle("GBAiD");
         context.setResizable(true);
         context.setWindowSize(windowWidth, windowHeight);
+        context.enableVsync(_useVsync);
         context.create();
         context.enableCapability(CULL_FACE);
 

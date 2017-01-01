@@ -270,6 +270,15 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setResizable(bool resizable);
 
     /**
+     * Enable or disable VSYNC. If enabled, updating the display will cause the
+     * calling thread to hang until a new frame starts. In other words, it will lock
+     * the updating rate to the display refresh rate.
+     *
+     * @param enable Whether or not to use VSYNC
+     */
+    public abstract void enableVsync(bool enable);
+
+    /**
      * Sets the window size.
      *
      * @param width Where to store the width, may be null

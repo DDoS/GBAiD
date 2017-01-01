@@ -1,6 +1,7 @@
 module gbaid.gba.display;
 
 import core.sync.mutex : Mutex;
+import core.sync.condition : Condition;
 
 import std.algorithm.comparison : min;
 import std.algorithm.mutation : swap;
@@ -30,13 +31,12 @@ public class Display {
     private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
-    private short[DISPLAY_WIDTH * DISPLAY_HEIGHT] frame;
     private short[DISPLAY_WIDTH][LAYER_COUNT] lines;
     private int[2] internalAffineReferenceX;
     private int[2] internalAffineReferenceY;
     private int line = 0;
     private int dot = 0;
-    private Mutex frameLock;
+    private FrameSwapper _frameSwapper;
 
     public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
@@ -47,7 +47,7 @@ public class Display {
         this.interruptHandler = interruptHandler;
         this.dmas = dmas;
 
-        frameLock = new Mutex();
+        _frameSwapper = new FrameSwapper();
 
         ioRegisters.setPostWriteMonitor!0x28(&onAffineReferencePointPostWrite!(2, false));
         ioRegisters.setPostWriteMonitor!0x2C(&onAffineReferencePointPostWrite!(2, true));
@@ -55,10 +55,8 @@ public class Display {
         ioRegisters.setPostWriteMonitor!0x3C(&onAffineReferencePointPostWrite!(3, true));
     }
 
-    public void getFrame(short[] destination) {
-        frameLock.lock();
-        destination[] = frame[];
-        frameLock.unlock();
+    @property public FrameSwapper frameSwapper() {
+        return _frameSwapper;
     }
 
     public size_t emulate(size_t cycles) {
@@ -72,16 +70,12 @@ public class Display {
                 startLineDrawEvents(line);
                 // Draw the line if it is visible
                 if (line < DISPLAY_HEIGHT) {
-                    // Acquire the lock on the frame before we start drawing
-                    if (line == 0) {
-                        frameLock.lock();
-                    }
                     drawLine(line);
                 }
             } else if (dot == DISPLAY_WIDTH) {
-                // Release the lock on the frame if we are done drawing it
+                // Swap out the frame if we are done drawing it
                 if (line == DISPLAY_HEIGHT - 1) {
-                    frameLock.unlock();
+                    _frameSwapper.swapFrame();
                 }
                 // Run the events for a line drawing ending
                 endLineDrawEvents(line);
@@ -172,6 +166,7 @@ public class Display {
 
     private void lineBlank(int line) {
         uint p = line * DISPLAY_WIDTH;
+        auto frame = _frameSwapper.workFrame;
         foreach (column; 0 .. DISPLAY_WIDTH) {
             frame[p++] = cast(short) 0xFFFF;
         }
@@ -814,6 +809,7 @@ public class Display {
 
         int[5] layerMap = [3, 2, 1, 0, 4];
 
+        auto frame = _frameSwapper.workFrame;
         for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
 
             int objInfo = lines[5][column];
@@ -1101,5 +1097,46 @@ public class Display {
         BITMAP_8_DOUBLE = 4,
         BITMAP_16_DOUBLE = 5,
         BLANK = 6
+    }
+}
+
+public class FrameSwapper {
+    private enum FRAME_SIZE = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+    private short[FRAME_SIZE] frame0;
+    private short[FRAME_SIZE] frame1;
+    private bool workFrameIndex = false;
+    private bool newFrameReady = false;
+    private Condition frameReadySignal;
+
+    private this() {
+        frameReadySignal = new Condition(new Mutex());
+    }
+
+    @property private short[] workFrame() {
+        if (workFrameIndex) {
+            return frame1;
+        }
+        return frame0;
+    }
+
+    private void swapFrame() {
+        synchronized (frameReadySignal.mutex) {
+            workFrameIndex = !workFrameIndex;
+            newFrameReady = true;
+            frameReadySignal.notify();
+        }
+    }
+
+    public short[] nextFrame() {
+        synchronized (frameReadySignal.mutex) {
+            while (!newFrameReady) {
+                frameReadySignal.wait();
+            }
+            newFrameReady = false;
+            if (workFrameIndex) {
+                return frame0;
+            }
+            return frame1;
+        }
     }
 }

@@ -61,16 +61,16 @@ public class GameBoyAdvance {
         memory.biosReadGuard = &biosReadGuard;
     }
 
+    @property public FrameSwapper frameSwapper() {
+        return display.frameSwapper;
+    }
+
     public void setAudioReceiver(AudioReceiver receiver, uint sampleBatchLength) {
         soundChip.receiver(receiver, sampleBatchLength);
     }
 
     public void setKeypadState(KeypadState state) {
         keypad.setState(state);
-    }
-
-    public void getFrame(short[] frame) {
-        display.getFrame(frame);
     }
 
     public void emulate(size_t cycles = CYCLES_PER_FRAME) {
