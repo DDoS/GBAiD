@@ -16,7 +16,7 @@ import gbaid.render.renderer;
 
 private enum string SAVE_EXTENSION = ".gsf";
 
-public void main(string[] args) {
+public int main(string[] args) {
     // Parse comand line arguments
     string bios = null, save = null;
     bool noLoad = false, noSave = false;
@@ -43,49 +43,50 @@ public void main(string[] args) {
     // Resolve BIOS
     if (bios is null) {
         writeln("Missing BIOS file path, sepcify with \"-b (path to bios)\"");
-        return;
+        return 1;
     }
     bios = expandPath(bios);
     if (!exists(bios)) {
         writeln("BIOS file doesn't exist");
-        return;
+        return 1;
     }
 
     // Resolve ROM
-    string rom = getSafe!string(args, 1, null);
+    string rom = args.getSafe!string(1, null);
     if (rom is null) {
         writeln("Missing ROM file path, sepcify as last argument");
-        return;
+        return 1;
     }
     rom = expandPath(rom);
     if (!exists(rom)) {
         writeln("ROM file doesn't exist");
-        return;
+        return 1;
     }
 
     // Resolve save
+    if (save is null) {
+        save = setExtension(rom, SAVE_EXTENSION);
+        writeln("Save path not specified, using default \"", save, "\"");
+    } else {
+        save = expandPath(save);
+    }
+    bool newSave = void;
     if (noLoad) {
-        save = null;
+        newSave = true;
         writeln("Using new save");
     } else {
-        if (save is null) {
-            save = setExtension(rom, SAVE_EXTENSION);
-            writeln("Save path not specified, using default \"", save, "\"");
-        } else {
-            save = expandPath(save);
-        }
         if (exists(save)) {
-            writeln("Using save \"", save, "\"");
+            newSave = false;
+            writeln("Found save \"", save, "\"");
         } else {
-            save = null;
+            newSave = true;
             writeln("Save file not found, using new save");
-            // TODO: save under the given name
         }
     }
 
     // Create and configure GBA
     GameBoyAdvance gba = void;
-    if (save is null) {
+    if (newSave) {
         gba = new GameBoyAdvance(bios, rom, memory);
     } else {
         gba = new GameBoyAdvance(bios, rom, save);
@@ -148,12 +149,11 @@ public void main(string[] args) {
 
     // Save Game Pak save
     if (!noSave) {
-        if (save is null) {
-            save = setExtension(rom, SAVE_EXTENSION);
-        }
         gba.saveSave(save);
-        writeln("Saved save \"", save, "\"");
+        writeln("Saved \"", save, "\"");
     }
+
+    return 0;
 
     // TODO:
     //       fix flash save memory
