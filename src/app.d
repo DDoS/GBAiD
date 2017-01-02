@@ -156,7 +156,6 @@ public int main(string[] args) {
     return 0;
 
     // TODO:
-    //       fix flash save memory
     //       possible bug in pokemon emerald at 00000364
     //       implement optional RTC
 }

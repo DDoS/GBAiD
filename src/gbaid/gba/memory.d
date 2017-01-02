@@ -136,7 +136,7 @@ public struct Memory(uint byteSize, bool readOnly) {
 
     public Mod!(T[]) getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
         address &= AlignmentMask!T;
-        return cast(Mod!(T[])) memory[address .. address + size];
+        return cast(Mod!(T[])) (memory[address .. address + size]);
     }
 
     public Mod!(T*) getPointer(T)(uint address) if (IsValidSize!T) {
@@ -243,22 +243,11 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
     private static enum uint ERASE_SECTOR_CMD_BYTE = 0x30;
     private static enum uint WRITE_BYTE_CMD_BYTE = 0xA0;
     private static enum uint SWITCH_BANK_CMD_BYTE = 0xB0;
-    private static TickDuration WRITE_TIMEOUT = 10;
-    private static TickDuration ERASE_SECTOR_TIMEOUT = 500;
-    private static TickDuration ERASE_ALL_TIMEOUT = 500;
     private void[byteSize] memory;
     private Mode mode = Mode.NORMAL;
     private uint cmdStage = 0;
-    private bool timedCMD = false;
-    private TickDuration cmdTimeOut;
     private uint eraseSectorTarget;
     private uint sectorOffset = 0;
-
-    static this() {
-        WRITE_TIMEOUT = TickDuration.from!"msecs"(10);
-        ERASE_SECTOR_TIMEOUT = TickDuration.from!"msecs"(500);
-        ERASE_ALL_TIMEOUT = TickDuration.from!"msecs"(500);
-    }
 
     public this(bool erase) {
         if (!erase) {
@@ -274,46 +263,34 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
         this.memory[0 .. memory.length] = memory[];
     }
 
-    public this(string file) {
-        try {
-            this(file.read());
-        } catch (FileException ex) {
-            throw new Exception("Cannot read memory file", ex);
-        }
-    }
-
     public T get(T)(uint address) if (is(T == byte) || is(T == ubyte)) {
         if (mode == Mode.ID && address <= DEVICE_ID_ADDRESS) {
-            return cast(byte) (DeviceID >> ((address & 0b1) << 3));
+            return cast(T) (DeviceID >> ((address & 0b1) << 3));
         }
         return *cast(T*) (memory.ptr + address + sectorOffset);
     }
 
     public void set(T)(uint address, T value) if (is(T == byte) || is(T == ubyte)) {
         uint intValue = value & 0xFF;
-        // Handle command time-outs
-        if (timedCMD && TickDuration.currSystemTick() >= cmdTimeOut) {
-            endCMD();
-        }
         // Handle commands completions
         switch (mode) {
             case Mode.ERASE_ALL:
                 if (address == 0x0 && intValue == 0xFF) {
-                    endCMD();
+                    mode = Mode.NORMAL;
                 }
                 break;
             case Mode.ERASE_SECTOR:
                 if (address == eraseSectorTarget && intValue == 0xFF) {
-                    endCMD();
+                    mode = Mode.NORMAL;
                 }
                 break;
             case Mode.WRITE_BYTE:
-                *cast(byte*) (memory.ptr + address + sectorOffset) = value;
-                endCMD();
+                *cast(T*) (memory.ptr + address + sectorOffset) = value;
+                mode = Mode.NORMAL;
                 break;
             case Mode.SWITCH_BANK:
                 sectorOffset = (value & 0b1) << 16;
-                endCMD();
+                mode = Mode.NORMAL;
                 break;
             default:
         }
@@ -343,13 +320,11 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
                     case ERASE_ALL_CMD_BYTE:
                         if (mode == Mode.ERASE) {
                             mode = Mode.ERASE_ALL;
-                            startTimedCMD(ERASE_ALL_TIMEOUT);
                             erase(0x0, byteSize);
                         }
                         break;
                     case WRITE_BYTE_CMD_BYTE:
                         mode = Mode.WRITE_BYTE;
-                        startTimedCMD(WRITE_TIMEOUT);
                         break;
                     case SWITCH_BANK_CMD_BYTE:
                         if (DeviceID == SANYO_128K_ID) {
@@ -361,32 +336,18 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
             } else if (!(address & 0xFF0FFF) && intValue == ERASE_SECTOR_CMD_BYTE && mode == Mode.ERASE) {
                 mode = Mode.ERASE_SECTOR;
                 eraseSectorTarget = address;
-                startTimedCMD(ERASE_SECTOR_TIMEOUT);
                 erase(address + sectorOffset, 4 * BYTES_PER_KIB);
             }
         }
     }
 
     public T[] getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
-        return cast(T[]) memory[address .. address + size];
-    }
-
-    private void startTimedCMD(TickDuration timeOut) {
-        cmdTimeOut = TickDuration.currSystemTick() + timeOut;
-        timedCMD = true;
-    }
-
-    private void endCMD() {
-        mode = Mode.NORMAL;
-        timedCMD = false;
+        return cast(T[]) (memory[address .. address + size]);
     }
 
     private void erase(uint address, uint size) {
         auto byteMemory = cast(byte*) (memory.ptr + address);
-        foreach (i; 0 .. size) {
-            *byteMemory = cast(byte) 0xFF;
-            byteMemory++;
-        }
+        byteMemory[0 .. size] = cast(byte) 0xFF;
     }
 
     private static enum Mode {
@@ -412,11 +373,7 @@ public struct Eeprom {
         if (!erase) {
             return;
         }
-        auto byteMemory = cast(byte*) memory.ptr;
-        foreach (i; 0 .. memory.length) {
-            *byteMemory = cast(byte) 0xFF;
-            byteMemory++;
-        }
+        (cast(byte[]) memory)[0 .. $] = cast(byte) 0xFF;
     }
 
     public this(void[] memory) {
@@ -425,14 +382,6 @@ public struct Eeprom {
             throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
         this.memory[0 .. memory.length] = memory[];
-    }
-
-    public this(string file) {
-        try {
-            this(file.read());
-        } catch (FileException ex) {
-            throw new Exception("Cannot read memory file", ex);
-        }
     }
 
     public T get(T)(uint address) if (is(T == short) || is (T == ushort)) {
@@ -526,7 +475,7 @@ public struct Eeprom {
     }
 
     public T[] getArray(T)(uint address = 0x0, uint size = EEPROM_SIZE) if (IsValidSize!T) {
-        return cast(T[]) memory[address .. address + size];
+        return cast(T[]) (memory[address .. address + size]);
     }
 
     private static enum Mode {
