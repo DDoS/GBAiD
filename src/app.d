@@ -105,7 +105,7 @@ public void main(string[] args) {
     renderer.setUpscalingMode(upscaling);
 
     auto audio = new Audio();
-    gba.setAudioReceiver(&audio.queueAudio, 128);
+    gba.audioReceiver = &audio.queueAudio;
 
     auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
 
@@ -122,11 +122,10 @@ public void main(string[] args) {
     // Declare a function for the GBA thread worker
     auto gbaRunning = true;
     void gbaRun() {
-        auto timer = new Timer();
         while (gbaRunning) {
-            timer.start();
-            gba.emulate(CYCLES_PER_FRAME);
-            timer.waitUntil(FRAME_DURATION);
+            auto requiredSamples = audio.requiredSamples();
+            auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
+            gba.emulate(equivalentCycles);
         }
     }
 

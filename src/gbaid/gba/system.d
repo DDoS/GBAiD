@@ -65,8 +65,8 @@ public class GameBoyAdvance {
         return display.frameSwapper;
     }
 
-    public void setAudioReceiver(AudioReceiver receiver, uint sampleBatchLength) {
-        soundChip.receiver(receiver, sampleBatchLength);
+    @property public void audioReceiver(AudioReceiver receiver) {
+        soundChip.receiver = receiver;
     }
 
     public void setKeypadState(KeypadState state) {
