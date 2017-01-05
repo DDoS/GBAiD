@@ -81,7 +81,8 @@ private struct SquareWaveGenerator {
     private size_t initialVolume = 0;
     private size_t _duration = 0;
     private bool useDuration = false;
-    private size_t t = 0;
+    private size_t tWave = 0;
+    private size_t tStart = 0;
     private size_t envelope = 0;
 
     @property private void frequency(int frequency) {
@@ -118,26 +119,25 @@ private struct SquareWaveGenerator {
     }
 
     private void restart() {
-        t = 0;
+        tStart = tWave;
         envelope = initialVolume;
     }
 
     private short nextSample() {
-        // Check if the sound expired
-        if (useDuration && t >= _duration) {
-            return 0;
-        }
+        auto tElapsed = tWave - tStart;
+        // Don't play if the duration expired
         // If the period is 0, then the frequency is above the output frequency, so ignore it
-        if (_period <= 0) {
+        if (useDuration && tElapsed >= _duration || _period <= 0) {
+            tWave += 1;
             return 0;
         }
         // Generate the sample
         auto amplitude = cast(short) (envelope * 8);
-        auto sample = ((t % _period) * 1024) / _period >= _duty ? -amplitude : amplitude;
+        auto sample = ((tWave % _period) * 1024) / _period >= _duty ? -amplitude : amplitude;
         // Increment the time value
-        t += 1;
+        tWave += 1;
         // Update the envelope if enabled
-        if (_envelopeStep > 0 && t % _envelopeStep == 0) {
+        if (_envelopeStep > 0 && tElapsed % _envelopeStep == 0) {
             if (increasingEnvelope) {
                 if (envelope < 15) {
                     envelope += 1;
