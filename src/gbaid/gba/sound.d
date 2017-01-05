@@ -37,12 +37,10 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_AUDIO_SAMPLE) {
             cycles -= CYCLES_PER_AUDIO_SAMPLE;
 
-            short sample = tone1.nextSample();
+            short sample = cast(short) (tone1.nextSample() * 128);
 
             sampleBatch[sampleBatchIndex] = sample;
-            sampleBatchIndex += 1;
-
-            if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
+            if (++sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
                 _receiver(sampleBatch);
                 sampleBatchIndex = 0;
             }
@@ -53,13 +51,17 @@ public class SoundChip {
 
     private void onToneLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
             int newSettings) {
-        tone1.duration = newSettings.getBits(32, 37);
+        tone1.duration = newSettings.getBits(16, 21);
+        tone1.duty = newSettings.getBits(22, 23);
+        tone1.envelopeStep = newSettings.getBits(24, 26);
+        tone1.increasingEnvelope = newSettings.checkBit(27);
+        tone1.initialVolume = newSettings.getBits(28, 31);
     }
 
     private void onToneHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
             int newSettings) {
         tone1.frequency = newSettings & 0x7FF;
-        tone1.ignoreDuration = newSettings.checkBit(14);
+        tone1.useDuration = newSettings.checkBit(14);
         if (newSettings.checkBit(15)) {
             tone1.restart();
         }
@@ -68,8 +70,12 @@ public class SoundChip {
 
 private struct SquareWaveGenerator {
     private size_t _period = 0;
+    private size_t _duty = 512;
+    private size_t _envelopeStep = 0;
+    private bool increasingEnvelope = false;
+    private ptrdiff_t _initialVolume = 0;
     private size_t _duration = 0;
-    private bool ignoreDuration = false;
+    private bool useDuration = true;
     private size_t t = 0;
 
     @property private void frequency(int frequency) {
@@ -77,9 +83,37 @@ private struct SquareWaveGenerator {
         _period = (2048 - frequency) / 2;
     }
 
+    @property private void duty(int duty) {
+        // Convert the setting to fixed point at 1024
+        final switch (duty) {
+            case 0:
+                _duty = 128;
+                break;
+            case 1:
+                _duty = 256;
+                break;
+            case 2:
+                _duty = 512;
+                break;
+            case 3:
+                _duty = 768;
+                break;
+        }
+    }
+
+    @property private void envelopeStep(int step) {
+        // Convert the setting to the step as the number of samples
+        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_AUDIO_SAMPLE;
+    }
+
+    @property private void initialVolume(int volume) {
+        // Convert the setting to the volume range
+        _initialVolume = volume * 8;
+    }
+
     @property private void duration(int duration) {
-        // Convert the setting to number of samples
-        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256);
+        // Convert the setting to the duration as the number of samples
+        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_AUDIO_SAMPLE;
     }
 
     private void restart() {
@@ -88,10 +122,35 @@ private struct SquareWaveGenerator {
 
     private short nextSample() {
         // Check if the sound expired
-        if (!ignoreDuration && t >= _duration) {
+        if (useDuration && t >= _duration) {
             return 0;
         }
+        // If the period is 0, then the frequency is above the output frequency, so ignore it
+        if (_period <= 0) {
+            return 0;
+        }
+        // Calculate the amplitude
+        short amplitude = void;
+        if (_envelopeStep > 0) {
+            auto change = cast(ptrdiff_t) (t / _envelopeStep);
+            if (increasingEnvelope) {
+                change = -change;
+            }
+            amplitude = clampToOutput(_initialVolume - change);
+        } else {
+            amplitude = cast(short) _initialVolume;
+        }
         // Generate the sample and increment t
-        return t++ % _period < _period / 2 ? short.max : short.min;
+        return ((t++ % _period) * 1024) / _period >= _duty ? -amplitude : amplitude;
+    }
+
+    private static short clampToOutput(ptrdiff_t value) {
+        if (value > 128) {
+            return 128;
+        }
+        if (value < -128) {
+            return -128;
+        }
+        return cast(short) value;
     }
 }
