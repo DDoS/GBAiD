@@ -14,15 +14,17 @@ public class SoundChip {
     private enum uint SAMPLE_BATCH_SIZE = 256;
     private IoRegisters* ioRegisters;
     private AudioReceiver _receiver = null;
-    private SquareWaveGenerator tone1;
+    mixin privateFields!(SquareWaveGenerator, "tone", SquareWaveGenerator.init, 2);
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
     private uint sampleBatchIndex = 0;
 
     public this(IoRegisters* ioRegisters) {
         this.ioRegisters = ioRegisters;
 
-        ioRegisters.setPostWriteMonitor!0x60(&onToneLowPostWrite);
-        ioRegisters.setPostWriteMonitor!0x64(&onToneHighPostWrite);
+        ioRegisters.setPostWriteMonitor!0x60(&onToneLowPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0x64(&onToneHighPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0x68(&onToneLowPostWrite!1);
+        ioRegisters.setPostWriteMonitor!0x6C(&onToneHighPostWrite!1);
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -37,10 +39,10 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_AUDIO_SAMPLE) {
             cycles -= CYCLES_PER_AUDIO_SAMPLE;
 
-            short sample = cast(short) (tone1.nextSample() * 128);
+            short sample = cast(short) ((tone!0.nextSample() + tone!1.nextSample()) * 128);
 
-            sampleBatch[sampleBatchIndex] = sample;
-            if (++sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
+            sampleBatch[sampleBatchIndex++] = sample;
+            if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
                 _receiver(sampleBatch);
                 sampleBatchIndex = 0;
             }
@@ -49,21 +51,24 @@ public class SoundChip {
         return cycles;
     }
 
-    private void onToneLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        tone1.duration = newSettings.getBits(16, 21);
-        tone1.duty = newSettings.getBits(22, 23);
-        tone1.envelopeStep = newSettings.getBits(24, 26);
-        tone1.increasingEnvelope = newSettings.checkBit(27);
-        tone1.initialVolume = newSettings.getBits(28, 31);
+    private void onToneLowPostWrite(int channel)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings, int newSettings) {
+        static if (channel == 1) {
+            newSettings <<= 16;
+        }
+        tone!channel.duration = newSettings.getBits(16, 21);
+        tone!channel.duty = newSettings.getBits(22, 23);
+        tone!channel.envelopeStep = newSettings.getBits(24, 26);
+        tone!channel.increasingEnvelope = newSettings.checkBit(27);
+        tone!channel.initialVolume = newSettings.getBits(28, 31);
     }
 
-    private void onToneHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        tone1.frequency = newSettings & 0x7FF;
-        tone1.useDuration = newSettings.checkBit(14);
+    private void onToneHighPostWrite(int channel)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings, int newSettings) {
+        tone!channel.frequency = newSettings & 0x7FF;
+        tone!channel.useDuration = newSettings.checkBit(14);
         if (newSettings.checkBit(15)) {
-            tone1.restart();
+            tone!channel.restart();
         }
     }
 }
@@ -73,10 +78,11 @@ private struct SquareWaveGenerator {
     private size_t _duty = 512;
     private size_t _envelopeStep = 0;
     private bool increasingEnvelope = false;
-    private ptrdiff_t _initialVolume = 0;
+    private size_t initialVolume = 0;
     private size_t _duration = 0;
-    private bool useDuration = true;
+    private bool useDuration = false;
     private size_t t = 0;
+    private size_t envelope = 0;
 
     @property private void frequency(int frequency) {
         // Convert the rate to period of the output
@@ -106,11 +112,6 @@ private struct SquareWaveGenerator {
         _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_AUDIO_SAMPLE;
     }
 
-    @property private void initialVolume(int volume) {
-        // Convert the setting to the volume range
-        _initialVolume = volume * 8;
-    }
-
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
         _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_AUDIO_SAMPLE;
@@ -118,6 +119,7 @@ private struct SquareWaveGenerator {
 
     private void restart() {
         t = 0;
+        envelope = initialVolume;
     }
 
     private short nextSample() {
@@ -129,28 +131,23 @@ private struct SquareWaveGenerator {
         if (_period <= 0) {
             return 0;
         }
-        // Calculate the amplitude
-        short amplitude = void;
-        if (_envelopeStep > 0) {
-            auto change = cast(ptrdiff_t) (t / _envelopeStep);
+        // Generate the sample
+        auto amplitude = cast(short) (envelope * 8);
+        auto sample = ((t % _period) * 1024) / _period >= _duty ? -amplitude : amplitude;
+        // Increment the time value
+        t += 1;
+        // Update the envelope if enabled
+        if (_envelopeStep > 0 && t % _envelopeStep == 0) {
             if (increasingEnvelope) {
-                change = -change;
+                if (envelope < 15) {
+                    envelope += 1;
+                }
+            } else {
+                if (envelope > 0) {
+                    envelope -= 1;
+                }
             }
-            amplitude = clampToOutput(_initialVolume - change);
-        } else {
-            amplitude = cast(short) _initialVolume;
         }
-        // Generate the sample and increment t
-        return ((t++ % _period) * 1024) / _period >= _duty ? -amplitude : amplitude;
-    }
-
-    private static short clampToOutput(ptrdiff_t value) {
-        if (value > 128) {
-            return 128;
-        }
-        if (value < -128) {
-            return -128;
-        }
-        return cast(short) value;
+        return sample;
     }
 }
