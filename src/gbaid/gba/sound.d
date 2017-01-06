@@ -16,6 +16,7 @@ public class SoundChip {
     private AudioReceiver _receiver = null;
     private SquareWaveGenerator!true tone1;
     private SquareWaveGenerator!false tone2;
+    private PatternWaveGenerator wave;
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
     private uint sampleBatchIndex = 0;
 
@@ -26,6 +27,12 @@ public class SoundChip {
         ioRegisters.setPostWriteMonitor!0x64(&onToneHighPostWrite!1);
         ioRegisters.setPostWriteMonitor!0x68(&onToneLowPostWrite!2);
         ioRegisters.setPostWriteMonitor!0x6C(&onToneHighPostWrite!2);
+        ioRegisters.setPostWriteMonitor!0x70(&onWaveLowPostWrite);
+        ioRegisters.setPostWriteMonitor!0x74(&onWaveHighPostWrite);
+        ioRegisters.setPostWriteMonitor!0x90(&onWavePatternPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0x94(&onWavePatternPostWrite!1);
+        ioRegisters.setPostWriteMonitor!0x98(&onWavePatternPostWrite!2);
+        ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -40,7 +47,7 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_AUDIO_SAMPLE) {
             cycles -= CYCLES_PER_AUDIO_SAMPLE;
 
-            short sample = cast(short) ((tone1.nextSample() + tone2.nextSample()) * 128);
+            short sample = cast(short) ((tone1.nextSample() + tone2.nextSample() + wave.nextSample()) * 128);
 
             sampleBatch[sampleBatchIndex++] = sample;
             if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
@@ -83,11 +90,34 @@ public class SoundChip {
             tone.restart();
         }
     }
+
+    private void onWaveLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
+            int newSettings) {
+        wave.combineBanks = newSettings.checkBit(5);
+        wave.selectedBank = newSettings.getBit(6);
+        wave.enabled = newSettings.checkBit(7);
+        wave.duration = newSettings.getBits(16, 23);
+        wave.volume = newSettings.getBits(29, 31);
+    }
+
+    private void onWaveHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
+            int newSettings) {
+        wave.rate = newSettings & 0x7FF;
+        wave.useDuration = newSettings.checkBit(14);
+        if (newSettings.checkBit(15)) {
+            wave.restart();
+        }
+    }
+
+    private void onWavePatternPostWrite(int index)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldPattern, int newPattern) {
+        wave.pattern!index = newPattern;
+    }
 }
 
 private struct SquareWaveGenerator(bool sweep) {
     private int rate = 0;
-    private size_t _duty = 512;
+    private size_t _duty = 125;
     private size_t _envelopeStep = 0;
     private bool increasingEnvelope = false;
     private int initialVolume = 0;
@@ -152,8 +182,8 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Generate the sample
         auto period = (2048 - rate) / frequencyReductionRatio;
-        auto amplitude = cast(short) (envelope * 8);
-        auto sample = ((tWave % period) * 1024) / period >= _duty ? -amplitude : amplitude;
+        auto unsignedSample = ((tWave % period) * 1024) / period >= _duty ? 0 : envelope;
+        auto sample = cast(short) ((unsignedSample - 8) * 16);
         // Increment the time value
         tWave += 1;
         // Update the envelope if enabled
@@ -181,6 +211,90 @@ private struct SquareWaveGenerator(bool sweep) {
                 } else if (rate >= 2048) {
                     rate = 2047;
                 }
+            }
+        }
+        return sample;
+    }
+}
+
+private struct PatternWaveGenerator {
+    private enum BYTES_PER_PATTERN = 4 * int.sizeof;
+    private void[BYTES_PER_PATTERN * 2] patterns;
+    private bool enabled = false;
+    private bool combineBanks = false;
+    private int selectedBank = 0;
+    private int _volume = 0;
+    private size_t _duration = 0;
+    private bool useDuration = false;
+    private int rate = 0;
+    private size_t tWave = 0;
+    private size_t tStart = 0;
+    private size_t pointer = 0;
+    private size_t pointerEnd = 0;
+
+    @property private void volume(int volume) {
+        final switch (volume) {
+            case 0b000:
+                _volume = 0;
+                break;
+            case 0b001:
+                _volume = 16;
+                break;
+            case 0b010:
+                _volume = 8;
+                break;
+            case 0b011:
+                _volume = 4;
+                break;
+            case 0b100:
+            case 0b101:
+            case 0b110:
+            case 0b111:
+                _volume = 12;
+                break;
+        }
+    }
+
+    @property private void duration(int duration) {
+        // Convert the setting to the duration as the number of samples
+        _duration = (256 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_AUDIO_SAMPLE;
+    }
+
+    @property private void pattern(int index)(int pattern) {
+        //import std.stdio; writefln("%d  %08x", (1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index, pattern);
+        (cast(int*) patterns.ptr)[(1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index] = pattern;
+    }
+
+    private void restart() {
+        tStart = tWave;
+        pointer = selectedBank * 2 * BYTES_PER_PATTERN;
+        pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
+    }
+
+    private short nextSample() {
+        auto tElapsed = tWave - tStart;
+        // Don't play disabled or the duration expired
+        if (!enabled || useDuration && tElapsed >= _duration) {
+            tWave += 1;
+            return 0;
+        }
+        // Get the byte at the pointer, then the upper nibble for the first sample and the lower for the second
+        auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
+        auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
+        auto sample = cast(short) ((unsignedSample - 8) * _volume);
+        //import std.stdio; writefln("%1x %d", unsignedSample, sample);
+        // Increment the time value
+        tWave += 1;
+        // Update the pointer, and ignore if the frequency is above the output one
+        enum frequencyReductionRatio = 2 ^^ 21 / OUTPUT_FREQUENCY;
+        if (rate < 2048 - frequencyReductionRatio) {
+            auto period = (2048 - rate) / frequencyReductionRatio;
+            if (tWave % period == 0) {
+                pointer += 1;
+            }
+            // Reset the pointer to the start on overflow
+            if (pointer >= pointerEnd) {
+                pointer = selectedBank * 2 * BYTES_PER_PATTERN;
             }
         }
         return sample;
