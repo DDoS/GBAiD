@@ -7,7 +7,10 @@ import gbaid.util;
 public alias AudioReceiver = void delegate(short[]);
 
 private enum uint SYSTEM_CLOCK_FREQUENCY = 2 ^^ 24;
+private enum uint PSG_FREQUENCY = 2 ^^ 18;
 private enum uint OUTPUT_FREQUENCY = 2 ^^ 16;
+private enum size_t CYCLES_PER_PSG_SAMPLE = SYSTEM_CLOCK_FREQUENCY / PSG_FREQUENCY;
+private enum size_t PSG_PER_AUDIO_SAMPLE = PSG_FREQUENCY / OUTPUT_FREQUENCY;
 public enum size_t CYCLES_PER_AUDIO_SAMPLE = SYSTEM_CLOCK_FREQUENCY / OUTPUT_FREQUENCY;
 
 public class SoundChip {
@@ -17,6 +20,8 @@ public class SoundChip {
     private SquareWaveGenerator!true tone1;
     private SquareWaveGenerator!false tone2;
     private PatternWaveGenerator wave;
+    private int psgReSample = 0;
+    private uint psgCount = 0;
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
     private uint sampleBatchIndex = 0;
 
@@ -44,15 +49,20 @@ public class SoundChip {
             return 0;
         }
 
-        while (cycles >= CYCLES_PER_AUDIO_SAMPLE) {
-            cycles -= CYCLES_PER_AUDIO_SAMPLE;
+        while (cycles >= CYCLES_PER_PSG_SAMPLE) {
+            cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            short sample = cast(short) ((tone1.nextSample() + tone2.nextSample() + wave.nextSample()) * 128);
+            psgReSample += (tone1.nextSample() + tone2.nextSample() /*+ wave.nextSample()*/) * 128;
+            psgCount += 1;
 
-            sampleBatch[sampleBatchIndex++] = sample;
-            if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
-                _receiver(sampleBatch);
-                sampleBatchIndex = 0;
+            if (psgCount == PSG_PER_AUDIO_SAMPLE) {
+                sampleBatch[sampleBatchIndex++] = cast(short) (psgReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
+                if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
+                    _receiver(sampleBatch);
+                    sampleBatchIndex = 0;
+                }
+                psgCount = 0;
+                psgReSample = 0;
             }
         }
 
@@ -129,7 +139,7 @@ private struct SquareWaveGenerator(bool sweep) {
     private size_t _duration = 0;
     private bool useDuration = false;
     private size_t tWave = 0;
-    private size_t tStart = 0;
+    private size_t tPeriod = 0;
     private int envelope = 0;
 
     @property private void duty(int duty) {
@@ -152,42 +162,37 @@ private struct SquareWaveGenerator(bool sweep) {
 
     @property private void envelopeStep(int step) {
         // Convert the setting to the step as the number of samples
-        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_AUDIO_SAMPLE;
+        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_PSG_SAMPLE;
     }
 
     static if (sweep) {
         @property private void sweepStep(int step) {
-            _sweepStep = step * (SYSTEM_CLOCK_FREQUENCY / 128) / CYCLES_PER_AUDIO_SAMPLE;
+            _sweepStep = step * (SYSTEM_CLOCK_FREQUENCY / 128) / CYCLES_PER_PSG_SAMPLE;
         }
     }
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
-        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_AUDIO_SAMPLE;
+        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
     }
 
     private void restart() {
-        tStart = tWave;
+        tWave = 0;
+        tPeriod = 0;
         envelope = initialVolume;
     }
 
     private short nextSample() {
-        auto tElapsed = tWave - tStart;
         // Don't play if the duration expired
-        // If the rate is above the output frequency then ignore it
-        enum frequencyReductionRatio = 2 ^^ 17 / OUTPUT_FREQUENCY;
-        if (useDuration && tElapsed >= _duration || rate >= 2048 - frequencyReductionRatio) {
-            tWave += 1;
+        if (useDuration && tWave >= _duration) {
             return 0;
         }
         // Generate the sample
-        auto period = (2048 - rate) / frequencyReductionRatio;
-        auto unsignedSample = ((tWave % period) * 1024) / period >= _duty ? 0 : envelope;
-        auto sample = cast(short) ((unsignedSample - 8) * 16);
-        // Increment the time value
-        tWave += 1;
+        auto period = (2048 - rate) * 2;
+        auto amplitude = cast(short) (envelope * 8);
+        auto sample = tPeriod >= (period * _duty) / 1024 ? -amplitude : amplitude;
         // Update the envelope if enabled
-        if (_envelopeStep > 0 && tElapsed % _envelopeStep == 0) {
+        if (_envelopeStep > 0 && tWave % _envelopeStep == 0) {
             if (increasingEnvelope) {
                 if (envelope < 15) {
                     envelope += 1;
@@ -200,7 +205,7 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Update the frequency sweep if enabled
         static if (sweep) {
-            if (_sweepStep > 0 && tElapsed % _sweepStep == 0) {
+            if (_sweepStep > 0 && tWave % _sweepStep == 0) {
                 if (decreasingShift) {
                     rate -= rate >> sweepShift;
                 } else {
@@ -212,6 +217,12 @@ private struct SquareWaveGenerator(bool sweep) {
                     rate = 2047;
                 }
             }
+        }
+        // Increment the time values
+        tWave += 1;
+        tPeriod += 1;
+        if (tPeriod >= period) {
+            tPeriod = 0;
         }
         return sample;
     }
@@ -261,7 +272,6 @@ private struct PatternWaveGenerator {
     }
 
     @property private void pattern(int index)(int pattern) {
-        //import std.stdio; writefln("%d  %08x", (1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index, pattern);
         (cast(int*) patterns.ptr)[(1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index] = pattern;
     }
 
@@ -282,11 +292,10 @@ private struct PatternWaveGenerator {
         auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
         auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
         auto sample = cast(short) ((unsignedSample - 8) * _volume);
-        //import std.stdio; writefln("%1x %d", unsignedSample, sample);
         // Increment the time value
         tWave += 1;
         // Update the pointer, and ignore if the frequency is above the output one
-        enum frequencyReductionRatio = 2 ^^ 21 / OUTPUT_FREQUENCY;
+        enum frequencyReductionRatio = 2 ^^ 17 / OUTPUT_FREQUENCY;
         if (rate < 2048 - frequencyReductionRatio) {
             auto period = (2048 - rate) / frequencyReductionRatio;
             if (tWave % period == 0) {
