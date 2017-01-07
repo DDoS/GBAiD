@@ -126,6 +126,7 @@ public class SoundChip {
 }
 
 private struct SquareWaveGenerator(bool sweep) {
+    private static enum size_t SQUARE_WAVE_FREQUENCY = 2 ^^ 17;
     private bool enabled = false;
     private int rate = 0;
     private size_t _duty = 125;
@@ -190,7 +191,7 @@ private struct SquareWaveGenerator(bool sweep) {
             return 0;
         }
         // Generate the sample
-        auto period = (2048 - rate) * 2;
+        auto period = (2048 - rate) * (PSG_FREQUENCY / SQUARE_WAVE_FREQUENCY);
         auto amplitude = cast(short) (envelope * 8);
         auto sample = tPeriod >= (period * _duty) / 1024 ? -amplitude : amplitude;
         // Update the envelope if enabled
@@ -235,7 +236,7 @@ private struct SquareWaveGenerator(bool sweep) {
 }
 
 private struct PatternWaveGenerator {
-    private static enum size_t WAVE_FREQUENCY = 2 ^^ 21;
+    private static enum size_t PATTERN_FREQUENCY = 2 ^^ 21;
     private static enum size_t BYTES_PER_PATTERN = 4 * int.sizeof;
     private void[BYTES_PER_PATTERN * 2] patterns;
     private bool enabled = false;
@@ -284,6 +285,7 @@ private struct PatternWaveGenerator {
     }
 
     private void restart() {
+        enabled = true;
         tDuration = 0;
         tPeriod = 0;
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
@@ -295,38 +297,35 @@ private struct PatternWaveGenerator {
         if (!enabled) {
             return 0;
         }
+        // Check if we should generate a new sample
+        auto period = 2048 - rate;
+        int newSampleCount = cast(int) tPeriod / period;
+        if (newSampleCount > 0) {
+            // Accumulate samples
+            int newSample = 0;
+            foreach (i; 0 .. newSampleCount) {
+                // Get the byte at the pointer, the the upper nibble for the first sample and the lower for the second
+                auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
+                auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
+                newSample += unsignedSample * _volume - 120;
+                // Increment the pointer and reset to the start on overflow
+                pointer += 1;
+                if (pointer >= pointerEnd) {
+                    pointer = selectedBank * 2 * BYTES_PER_PATTERN;
+                }
+            }
+            // Set the new sample as the average of the accumulated ones
+            sample = cast(short) (newSample / newSampleCount);
+            // Leave the time period remainder
+            tPeriod %= period;
+        }
         // Disable for the next sample if the duration expired
         tDuration += 1;
         if (useDuration && tDuration >= _duration) {
             enabled = false;
         }
-        // Check if we should generate a new sample
-        auto period = (2048 - rate) * 2;
-        int newSampleCount = cast(int) tPeriod / period;
-        if (newSampleCount <= 0) {
-            // Increment the period time value and return the previous sample
-            tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
-            return sample;
-        }
-        // Accumulate samples
-        int newSample = 0;
-        foreach (i; 0 .. newSampleCount) {
-            // Get the byte at the pointer, the the upper nibble for the first sample and the lower for the second
-            auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
-            auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
-            newSample += unsignedSample * _volume - 120;
-            // Increment the pointer and reset to the start on overflow
-            pointer += 1;
-            if (pointer >= pointerEnd) {
-                pointer = selectedBank * 2 * BYTES_PER_PATTERN;
-            }
-        }
-        // Set the new sample as the average of the accumulated ones
-        sample = cast(short) (newSample / newSampleCount);
-        // Leave the time period remainder
-        tPeriod %= period;
         // Increment the period time value
-        tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
+        tPeriod += PATTERN_FREQUENCY / PSG_FREQUENCY;
         return sample;
     }
 }
