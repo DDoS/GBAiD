@@ -52,7 +52,7 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            psgReSample += (/*tone1.nextSample() + tone2.nextSample() +*/ wave.nextSample()) * 128;
+            psgReSample += (tone1.nextSample() + tone2.nextSample() + wave.nextSample()) * 128;
             psgCount += 1;
 
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
@@ -126,6 +126,7 @@ public class SoundChip {
 }
 
 private struct SquareWaveGenerator(bool sweep) {
+    private bool enabled = false;
     private int rate = 0;
     private size_t _duty = 125;
     private size_t _envelopeStep = 0;
@@ -138,7 +139,7 @@ private struct SquareWaveGenerator(bool sweep) {
     }
     private size_t _duration = 0;
     private bool useDuration = false;
-    private size_t tWave = 0;
+    private size_t tDuration = 0;
     private size_t tPeriod = 0;
     private int envelope = 0;
 
@@ -177,14 +178,15 @@ private struct SquareWaveGenerator(bool sweep) {
     }
 
     private void restart() {
-        tWave = 0;
+        enabled = true;
+        tDuration = 0;
         tPeriod = 0;
         envelope = initialVolume;
     }
 
     private short nextSample() {
-        // Don't play if the duration expired
-        if (useDuration && tWave >= _duration) {
+        // Don't play if disabled
+        if (!enabled) {
             return 0;
         }
         // Generate the sample
@@ -192,7 +194,7 @@ private struct SquareWaveGenerator(bool sweep) {
         auto amplitude = cast(short) (envelope * 8);
         auto sample = tPeriod >= (period * _duty) / 1024 ? -amplitude : amplitude;
         // Update the envelope if enabled
-        if (_envelopeStep > 0 && tWave % _envelopeStep == 0) {
+        if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
             if (increasingEnvelope) {
                 if (envelope < 15) {
                     envelope += 1;
@@ -205,7 +207,7 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Update the frequency sweep if enabled
         static if (sweep) {
-            if (_sweepStep > 0 && tWave % _sweepStep == 0) {
+            if (_sweepStep > 0 && tDuration % _sweepStep == 0) {
                 if (decreasingShift) {
                     rate -= rate >> sweepShift;
                 } else {
@@ -219,10 +221,14 @@ private struct SquareWaveGenerator(bool sweep) {
             }
         }
         // Increment the time values
-        tWave += 1;
         tPeriod += 1;
         if (tPeriod >= period) {
             tPeriod = 0;
+        }
+        // Disable for the next sample if the duration expired
+        tDuration += 1;
+        if (useDuration && tDuration >= _duration) {
+            enabled = false;
         }
         return sample;
     }
@@ -285,27 +291,31 @@ private struct PatternWaveGenerator {
     }
 
     private short nextSample() {
-        // Don't play if disabled or the duration expired
-        if (!enabled || useDuration && tDuration >= _duration) {
+        // Don't play if disabled
+        if (!enabled) {
             return 0;
         }
+        // Disable for the next sample if the duration expired
         tDuration += 1;
+        if (useDuration && tDuration >= _duration) {
+            enabled = false;
+        }
         // Check if we should generate a new sample
         auto period = (2048 - rate) * 2;
         int newSampleCount = cast(int) tPeriod / period;
         if (newSampleCount <= 0) {
-            // Increment the period time value
+            // Increment the period time value and return the pervious sample
             tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
             return sample;
         }
         // Accumulate samples
         int newSample = 0;
         foreach (i; 0 .. newSampleCount) {
-            // Get the byte at the pointer, then the upper nibble for the first sample and the lower for the second
+            // Get the byte at the pointer, the the upper nibble for the first sample and the lower for the second
             auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
             auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
             newSample += unsignedSample * _volume - 120;
-            // Increment the pointer the pointer and reset to the start on overflow
+            // Increment the pointer and reset to the start on overflow
             pointer += 1;
             if (pointer >= pointerEnd) {
                 pointer = selectedBank * 2 * BYTES_PER_PATTERN;
