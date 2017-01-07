@@ -55,7 +55,7 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            psgReSample += (/*tone1.nextSample() + tone2.nextSample() + wave.nextSample()*/ noise.nextSample()) * 128;
+            psgReSample += (tone1.nextSample() + tone2.nextSample() + wave.nextSample() + noise.nextSample()) * 128;
             psgCount += 1;
 
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
@@ -236,11 +236,8 @@ private struct SquareWaveGenerator(bool sweep) {
                 } else {
                     rate += rate >> sweepShift;
                 }
-                // TODO: disable channel?
-                if (rate < 0) {
-                    rate = 0;
-                } else if (rate >= 2048) {
-                    rate = 2047;
+                if (rate < 0 || rate >= 2048) {
+                    enabled = false;
                 }
             }
         }
