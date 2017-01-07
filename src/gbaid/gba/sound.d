@@ -304,10 +304,14 @@ private struct PatternWaveGenerator {
         (cast(int*) patterns.ptr)[(1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index] = pattern;
     }
 
+    private int calculatePeriod() {
+        return 2048 - rate;
+    }
+
     private void restart() {
         enabled = true;
         tDuration = 0;
-        tPeriod = 0;
+        tPeriod = calculatePeriod();
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
         pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
     }
@@ -318,7 +322,7 @@ private struct PatternWaveGenerator {
             return 0;
         }
         // Check if we should generate a new sample
-        auto period = 2048 - rate;
+        auto period = calculatePeriod();
         int newSampleCount = cast(int) tPeriod / period;
         // TODO: reduce popping by generating a sample on tPeriod = 0?
         if (newSampleCount > 0) {
@@ -378,10 +382,19 @@ private struct NoiseGenerator {
         _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
     }
 
+    private int calculatePeriod() {
+        // Calculate the period by applying the inverse of the divider and pre-scaler
+        auto period = 1 << preScaler + 1;
+        if (divider == 0) {
+            return period / 2;
+        }
+        return period * divider;
+    }
+
     private void restart() {
         enabled = true;
         tDuration = 0;
-        tPeriod = 0;
+        tPeriod = calculatePeriod();
         envelope = initialVolume;
         shifter = use7Bits ? 0x40 : 0x4000;
     }
@@ -391,15 +404,9 @@ private struct NoiseGenerator {
         if (!enabled) {
             return 0;
         }
-        // Calculate the period be applying the inverse of the divider and pre-scaler
-        auto period = 1 << preScaler + 1;
-        if (divider == 0) {
-            period /= 2;
-        } else {
-            period *= divider;
-        }
         // Check if we should generate a new sample
-        int newSampleCount = cast(int) (tPeriod / period);
+        auto period = calculatePeriod();
+        int newSampleCount = cast(int) tPeriod / period;
         if (newSampleCount > 0) {
             // Accumulate samples
             int newSample = 0;
