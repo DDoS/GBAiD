@@ -20,6 +20,7 @@ public class SoundChip {
     private SquareWaveGenerator!true tone1;
     private SquareWaveGenerator!false tone2;
     private PatternWaveGenerator wave;
+    private NoiseGenerator noise;
     private int psgReSample = 0;
     private uint psgCount = 0;
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
@@ -38,6 +39,8 @@ public class SoundChip {
         ioRegisters.setPostWriteMonitor!0x94(&onWavePatternPostWrite!1);
         ioRegisters.setPostWriteMonitor!0x98(&onWavePatternPostWrite!2);
         ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
+        ioRegisters.setPostWriteMonitor!0x78(&onNoiseLowPostWrite);
+        ioRegisters.setPostWriteMonitor!0x7C(&onNoiseHighPostWrite);
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -52,7 +55,7 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            psgReSample += (tone1.nextSample() + tone2.nextSample() + wave.nextSample()) * 128;
+            psgReSample += (/*tone1.nextSample() + tone2.nextSample() + wave.nextSample()*/ noise.nextSample()) * 128;
             psgCount += 1;
 
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
@@ -122,6 +125,25 @@ public class SoundChip {
     private void onWavePatternPostWrite(int index)
             (IoRegisters* ioRegisters, int address, int shift, int mask, int oldPattern, int newPattern) {
         wave.pattern!index = newPattern;
+    }
+
+    private void onNoiseLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
+            int newSettings) {
+        noise.duration = newSettings & 0x3F;
+        noise.envelopeStep = newSettings.getBits(8, 10);
+        noise.increasingEnvelope = newSettings.checkBit(11);
+        noise.initialVolume = newSettings.getBits(12, 15);
+    }
+
+    private void onNoiseHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
+            int newSettings) {
+        noise.divider = newSettings & 0x7;
+        noise.use7Bits = newSettings.checkBit(3);
+        noise.preScaler = newSettings.getBits(4, 7);
+        noise.useDuration = newSettings.checkBit(14);
+        if (newSettings.checkBit(15)) {
+            noise.restart();
+        }
     }
 }
 
@@ -214,6 +236,7 @@ private struct SquareWaveGenerator(bool sweep) {
                 } else {
                     rate += rate >> sweepShift;
                 }
+                // TODO: disable channel?
                 if (rate < 0) {
                     rate = 0;
                 } else if (rate >= 2048) {
@@ -300,6 +323,7 @@ private struct PatternWaveGenerator {
         // Check if we should generate a new sample
         auto period = 2048 - rate;
         int newSampleCount = cast(int) tPeriod / period;
+        // TODO: reduce popping by generating a sample on tPeriod = 0?
         if (newSampleCount > 0) {
             // Accumulate samples
             int newSample = 0;
@@ -370,14 +394,13 @@ private struct NoiseGenerator {
         if (!enabled) {
             return 0;
         }
-        // Calculate the period be applying the divider and pre-scaler
-        auto period = NOISE_FREQUENCY;
+        // Calculate the period be applying the inverse of the divider and pre-scaler
+        auto period = 1 << preScaler + 1;
         if (divider == 0) {
-            period *= 2;
+            period /= 2;
         } else {
-            period /= divider;
+            period *= divider;
         }
-        period >>= preScaler + 1;
         // Check if we should generate a new sample
         int newSampleCount = cast(int) (tPeriod / period);
         if (newSampleCount > 0) {
