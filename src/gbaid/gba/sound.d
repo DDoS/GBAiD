@@ -235,8 +235,8 @@ private struct SquareWaveGenerator(bool sweep) {
 }
 
 private struct PatternWaveGenerator {
-    private static enum WAVE_FREQUENCY = 2 ^^ 21;
-    private static enum BYTES_PER_PATTERN = 4 * int.sizeof;
+    private static enum size_t WAVE_FREQUENCY = 2 ^^ 21;
+    private static enum size_t BYTES_PER_PATTERN = 4 * int.sizeof;
     private void[BYTES_PER_PATTERN * 2] patterns;
     private bool enabled = false;
     private bool combineBanks = false;
@@ -304,7 +304,7 @@ private struct PatternWaveGenerator {
         auto period = (2048 - rate) * 2;
         int newSampleCount = cast(int) tPeriod / period;
         if (newSampleCount <= 0) {
-            // Increment the period time value and return the pervious sample
+            // Increment the period time value and return the previous sample
             tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
             return sample;
         }
@@ -327,6 +327,99 @@ private struct PatternWaveGenerator {
         tPeriod %= period;
         // Increment the period time value
         tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
+        return sample;
+    }
+}
+
+private struct NoiseGenerator {
+    private static enum size_t NOISE_FREQUENCY = 2 ^^ 19;
+    private bool enabled = false;
+    private bool use7Bits = false;
+    private int divider = 0;
+    private int preScaler = 0;
+    private size_t _envelopeStep = 0;
+    private bool increasingEnvelope = false;
+    private int initialVolume = 0;
+    private size_t _duration = 0;
+    private bool useDuration = false;
+    private size_t tDuration = 0;
+    private size_t tPeriod = 0;
+    private int shifter = 0x4000;
+    private int envelope = 0;
+    private short sample = 0;
+
+    @property private void envelopeStep(int step) {
+        // Convert the setting to the step as the number of samples
+        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_PSG_SAMPLE;
+    }
+
+    @property private void duration(int duration) {
+        // Convert the setting to the duration as the number of samples
+        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
+    }
+
+    private void restart() {
+        enabled = true;
+        tDuration = 0;
+        tPeriod = 0;
+        envelope = initialVolume;
+        shifter = use7Bits ? 0x40 : 0x4000;
+    }
+
+    private short nextSample() {
+        // Don't play if disabled
+        if (!enabled) {
+            return 0;
+        }
+        // Calculate the period be applying the divider and pre-scaler
+        auto period = NOISE_FREQUENCY;
+        if (divider == 0) {
+            period *= 2;
+        } else {
+            period /= divider;
+        }
+        period >>= preScaler + 1;
+        // Check if we should generate a new sample
+        int newSampleCount = cast(int) (tPeriod / period);
+        if (newSampleCount > 0) {
+            // Accumulate samples
+            int newSample = 0;
+            foreach (i; 0 .. newSampleCount) {
+                // Generate the new "random" bit and convert it to a sample
+                auto outBit = shifter & 0b1;
+                shifter >>= 1;
+                auto amplitude = envelope * 8;
+                if (outBit) {
+                    newSample += amplitude;
+                    shifter ^= use7Bits ? 0x60 : 0x6000;
+                } else {
+                    newSample -= amplitude;
+                }
+            }
+            // Set the new sample as the average of the accumulated ones
+            sample = cast(short) (newSample / newSampleCount);
+            // Leave the time period remainder
+            tPeriod %= period;
+        }
+        // Update the envelope if enabled (using the duration before it was incremented)
+        if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
+            if (increasingEnvelope) {
+                if (envelope < 15) {
+                    envelope += 1;
+                }
+            } else {
+                if (envelope > 0) {
+                    envelope -= 1;
+                }
+            }
+        }
+        // Disable for the next sample if the duration expired
+        tDuration += 1;
+        if (useDuration && tDuration >= _duration) {
+            enabled = false;
+        }
+        // Increment the period time value
+        tPeriod += NOISE_FREQUENCY / PSG_FREQUENCY;
         return sample;
     }
 }
