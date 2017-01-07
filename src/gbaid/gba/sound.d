@@ -14,7 +14,7 @@ private enum size_t PSG_PER_AUDIO_SAMPLE = PSG_FREQUENCY / OUTPUT_FREQUENCY;
 public enum size_t CYCLES_PER_AUDIO_SAMPLE = SYSTEM_CLOCK_FREQUENCY / OUTPUT_FREQUENCY;
 
 public class SoundChip {
-    private enum uint SAMPLE_BATCH_SIZE = 256;
+    private static enum uint SAMPLE_BATCH_SIZE = 256;
     private IoRegisters* ioRegisters;
     private AudioReceiver _receiver = null;
     private SquareWaveGenerator!true tone1;
@@ -52,7 +52,7 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            psgReSample += (tone1.nextSample() + tone2.nextSample() /*+ wave.nextSample()*/) * 128;
+            psgReSample += (/*tone1.nextSample() + tone2.nextSample() +*/ wave.nextSample()) * 128;
             psgCount += 1;
 
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
@@ -229,7 +229,8 @@ private struct SquareWaveGenerator(bool sweep) {
 }
 
 private struct PatternWaveGenerator {
-    private enum BYTES_PER_PATTERN = 4 * int.sizeof;
+    private static enum WAVE_FREQUENCY = 2 ^^ 21;
+    private static enum BYTES_PER_PATTERN = 4 * int.sizeof;
     private void[BYTES_PER_PATTERN * 2] patterns;
     private bool enabled = false;
     private bool combineBanks = false;
@@ -239,7 +240,7 @@ private struct PatternWaveGenerator {
     private bool useDuration = false;
     private int rate = 0;
     private size_t tWave = 0;
-    private size_t tStart = 0;
+    private size_t tPeriod = 0;
     private size_t pointer = 0;
     private size_t pointerEnd = 0;
 
@@ -268,7 +269,7 @@ private struct PatternWaveGenerator {
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
-        _duration = (256 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_AUDIO_SAMPLE;
+        _duration = (256 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
     }
 
     @property private void pattern(int index)(int pattern) {
@@ -276,35 +277,35 @@ private struct PatternWaveGenerator {
     }
 
     private void restart() {
-        tStart = tWave;
+        tWave = 0;
+        tPeriod = 0;
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
         pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
     }
 
     private short nextSample() {
-        auto tElapsed = tWave - tStart;
-        // Don't play disabled or the duration expired
-        if (!enabled || useDuration && tElapsed >= _duration) {
-            tWave += 1;
+        // Don't play if disabled or the duration expired
+        if (!enabled || useDuration && tWave >= _duration) {
             return 0;
         }
         // Get the byte at the pointer, then the upper nibble for the first sample and the lower for the second
         auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
         auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
-        auto sample = cast(short) ((unsignedSample - 8) * _volume);
-        // Increment the time value
+        auto sample = cast(short) (unsignedSample * _volume - 120);
+        //import std.stdio; writeln(sample);
+        // Reset the pointer to the start on overflow
+        if (pointer >= pointerEnd) {
+            pointer = selectedBank * 2 * BYTES_PER_PATTERN;
+        }
+        // Increment the time values
         tWave += 1;
-        // Update the pointer, and ignore if the frequency is above the output one
-        enum frequencyReductionRatio = 2 ^^ 17 / OUTPUT_FREQUENCY;
-        if (rate < 2048 - frequencyReductionRatio) {
-            auto period = (2048 - rate) / frequencyReductionRatio;
-            if (tWave % period == 0) {
-                pointer += 1;
-            }
-            // Reset the pointer to the start on overflow
-            if (pointer >= pointerEnd) {
-                pointer = selectedBank * 2 * BYTES_PER_PATTERN;
-            }
+        enum tPeriodIncrement = WAVE_FREQUENCY / PSG_FREQUENCY;
+        tPeriod += tPeriodIncrement;
+        // Increment the pointer
+        auto period = (2048 - rate) * 2;
+        if (tPeriod >= period) {
+            pointer += tPeriod / period;
+            tPeriod = tPeriod % period;
         }
         return sample;
     }
