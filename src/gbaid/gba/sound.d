@@ -239,10 +239,11 @@ private struct PatternWaveGenerator {
     private size_t _duration = 0;
     private bool useDuration = false;
     private int rate = 0;
-    private size_t tWave = 0;
+    private size_t tDuration = 0;
     private size_t tPeriod = 0;
     private size_t pointer = 0;
     private size_t pointerEnd = 0;
+    private short sample = 0;
 
     @property private void volume(int volume) {
         final switch (volume) {
@@ -277,7 +278,7 @@ private struct PatternWaveGenerator {
     }
 
     private void restart() {
-        tWave = 0;
+        tDuration = 0;
         tPeriod = 0;
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
         pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
@@ -285,28 +286,37 @@ private struct PatternWaveGenerator {
 
     private short nextSample() {
         // Don't play if disabled or the duration expired
-        if (!enabled || useDuration && tWave >= _duration) {
+        if (!enabled || useDuration && tDuration >= _duration) {
             return 0;
         }
-        // Get the byte at the pointer, then the upper nibble for the first sample and the lower for the second
-        auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
-        auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
-        auto sample = cast(short) (unsignedSample * _volume - 120);
-        //import std.stdio; writeln(sample);
-        // Reset the pointer to the start on overflow
-        if (pointer >= pointerEnd) {
-            pointer = selectedBank * 2 * BYTES_PER_PATTERN;
-        }
-        // Increment the time values
-        tWave += 1;
-        enum tPeriodIncrement = WAVE_FREQUENCY / PSG_FREQUENCY;
-        tPeriod += tPeriodIncrement;
-        // Increment the pointer
+        tDuration += 1;
+        // Check if we should generate a new sample
         auto period = (2048 - rate) * 2;
-        if (tPeriod >= period) {
-            pointer += tPeriod / period;
-            tPeriod = tPeriod % period;
+        int newSampleCount = cast(int) tPeriod / period;
+        if (newSampleCount <= 0) {
+            // Increment the period time value
+            tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
+            return sample;
         }
+        // Accumulate samples
+        int newSample = 0;
+        foreach (i; 0 .. newSampleCount) {
+            // Get the byte at the pointer, then the upper nibble for the first sample and the lower for the second
+            auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
+            auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
+            newSample += unsignedSample * _volume - 120;
+            // Increment the pointer the pointer and reset to the start on overflow
+            pointer += 1;
+            if (pointer >= pointerEnd) {
+                pointer = selectedBank * 2 * BYTES_PER_PATTERN;
+            }
+        }
+        // Set the new sample as the average of the accumulated ones
+        sample = cast(short) (newSample / newSampleCount);
+        // Leave the time period remainder
+        tPeriod %= period;
+        // Increment the period time value
+        tPeriod += WAVE_FREQUENCY / PSG_FREQUENCY;
         return sample;
     }
 }
