@@ -12,6 +12,7 @@ public enum uint SOUND_OUTPUT_FREQUENCY = 2 ^^ 16;
 private enum size_t CYCLES_PER_PSG_SAMPLE = SYSTEM_CLOCK_FREQUENCY / PSG_FREQUENCY;
 private enum size_t PSG_PER_AUDIO_SAMPLE = PSG_FREQUENCY / SOUND_OUTPUT_FREQUENCY;
 public enum size_t CYCLES_PER_AUDIO_SAMPLE = SYSTEM_CLOCK_FREQUENCY / SOUND_OUTPUT_FREQUENCY;
+private enum int OUTPUT_AMPLITUDE_RESCALE = short.max / 2 ^^ 10;
 
 public class SoundChip {
     private static enum uint SAMPLE_BATCH_SIZE = 256 * 2;
@@ -62,50 +63,54 @@ public class SoundChip {
 
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
-
+            // Accumulate the PSG channel value for the left and right samples
             int rightPsgSample = 0;
             int leftPsgSample = 0;
-
+            // Add the tone 1 channel if enabled
             auto tone1Sample = tone1.nextSample();
             if (psgRightEnableFlags & 0b1) {
-                rightPsgSample += tone1Sample * psgRightVolumeMultiplier;
+                rightPsgSample += tone1Sample;
             }
             if (psgLeftEnableFlags & 0b1) {
-                leftPsgSample += tone1Sample * psgLeftVolumeMultiplier;
+                leftPsgSample += tone1Sample;
             }
-
+            // Add the tone 2 channel if enabled
             auto tone2Sample = tone2.nextSample();
             if (psgRightEnableFlags & 0b10) {
-                rightPsgSample += tone2Sample * psgRightVolumeMultiplier;
+                rightPsgSample += tone2Sample;
             }
             if (psgLeftEnableFlags & 0b10) {
-                leftPsgSample += tone2Sample * psgLeftVolumeMultiplier;
+                leftPsgSample += tone2Sample;
             }
-
+            // Add the wave channel if enabled
             auto waveSample = wave.nextSample();
             if (psgRightEnableFlags & 0b100) {
-                rightPsgSample += waveSample * psgRightVolumeMultiplier;
+                rightPsgSample += waveSample;
             }
             if (psgLeftEnableFlags & 0b100) {
-                leftPsgSample += waveSample * psgLeftVolumeMultiplier;
+                leftPsgSample += waveSample;
             }
-
+            // Add the noise channel if enabled
             auto noiseSample = noise.nextSample();
             if (psgRightEnableFlags & 0b1000) {
-                rightPsgSample += noiseSample * psgRightVolumeMultiplier;
+                rightPsgSample += noiseSample;
             }
             if (psgLeftEnableFlags & 0b1000) {
-                leftPsgSample += noiseSample * psgLeftVolumeMultiplier;
+                leftPsgSample += noiseSample;
             }
-
-            psgRightReSample += rightPsgSample / psgGlobalVolumeDivider * 18;
-            psgLeftReSample += leftPsgSample / psgGlobalVolumeDivider * 18;
+            // Apply the final volume adjustement
+            psgRightReSample += (rightPsgSample * psgRightVolumeMultiplier) / psgGlobalVolumeDivider;
+            psgLeftReSample += (leftPsgSample * psgLeftVolumeMultiplier) / psgGlobalVolumeDivider;
             psgCount += 1;
             // Check if we have accumulated all the PSG samples for a single output sample
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
                 // If so, then copy left and right values of the sample to the output batch buffer (after averaging)
-                sampleBatch[sampleBatchIndex++] = cast(short) (psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
-                sampleBatch[sampleBatchIndex++] = cast(short) (psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
+                sampleBatch[sampleBatchIndex++] = cast(short) (
+                        (psgLeftReSample * OUTPUT_AMPLITUDE_RESCALE) / cast(int) PSG_PER_AUDIO_SAMPLE
+                );
+                sampleBatch[sampleBatchIndex++] = cast(short) (
+                        (psgRightReSample * OUTPUT_AMPLITUDE_RESCALE) / cast(int) PSG_PER_AUDIO_SAMPLE
+                );
                 // If our output batch buffer is full, then send it to the audio receiver
                 if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
                     _receiver(sampleBatch);
@@ -117,7 +122,6 @@ public class SoundChip {
                 psgCount = 0;
             }
         }
-
         return cycles;
     }
 
@@ -296,8 +300,7 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Generate the sample
         auto period = (2048 - rate) * (PSG_FREQUENCY / SQUARE_WAVE_FREQUENCY);
-        auto amplitude = cast(short) (envelope * 8);
-        auto sample = tPeriod >= (period * _duty) / 1024 ? -amplitude : amplitude;
+        auto sample = cast(short) (tPeriod >= (period * _duty) / 1024 ? -envelope : envelope);
         // Update the envelope if enabled
         if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
             if (increasingEnvelope) {
@@ -344,7 +347,7 @@ private struct PatternWaveGenerator {
     private bool enabled = false;
     private bool combineBanks = false;
     private int selectedBank = 0;
-    private int _volume = 0;
+    private int volume = 0;
     private size_t _duration = 0;
     private bool useDuration = false;
     private int rate = 0;
@@ -353,29 +356,6 @@ private struct PatternWaveGenerator {
     private size_t pointer = 0;
     private size_t pointerEnd = 0;
     private short sample = 0;
-
-    @property private void volume(int volume) {
-        final switch (volume) {
-            case 0b000:
-                _volume = 0;
-                break;
-            case 0b001:
-                _volume = 16;
-                break;
-            case 0b010:
-                _volume = 8;
-                break;
-            case 0b011:
-                _volume = 4;
-                break;
-            case 0b100:
-            case 0b101:
-            case 0b110:
-            case 0b111:
-                _volume = 12;
-                break;
-        }
-    }
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
@@ -412,7 +392,31 @@ private struct PatternWaveGenerator {
                 // Get the byte at the pointer, the the upper nibble for the first sample and the lower for the second
                 auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
                 auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
-                newSample += unsignedSample * _volume - 120;
+                // Apply the volume setting and accumulate
+                final switch (volume) {
+                    case 0b000:
+                        // 0%
+                        break;
+                    case 0b001:
+                        // 100%
+                        newSample += unsignedSample * 2 - 16;
+                        break;
+                    case 0b010:
+                        // 50%
+                        newSample += unsignedSample - 8;
+                        break;
+                    case 0b011:
+                        // 25%
+                        newSample += unsignedSample / 2 - 4;
+                        break;
+                    case 0b100:
+                    case 0b101:
+                    case 0b110:
+                    case 0b111:
+                        // 75%
+                        newSample += (3 * unsignedSample) / 2 - 12;
+                        break;
+                }
                 // Increment the pointer and reset to the start on overflow
                 pointer += 1;
                 if (pointer >= pointerEnd) {
@@ -494,12 +498,11 @@ private struct NoiseGenerator {
                 // Generate the new "random" bit and convert it to a sample
                 auto outBit = shifter & 0b1;
                 shifter >>= 1;
-                auto amplitude = envelope * 8;
                 if (outBit) {
-                    newSample += amplitude;
+                    newSample += envelope;
                     shifter ^= use7Bits ? 0x60 : 0x6000;
                 } else {
-                    newSample -= amplitude;
+                    newSample -= envelope;
                 }
             }
             // Set the new sample as the average of the accumulated ones
