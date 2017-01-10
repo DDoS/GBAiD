@@ -8,20 +8,26 @@ public alias AudioReceiver = void delegate(short[]);
 
 private enum uint SYSTEM_CLOCK_FREQUENCY = 2 ^^ 24;
 private enum uint PSG_FREQUENCY = 2 ^^ 18;
-private enum uint OUTPUT_FREQUENCY = 2 ^^ 16;
+public enum uint SOUND_OUTPUT_FREQUENCY = 2 ^^ 16;
 private enum size_t CYCLES_PER_PSG_SAMPLE = SYSTEM_CLOCK_FREQUENCY / PSG_FREQUENCY;
-private enum size_t PSG_PER_AUDIO_SAMPLE = PSG_FREQUENCY / OUTPUT_FREQUENCY;
-public enum size_t CYCLES_PER_AUDIO_SAMPLE = SYSTEM_CLOCK_FREQUENCY / OUTPUT_FREQUENCY;
+private enum size_t PSG_PER_AUDIO_SAMPLE = PSG_FREQUENCY / SOUND_OUTPUT_FREQUENCY;
+public enum size_t CYCLES_PER_AUDIO_SAMPLE = SYSTEM_CLOCK_FREQUENCY / SOUND_OUTPUT_FREQUENCY;
 
 public class SoundChip {
-    private static enum uint SAMPLE_BATCH_SIZE = 256;
+    private static enum uint SAMPLE_BATCH_SIZE = 256 * 2;
     private IoRegisters* ioRegisters;
     private AudioReceiver _receiver = null;
     private SquareWaveGenerator!true tone1;
     private SquareWaveGenerator!false tone2;
     private PatternWaveGenerator wave;
     private NoiseGenerator noise;
-    private int psgReSample = 0;
+    private int psgRightVolumeMultiplier = 0;
+    private int psgLeftVolumeMultiplier = 0;
+    private int psgRightEnableFlags = 0;
+    private int psgLeftEnableFlags = 0;
+    private int psgGlobalVolumeDivider = 4;
+    private int psgRightReSample = 0;
+    private int psgLeftReSample = 0;
     private uint psgCount = 0;
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
     private uint sampleBatchIndex = 0;
@@ -41,6 +47,8 @@ public class SoundChip {
         ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
         ioRegisters.setPostWriteMonitor!0x78(&onNoiseLowPostWrite);
         ioRegisters.setPostWriteMonitor!0x7C(&onNoiseHighPostWrite);
+        ioRegisters.setPostWriteMonitor!0x80(&onSoundControlPostWrite);
+        ioRegisters.setReadMonitor!0x84(&onSoundStatusRead);
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -55,17 +63,58 @@ public class SoundChip {
         while (cycles >= CYCLES_PER_PSG_SAMPLE) {
             cycles -= CYCLES_PER_PSG_SAMPLE;
 
-            psgReSample += (tone1.nextSample() + tone2.nextSample() + wave.nextSample() + noise.nextSample()) * 128;
-            psgCount += 1;
+            int rightPsgSample = 0;
+            int leftPsgSample = 0;
 
+            auto tone1Sample = tone1.nextSample();
+            if (psgRightEnableFlags & 0b1) {
+                rightPsgSample += tone1Sample * psgRightVolumeMultiplier;
+            }
+            if (psgLeftEnableFlags & 0b1) {
+                leftPsgSample += tone1Sample * psgLeftVolumeMultiplier;
+            }
+
+            auto tone2Sample = tone2.nextSample();
+            if (psgRightEnableFlags & 0b10) {
+                rightPsgSample += tone2Sample * psgRightVolumeMultiplier;
+            }
+            if (psgLeftEnableFlags & 0b10) {
+                leftPsgSample += tone2Sample * psgLeftVolumeMultiplier;
+            }
+
+            auto waveSample = wave.nextSample();
+            if (psgRightEnableFlags & 0b100) {
+                rightPsgSample += waveSample * psgRightVolumeMultiplier;
+            }
+            if (psgLeftEnableFlags & 0b100) {
+                leftPsgSample += waveSample * psgLeftVolumeMultiplier;
+            }
+
+            auto noiseSample = noise.nextSample();
+            if (psgRightEnableFlags & 0b1000) {
+                rightPsgSample += noiseSample * psgRightVolumeMultiplier;
+            }
+            if (psgLeftEnableFlags & 0b1000) {
+                leftPsgSample += noiseSample * psgLeftVolumeMultiplier;
+            }
+
+            psgRightReSample += rightPsgSample / psgGlobalVolumeDivider * 18;
+            psgLeftReSample += leftPsgSample / psgGlobalVolumeDivider * 18;
+            psgCount += 1;
+            // Check if we have accumulated all the PSG samples for a single output sample
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
-                sampleBatch[sampleBatchIndex++] = cast(short) (psgReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
+                // If so, then copy left and right values of the sample to the output batch buffer (after averaging)
+                sampleBatch[sampleBatchIndex++] = cast(short) (psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
+                sampleBatch[sampleBatchIndex++] = cast(short) (psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE);
+                // If our output batch buffer is full, then send it to the audio receiver
                 if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
                     _receiver(sampleBatch);
                     sampleBatchIndex = 0;
                 }
+                // Finally we can reset the accumulator
+                psgRightReSample = 0;
+                psgLeftReSample = 0;
                 psgCount = 0;
-                psgReSample = 0;
             }
         }
 
@@ -144,6 +193,39 @@ public class SoundChip {
         if (newSettings.checkBit(15)) {
             noise.restart();
         }
+    }
+
+    private void onSoundControlPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
+            int newSettings) {
+        psgRightVolumeMultiplier = newSettings & 0b111;
+        psgLeftVolumeMultiplier = newSettings.getBits(4, 6);
+        psgRightEnableFlags = newSettings.getBits(8, 11);
+        psgLeftEnableFlags = newSettings.getBits(12, 15);
+        switch (newSettings.getBits(16, 17)) {
+            case 0:
+                psgGlobalVolumeDivider = 4;
+                break;
+            case 1:
+                psgGlobalVolumeDivider = 2;
+                break;
+            case 2:
+                psgGlobalVolumeDivider = 1;
+                break;
+            default:
+        }
+    }
+
+    private void onSoundStatusRead(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
+        // Ignore reads that aren't on the status flags
+        if (!(mask & 0b1111)) {
+            return;
+        }
+        // Write the enable flags to the value
+        value.setBit(0, tone1.enabled);
+        value.setBit(1, tone2.enabled);
+        value.setBit(2, wave.enabled);
+        value.setBit(3, noise.enabled);
+        // TODO: master enable bit and reset all channels
     }
 }
 
@@ -324,7 +406,6 @@ private struct PatternWaveGenerator {
         // Check if we should generate a new sample
         auto period = calculatePeriod();
         int newSampleCount = cast(int) tPeriod / period;
-        // TODO: reduce popping by generating a sample on tPeriod = 0?
         if (newSampleCount > 0) {
             // Accumulate samples
             int newSample = 0;

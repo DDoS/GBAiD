@@ -9,17 +9,18 @@ import derelict.sdl2.sdl;
 
 import gbaid.util;
 
-private enum uint DEVICE_SAMPLES = 1024;
-private enum size_t SAMPLE_BUFFER_LENGTH = DEVICE_SAMPLES * 4;
-
-public class Audio {
+public class AudioQueue(uint channelCount) {
+    private enum uint DEVICE_SAMPLES = 1024 * channelCount;
+    private enum size_t SAMPLE_BUFFER_LENGTH = DEVICE_SAMPLES * 4;
     private SDL_AudioDeviceID device = 0;
     private short[SAMPLE_BUFFER_LENGTH] samples;
     private size_t sampleIndex = 0;
     private size_t sampleCount = 0;
+    private uint frequency;
     private Condition sampleSignal;
 
-    public this() {
+    public this(uint frequency) {
+        this.frequency = frequency;
         sampleSignal = new Condition(new Mutex());
     }
 
@@ -35,11 +36,11 @@ public class Audio {
         }
 
         SDL_AudioSpec spec;
-        spec.freq = 2 ^^ 16;
+        spec.freq = frequency;
         spec.format = AUDIO_S16;
-        spec.channels = 1;
+        spec.channels = channelCount;
         spec.samples = DEVICE_SAMPLES;
-        spec.callback = &callback;
+        spec.callback = &callback!channelCount;
         spec.userdata = cast(void*) this;
         device = SDL_OpenAudioDevice(null, 0, &spec, null, 0);
         if (!device) {
@@ -76,18 +77,19 @@ public class Audio {
         }
     }
 
-    public size_t requiredSamples() {
+    public size_t nextRequiredSamples() {
         synchronized (sampleSignal.mutex) {
             size_t requiredSamples = void;
             while ((requiredSamples = SAMPLE_BUFFER_LENGTH - sampleCount) <= 0) {
                 sampleSignal.wait();
             }
-            return requiredSamples;
+            return requiredSamples / channelCount;
         }
     }
 }
 
-private extern(C) void callback(void* instance, ubyte* stream, int length) nothrow {
+private extern(C) void callback(uint channelCount)(void* instance, ubyte* stream, int length) nothrow {
+    alias Audio = AudioQueue!channelCount;
     auto audio = cast(Audio) instance;
     auto sampleBytes = cast(ubyte*) audio.samples.ptr;
     try {
@@ -99,7 +101,7 @@ private extern(C) void callback(void* instance, ubyte* stream, int length) nothr
             }
             // Copy the first part of the circular buffer
             auto start = audio.sampleIndex * short.sizeof;
-            auto end = min(start + length, SAMPLE_BUFFER_LENGTH * short.sizeof);
+            auto end = min(start + length, Audio.SAMPLE_BUFFER_LENGTH * short.sizeof);
             auto copyLength = end - start;
             stream[0 .. copyLength] = sampleBytes[start .. end];
             // Copy the wrapped around part
@@ -107,11 +109,11 @@ private extern(C) void callback(void* instance, ubyte* stream, int length) nothr
             end = length - copyLength;
             stream[copyLength .. length] = sampleBytes[start .. end];
             // Increment the index past what as consumed, with wrapping
-            audio.sampleIndex = (audio.sampleIndex + length / short.sizeof) % SAMPLE_BUFFER_LENGTH;
+            audio.sampleIndex = (audio.sampleIndex + length / short.sizeof) % Audio.SAMPLE_BUFFER_LENGTH;
             // Decrement the sample count by the copied length
             audio.sampleCount -= length / short.sizeof;
             // If the sample count is half of the buffer length, request more
-            if (audio.sampleCount <= SAMPLE_BUFFER_LENGTH / 2) {
+            if (audio.sampleCount <= Audio.SAMPLE_BUFFER_LENGTH / 2) {
                 audio.sampleSignal.notify();
             }
         }
