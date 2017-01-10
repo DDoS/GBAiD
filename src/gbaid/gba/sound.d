@@ -391,7 +391,6 @@ private struct PatternWaveGenerator {
     }
 
     private void restart() {
-        enabled = true;
         tDuration = 0;
         tPeriod = calculatePeriod();
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
