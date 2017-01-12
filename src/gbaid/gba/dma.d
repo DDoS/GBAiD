@@ -30,13 +30,11 @@ public class DMAs {
         ioRegisters.setPostWriteMonitor!0xDC(&onPostWrite!3);
     }
 
-    public void signalVBLANK() {
-        triggerDMAs!(Timing.VBLANK);
-    }
+    public alias signalVBLANK = triggerDMAs!(Timing.VBLANK);
+    public alias signalHBLANK = triggerDMAs!(Timing.HBLANK);
 
-    public void signalHBLANK() {
-        triggerDMAs!(Timing.HBLANK);
-    }
+    public alias signalSoundQueueA = triggerDMAs!(Timing.SOUND_QUEUE_A);
+    public alias signalSoundQueueB = triggerDMAs!(Timing.SOUND_QUEUE_B);
 
     private void onPostWrite(int channel)
             (IoRegisters* ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
@@ -45,11 +43,12 @@ public class DMAs {
         }
 
         control!channel = newControl >>> 16;
-        timing!channel = newControl.getTiming!channel();
+        auto destAddress = ioRegisters.getUnMonitored!int(address - 4).formatDestinationAddress!channel();
+        timing!channel = newControl.getTiming!channel(destAddress);
 
         if (!checkBit(oldControl, 31) && checkBit(newControl, 31)) {
             sourceAddress!channel = ioRegisters.getUnMonitored!int(address - 8).formatSourceAddress!channel();
-            destinationAddress!channel = ioRegisters.getUnMonitored!int(address - 4).formatDestinationAddress!channel();
+            destinationAddress!channel = destAddress;
             wordCount!channel = newControl.getWordCount!channel();
             triggerDMAs!(Timing.IMMEDIATE);
         }
@@ -156,7 +155,8 @@ public class DMAs {
         switch (timing!channel) with(Timing) {
             case DISABLED:
                 assert (0);
-            case SOUND_FIFO:
+            case SOUND_QUEUE_A:
+            case SOUND_QUEUE_B:
                 type = 1;
                 destinationAddressControl = 2;
                 break;
@@ -250,7 +250,7 @@ private int getWordCount(int channel)(int fullControl) {
     }
 }
 
-private Timing getTiming(int channel)(int fullControl) {
+private Timing getTiming(int channel)(int fullControl, int destinationAddress) {
     if (!fullControl.checkBit(31)) {
         return Timing.DISABLED;
     }
@@ -263,7 +263,11 @@ private Timing getTiming(int channel)(int fullControl) {
             return Timing.HBLANK;
         case 3:
             static if (channel == 1 || channel == 2) {
-                return Timing.SOUND_FIFO;
+                if (destinationAddress == 0x40000A0) {
+                    return Timing.SOUND_QUEUE_A;
+                } else {
+                    return Timing.SOUND_QUEUE_B;
+                }
             } static if (channel == 3) {
                 return Timing.VIDEO_CAPTURE;
             } else {
@@ -277,7 +281,8 @@ private enum Timing {
     IMMEDIATE,
     VBLANK,
     HBLANK,
-    SOUND_FIFO,
+    SOUND_QUEUE_A,
+    SOUND_QUEUE_B,
     VIDEO_CAPTURE
 }
 

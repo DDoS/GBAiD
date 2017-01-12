@@ -1,6 +1,7 @@
 module gbaid.gba.sound;
 
 import gbaid.gba.memory;
+import gbaid.gba.dma;
 
 import gbaid.util;
 
@@ -22,6 +23,8 @@ public class SoundChip {
     private SquareWaveGenerator!false tone2;
     private PatternWaveGenerator wave;
     private NoiseGenerator noise;
+    private DirectSound!'A' directA;
+    private DirectSound!'B' directB;
     private int psgRightVolumeMultiplier = 0;
     private int psgLeftVolumeMultiplier = 0;
     private int psgRightEnableFlags = 0;
@@ -33,8 +36,10 @@ public class SoundChip {
     private short[SAMPLE_BATCH_SIZE] sampleBatch;
     private uint sampleBatchIndex = 0;
 
-    public this(IoRegisters* ioRegisters) {
+    public this(IoRegisters* ioRegisters, DMAs dmas) {
         this.ioRegisters = ioRegisters;
+        directA = DirectSound!'A'(dmas);
+        directB = DirectSound!'B'(dmas);
 
         ioRegisters.setPostWriteMonitor!0x60(&onToneLowPostWrite!1);
         ioRegisters.setPostWriteMonitor!0x64(&onToneHighPostWrite!1);
@@ -48,12 +53,23 @@ public class SoundChip {
         ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
         ioRegisters.setPostWriteMonitor!0x78(&onNoiseLowPostWrite);
         ioRegisters.setPostWriteMonitor!0x7C(&onNoiseHighPostWrite);
+        ioRegisters.setPostWriteMonitor!0xA0(&onDirectSoundQueuePostWrite!'A');
+        ioRegisters.setPostWriteMonitor!0xA4(&onDirectSoundQueuePostWrite!'B');
         ioRegisters.setPostWriteMonitor!0x80(&onSoundControlPostWrite);
         ioRegisters.setReadMonitor!0x84(&onSoundStatusRead);
     }
 
     @property public void receiver(AudioReceiver receiver) {
         _receiver = receiver;
+    }
+
+    public void addTimerOverflows(int timer)(size_t overflows) if (timer == 0 || timer == 1) {
+        if (directA.timerIndex == timer) {
+            directA.timerOverflows += overflows;
+        }
+        if (directB.timerIndex == timer) {
+            directB.timerOverflows += overflows;
+        }
     }
 
     public size_t emulate(size_t cycles) {
@@ -104,13 +120,17 @@ public class SoundChip {
             psgCount += 1;
             // Check if we have accumulated all the PSG samples for a single output sample
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
-                // If so, then copy left and right values of the sample to the output batch buffer (after averaging)
-                sampleBatch[sampleBatchIndex++] = cast(short) (
-                        (psgLeftReSample * OUTPUT_AMPLITUDE_RESCALE) / cast(int) PSG_PER_AUDIO_SAMPLE
-                );
-                sampleBatch[sampleBatchIndex++] = cast(short) (
-                        (psgRightReSample * OUTPUT_AMPLITUDE_RESCALE) / cast(int) PSG_PER_AUDIO_SAMPLE
-                );
+                // Average out the PSG samples to start forming the final output sample
+                auto outputRight = psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
+                auto outputLeft = psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
+                // Now get the samples for the direct sound
+                auto directASample = directA.nextSample();
+                auto directBSample = directB.nextSample();
+                outputRight += directASample + directBSample;
+                outputLeft += directASample + directBSample;
+                // Copy the final left and right values of the sample to the output batch buffer
+                sampleBatch[sampleBatchIndex++] = cast(short) (outputLeft * OUTPUT_AMPLITUDE_RESCALE);
+                sampleBatch[sampleBatchIndex++] = cast(short) (outputRight * OUTPUT_AMPLITUDE_RESCALE);
                 // If our output batch buffer is full, then send it to the audio receiver
                 if (sampleBatchIndex >= SAMPLE_BATCH_SIZE) {
                     _receiver(sampleBatch);
@@ -199,6 +219,32 @@ public class SoundChip {
         }
     }
 
+    private void onDirectSoundQueuePostWrite(char channel)(IoRegisters* ioRegisters, int address, int shift, int mask,
+            int oldData, int newData) {
+        alias Direct = DirectSound!channel;
+        static if (channel == 'A') {
+            alias direct = directA;
+        } else {
+            alias direct = directB;
+        }
+        // Write the bytes to the sound queue
+        foreach (i; 0 .. 4) {
+            // Only write the new bytes to the queue
+            if (mask & 0xFF) {
+                // Stop if the queue is full
+                if (direct.queueSize >= Direct.QUEUE_BYTE_SIZE) {
+                    break;
+                }
+                // Write the byte at the next index and increment the size
+                direct.queue[(direct.queueIndex + direct.queueSize) % Direct.QUEUE_BYTE_SIZE] = cast(byte) newData;
+                direct.queueSize += 1;
+            }
+            // Shift to the next byte (from least to most significant)
+            mask >>= 8;
+            newData >>= 8;
+        }
+    }
+
     private void onSoundControlPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
             int newSettings) {
         psgRightVolumeMultiplier = newSettings & 0b111;
@@ -216,6 +262,14 @@ public class SoundChip {
                 psgGlobalVolumeDivider = 1;
                 break;
             default:
+        }
+        directA.timerIndex = newSettings.getBit(26);
+        if (newSettings.checkBit(27)) {
+            directA.restart();
+        }
+        directB.timerIndex = newSettings.getBit(30);
+        if (newSettings.checkBit(31)) {
+            directB.restart();
         }
     }
 
@@ -530,5 +584,61 @@ private struct NoiseGenerator {
         // Increment the period time value
         tPeriod += NOISE_FREQUENCY / PSG_FREQUENCY;
         return sample;
+    }
+}
+
+private struct DirectSound(char channel) {
+    private static enum size_t QUEUE_BYTE_SIZE = 32;
+    private byte[QUEUE_BYTE_SIZE] queue;
+    private DMAs dmas;
+    private int timerIndex = 0;
+    private size_t timerOverflows = 0;
+    private size_t queueIndex = 0;
+    private size_t queueSize = 0;
+    private int reSample = 0;
+    private int reSampleCount = 0;
+
+    private this(DMAs dmas) {
+        this.dmas = dmas;
+    }
+
+    private void restart() {
+        queueIndex = 0;
+        queueSize = 0;
+        reSampleCount = 0;
+    }
+
+    private short nextSample() {
+        // Fetch some new samples if we have timer overflows
+        if (timerOverflows > 0) {
+            // Clear the re-sample and count
+            reSample = 0;
+            reSampleCount = 0;
+            // Take one sample from the queue for each timer overflow
+            foreach (i; 0 .. timerOverflows) {
+                // Check that the queue isn't empty
+                if (queueSize <= 0) {
+                    break;
+                }
+                // Take the sample from the queue and accumulate it (after amplifying it)
+                reSample += queue[queueIndex] * 4;
+                reSampleCount += 1;
+                // Update the queue index and size
+                queueIndex = (queueIndex + 1) % QUEUE_BYTE_SIZE;
+                queueSize -= 1;
+            }
+            // Clear the timer overflow count
+            timerOverflows = 0;
+            // If the queue is half empty them signal the DMAs to transfer more
+            if (queueSize <= QUEUE_BYTE_SIZE / 2) {
+                static if (channel == 'A') {
+                    dmas.signalSoundQueueA();
+                } else {
+                    dmas.signalSoundQueueB();
+                }
+            }
+        }
+        // Return the sample, or 0 if we haven't gotten any yet
+        return reSampleCount == 0 ? 0 : cast(short) (reSample / reSampleCount);
     }
 }

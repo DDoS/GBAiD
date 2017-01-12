@@ -53,10 +53,10 @@ public class GameBoyAdvance {
         haltHandler = new HaltHandler(processor);
         interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
-        timers = new Timers(ioRegisters, interruptHandler);
         dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
+        soundChip = new SoundChip(ioRegisters, dmas);
+        timers = new Timers(ioRegisters, interruptHandler, soundChip);
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
-        soundChip = new SoundChip(ioRegisters);
 
         memory.biosReadGuard = &biosReadGuard;
     }

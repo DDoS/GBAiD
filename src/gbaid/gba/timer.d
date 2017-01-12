@@ -4,18 +4,21 @@ import gbaid.util;
 
 import gbaid.gba.memory;
 import gbaid.gba.interrupt;
+import gbaid.gba.sound;
 
 public class Timers {
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
+    private SoundChip soundChip;
     mixin privateFields!(ushort, "reloadValue", 0, 4);
     mixin privateFields!(int, "control", 0, 4);
     mixin privateFields!(int, "subTicks", 0, 4);
     mixin privateFields!(ushort, "ticks", 0, 4);
 
-    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
+    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler, SoundChip soundChip) {
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
+        this.soundChip = soundChip;
 
         ioRegisters.setReadMonitor!0x100(&onRead!0);
         ioRegisters.setReadMonitor!0x104(&onRead!1);
@@ -75,8 +78,13 @@ public class Timers {
         if (control!timer.checkBit(6)) {
             interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + timer);
         }
-        // Return the first overflow plus any extra
-        return 1 + newTicks / ticksUntilOverflow;
+        // The count is the first overflow plus any extra
+        auto overflowCount = 1 + newTicks / ticksUntilOverflow;
+        // Pass the overflow count to the sound chip for the direct sound system
+        static if (timer == 0 || timer == 1) {
+            soundChip.addTimerOverflows!timer(overflowCount);
+        }
+        return overflowCount;
     }
 
     private void onRead(int timer)(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
