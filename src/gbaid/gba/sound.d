@@ -359,18 +359,18 @@ private struct SquareWaveGenerator(bool sweep) {
 
     @property private void envelopeStep(int step) {
         // Convert the setting to the step as the number of samples
-        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_PSG_SAMPLE;
+        _envelopeStep = step * (PSG_FREQUENCY / 64);
     }
 
     static if (sweep) {
         @property private void sweepStep(int step) {
-            _sweepStep = step * (SYSTEM_CLOCK_FREQUENCY / 128) / CYCLES_PER_PSG_SAMPLE;
+            _sweepStep = step * (PSG_FREQUENCY / 128);
         }
     }
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
-        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
+        _duration = (64 - duration) * (PSG_FREQUENCY / 256);
     }
 
     private void restart() {
@@ -388,6 +388,16 @@ private struct SquareWaveGenerator(bool sweep) {
         // Generate the sample
         auto period = (2048 - rate) * (PSG_FREQUENCY / SQUARE_WAVE_FREQUENCY);
         auto sample = cast(short) (tPeriod >= (period * _duty) / 1024 ? -envelope : envelope);
+        // Increment the period time value
+        tPeriod += 1;
+        if (tPeriod >= period) {
+            tPeriod = 0;
+        }
+        // Disable for the next sample if the duration expired
+        tDuration += 1;
+        if (useDuration && tDuration >= _duration) {
+            enabled = false;
+        }
         // Update the envelope if enabled
         if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
             if (increasingEnvelope) {
@@ -413,16 +423,6 @@ private struct SquareWaveGenerator(bool sweep) {
                 }
             }
         }
-        // Increment the time values
-        tPeriod += 1;
-        if (tPeriod >= period) {
-            tPeriod = 0;
-        }
-        // Disable for the next sample if the duration expired
-        tDuration += 1;
-        if (useDuration && tDuration >= _duration) {
-            enabled = false;
-        }
         return sample;
     }
 }
@@ -446,7 +446,7 @@ private struct PatternWaveGenerator {
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
-        _duration = (256 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
+        _duration = (256 - duration) * (PSG_FREQUENCY / 256);
     }
 
     @property private void pattern(int index)(int pattern) {
@@ -515,13 +515,13 @@ private struct PatternWaveGenerator {
             // Leave the time period remainder
             tPeriod %= period;
         }
+        // Increment the period time value
+        tPeriod += PATTERN_FREQUENCY / PSG_FREQUENCY;
         // Disable for the next sample if the duration expired
         tDuration += 1;
         if (useDuration && tDuration >= _duration) {
             enabled = false;
         }
-        // Increment the period time value
-        tPeriod += PATTERN_FREQUENCY / PSG_FREQUENCY;
         return sample;
     }
 }
@@ -545,12 +545,12 @@ private struct NoiseGenerator {
 
     @property private void envelopeStep(int step) {
         // Convert the setting to the step as the number of samples
-        _envelopeStep = step * (SYSTEM_CLOCK_FREQUENCY / 64) / CYCLES_PER_PSG_SAMPLE;
+        _envelopeStep = step * (PSG_FREQUENCY / 64);
     }
 
     @property private void duration(int duration) {
         // Convert the setting to the duration as the number of samples
-        _duration = (64 - duration) * (SYSTEM_CLOCK_FREQUENCY / 256) / CYCLES_PER_PSG_SAMPLE;
+        _duration = (64 - duration) * (PSG_FREQUENCY / 256);
     }
 
     private int calculatePeriod() {
@@ -597,6 +597,13 @@ private struct NoiseGenerator {
             // Leave the time period remainder
             tPeriod %= period;
         }
+        // Increment the period time value
+        tPeriod += NOISE_FREQUENCY / PSG_FREQUENCY;
+        // Disable for the next sample if the duration expired
+        tDuration += 1;
+        if (useDuration && tDuration >= _duration) {
+            enabled = false;
+        }
         // Update the envelope if enabled (using the duration before it was incremented)
         if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
             if (increasingEnvelope) {
@@ -609,13 +616,6 @@ private struct NoiseGenerator {
                 }
             }
         }
-        // Disable for the next sample if the duration expired
-        tDuration += 1;
-        if (useDuration && tDuration >= _duration) {
-            enabled = false;
-        }
-        // Increment the period time value
-        tPeriod += NOISE_FREQUENCY / PSG_FREQUENCY;
         return sample;
     }
 }

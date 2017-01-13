@@ -482,7 +482,7 @@ public struct Registers {
 
     debug (outputInstructions) {
         import std.stdio : writefln;
-        
+
         private enum uint queueMaxSize = 1024;
         private Executor[queueMaxSize] lastInstructions;
         private uint queueSize = 0;
