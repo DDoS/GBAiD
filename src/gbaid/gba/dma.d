@@ -181,19 +181,6 @@ public class DMAs {
     }
 }
 
-/*
-debug (outputDMAs) writefln(
-    "DMA %s %08x%s to %08x%s, %04x bytes, timing %s",
-    channel,
-    sourceAddress!channel,
-    sourceAddressControl == 0 ? "++" : sourceAddressControl == 1 ? "--" : "  ",
-    destinationAddress!channel,
-    destinationAddressControl == 0 || destinationAddressControl == 3 ? "++" : destinationAddressControl == 1 ? "--" : "  ",
-    wordCount!channel * increment,
-    getTiming(channel, control << 16)
-);
-*/
-
 private void modifyAddress(ref int address, int control, int amount) {
     final switch (control) {
         case 0:
@@ -263,10 +250,13 @@ private Timing getTiming(int channel)(int fullControl, int destinationAddress) {
             return Timing.HBLANK;
         case 3:
             static if (channel == 1 || channel == 2) {
-                if (destinationAddress == 0x40000A0) {
-                    return Timing.SOUND_QUEUE_A;
-                } else {
-                    return Timing.SOUND_QUEUE_B;
+                switch (destinationAddress) {
+                    case 0x40000A0:
+                        return Timing.SOUND_QUEUE_A;
+                    case 0x40000A4:
+                        return Timing.SOUND_QUEUE_B;
+                    default:
+                        return Timing.DISABLED;
                 }
             } static if (channel == 3) {
                 return Timing.VIDEO_CAPTURE;

@@ -43,7 +43,7 @@ public class Timers {
     private int updateTimer(int timer)(ushort cycles, int previousOverflows) {
         // Check that the timer is enabled
         if (!control!timer.checkBit(7)) {
-            return false;
+            return 0;
         }
         // Check the ticking condition
         int newTicks = void;
@@ -60,7 +60,7 @@ public class Timers {
         }
         // Only tick if we need to
         if (newTicks <= 0) {
-            return false;
+            return 0;
         }
         // Check for an overflow
         auto ticksUntilOverflow = ushort.max - ticks!timer + 1;
