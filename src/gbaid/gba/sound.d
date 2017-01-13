@@ -30,6 +30,8 @@ public class SoundChip {
     private int psgRightEnableFlags = 0;
     private int psgLeftEnableFlags = 0;
     private int psgGlobalVolumeDivider = 4;
+    private int directAVolumeDivider = 2;
+    private int directBVolumeDivider = 2;
     private int directAEnableFlags = 0;
     private int directBEnableFlags = 0;
     private int psgRightReSample = 0;
@@ -130,14 +132,14 @@ public class SoundChip {
                 auto outputRight = psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 auto outputLeft = psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 // Now get the samples for the direct sound
-                auto directASample = directA.nextSample();
+                auto directASample = directA.nextSample() / directAVolumeDivider;
                 if (directAEnableFlags & 0b1) {
                     outputRight += directASample;
                 }
                 if (directAEnableFlags & 0b10) {
                     outputLeft += directASample;
                 }
-                auto directBSample = directB.nextSample();
+                auto directBSample = directB.nextSample() / directBVolumeDivider;
                 if (directBEnableFlags & 0b1) {
                     outputRight += directBSample;
                 }
@@ -279,6 +281,8 @@ public class SoundChip {
                 break;
             default:
         }
+        directAVolumeDivider = 2 - newSettings.getBit(18);
+        directBVolumeDivider = 2 - newSettings.getBit(19);
         directAEnableFlags = newSettings.getBits(24, 25);
         directA.timerIndex = newSettings.getBit(26);
         if (newSettings.checkBit(27)) {
@@ -647,6 +651,7 @@ private struct DirectSound(char channel) {
 
     private void updateSample() {
         if (!enabled) {
+            timerOverflows = 0;
             return;
         }
         // Take one sample from the queue for each timer overflow
