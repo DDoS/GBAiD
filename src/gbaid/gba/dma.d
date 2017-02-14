@@ -24,10 +24,17 @@ public class DMAs {
         this.interruptHandler = interruptHandler;
         this.haltHandler = haltHandler;
 
-        ioRegisters.setPostWriteMonitor!0xB8(&onPostWrite!0);
-        ioRegisters.setPostWriteMonitor!0xC4(&onPostWrite!1);
-        ioRegisters.setPostWriteMonitor!0xD0(&onPostWrite!2);
-        ioRegisters.setPostWriteMonitor!0xDC(&onPostWrite!3);
+        ioRegisters.setPostWriteMonitor!0xB4(&onDestinationPostWrite!0);
+        ioRegisters.setPostWriteMonitor!0xB8(&onControlPostWrite!0);
+
+        ioRegisters.setPostWriteMonitor!0xC0(&onDestinationPostWrite!1);
+        ioRegisters.setPostWriteMonitor!0xC4(&onControlPostWrite!1);
+
+        ioRegisters.setPostWriteMonitor!0xCC(&onDestinationPostWrite!2);
+        ioRegisters.setPostWriteMonitor!0xD0(&onControlPostWrite!2);
+
+        ioRegisters.setPostWriteMonitor!0xD8(&onDestinationPostWrite!3);
+        ioRegisters.setPostWriteMonitor!0xDC(&onControlPostWrite!3);
     }
 
     public alias signalVBLANK = triggerDMAs!(Timing.VBLANK);
@@ -36,16 +43,24 @@ public class DMAs {
     public alias signalSoundQueueA = triggerDMAs!(Timing.SOUND_QUEUE_A);
     public alias signalSoundQueueB = triggerDMAs!(Timing.SOUND_QUEUE_B);
 
-    private void onPostWrite(int channel)
+    private void onDestinationPostWrite(int channel)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldDestination, int newDestination) {
+        // Update the timing (this is a special case for SOUND_QUEUE_X timings)
+        auto fullControl = ioRegisters.getUnMonitored!int(address + 4);
+        timing!channel = fullControl.getTiming!channel(newDestination.formatDestinationAddress!channel());
+    }
+
+    private void onControlPostWrite(int channel)
             (IoRegisters* ioRegisters, int address, int shift, int mask, int oldControl, int newControl) {
+        // Ignore writes only on the word count
         if (!(mask & 0xFFFF0000)) {
             return;
         }
-
+        // Update the control bits and the timing
         control!channel = newControl >>> 16;
         auto destAddress = ioRegisters.getUnMonitored!int(address - 4).formatDestinationAddress!channel();
         timing!channel = newControl.getTiming!channel(destAddress);
-
+        // If the DMA enable bit goes high, reload the addresses and word count, and signal the immediate timing
         if (!checkBit(oldControl, 31) && checkBit(newControl, 31)) {
             sourceAddress!channel = ioRegisters.getUnMonitored!int(address - 8).formatSourceAddress!channel();
             destinationAddress!channel = destAddress;
@@ -57,47 +72,48 @@ public class DMAs {
     private void triggerDMAs(Timing trigger)() {
         if (timing!0 == trigger) {
             triggered |= 1 << 0;
-            haltHandler.dmaHalt(true);
         }
         if (timing!1 == trigger) {
             triggered |= 1 << 1;
-            haltHandler.dmaHalt(true);
         }
         if (timing!2 == trigger) {
             triggered |= 1 << 2;
-            haltHandler.dmaHalt(true);
         }
         if (timing!3 == trigger) {
             triggered |= 1 << 3;
-            haltHandler.dmaHalt(true);
         }
+        // Stop the CPU if any transfer has been started
+        haltHandler.dmaHalt(triggered != 0);
     }
 
     public size_t emulate(size_t cycles) {
         // Check if any of the DMAs are triggered
-        if (triggered == 0) {
-            // If not then discard all the cycles
-            return 0;
-        }
-        // Run the DMAs with respect to priority
-        if (updateChannel!0(cycles)) {
-            // More cycles left, move to down in priority
-            if (updateChannel!1(cycles)) {
+        if (triggered != 0) {
+            // Run the DMAs with respect to priority
+            if (updateChannel!0(cycles)) {
                 // More cycles left, move to down in priority
-                if (updateChannel!2(cycles)) {
+                if (updateChannel!1(cycles)) {
                     // More cycles left, move to down in priority
-                    updateChannel!3(cycles);
-                    // Out of DMAs to run, waste all the cycles left
-                    return 0;
+                    if (updateChannel!2(cycles)) {
+                        // More cycles left, move to down in priority
+                        updateChannel!3(cycles);
+                        // Out of DMAs to run, waste all the cycles left
+                        cycles = 0;
+                    }
                 }
             }
+        } else {
+            // If not then discard all the cycles
+            cycles = 0;
         }
+        // Restart the CPU if all transfers are complete
+        haltHandler.dmaHalt(triggered != 0);
         return cycles;
     }
 
     private bool updateChannel(int channel)(ref size_t cycles) {
-        // Only run if triggered and enabled
-        if (!(triggered & (1 << channel)) || !control!channel.checkBit(15)) {
+        // Only run if triggered
+        if (!(triggered & (1 << channel))) {
             // No transfer to do
             return true;
         }
@@ -124,21 +140,23 @@ public class DMAs {
 
         int dmaAddress = channel * 0xC + 0xB8;
         if (checkBit(control, 9)) {
-            // Repeating DMA
+            // Repeating DMA, reload the word count, and optionally the destination address
             wordCount!channel = ioRegisters.getUnMonitored!int(dmaAddress).getWordCount!channel();
             if (getBits(control, 5, 6) == 3) {
+                // If we reload the destination address, we must also check for timing changes
                 destinationAddress!channel = ioRegisters.getUnMonitored!int(dmaAddress - 4).formatDestinationAddress!channel();
+                timing!channel = (control << 16).getTiming!channel(destinationAddress!channel);
             }
             // Only keep the trigger for repeating DMAs if the timing is immediate
             if (timing!channel != Timing.IMMEDIATE) {
-                haltHandler.dmaHalt((triggered &= ~(1 << channel)) != 0);
+                triggered &= ~(1 << channel);
             }
         } else {
             // Clear the DMA enable bit
             ioRegisters.setUnMonitored!short(dmaAddress + 2, cast(short) (control & 0x7FFF));
             timing!channel = Timing.DISABLED;
             // Always clear the trigger for single-run DMAs
-            haltHandler.dmaHalt((triggered &= ~(1 << channel)) != 0);
+            triggered &= ~(1 << channel);
         }
         // Trigger DMA end interrupt if enabled
         if (checkBit(control, 14)) {
@@ -162,7 +180,7 @@ public class DMAs {
                 break;
             case VIDEO_CAPTURE:
                 // TODO: implement video capture
-                assert (0);
+                throw new Error("Unimplemented: video capture DMAs");
             default:
                 type = control.getBit(10);
                 destinationAddressControl = getBits(control, 5, 6);
@@ -217,9 +235,9 @@ private int getWordCount(int channel)(int fullControl) {
             return 0x4;
         } else static if (channel == 3) {
             // TODO: implement video capture
-            return 0x0;
+            throw new Error("Unimplemented: video capture DMAs");
         } else {
-            assert (0);
+            throw new Error("Can't use special DMA timing for channel 0");
         }
     }
     static if (channel < 3) {
@@ -242,27 +260,34 @@ private Timing getTiming(int channel)(int fullControl, int destinationAddress) {
         return Timing.DISABLED;
     }
     final switch (fullControl.getBits(28, 29)) {
-        case 0:
+        case 0: {
             return Timing.IMMEDIATE;
-        case 1:
+        }
+        case 1: {
             return Timing.VBLANK;
-        case 2:
+        }
+        case 2: {
             return Timing.HBLANK;
-        case 3:
+        }
+        case 3: {
             static if (channel == 1 || channel == 2) {
-                switch (destinationAddress) {
-                    case 0x40000A0:
-                        return Timing.SOUND_QUEUE_A;
-                    case 0x40000A4:
-                        return Timing.SOUND_QUEUE_B;
-                    default:
-                        return Timing.DISABLED;
+                if (fullControl.checkBit(25)) {
+                    switch (destinationAddress) {
+                        case 0x40000A0:
+                            return Timing.SOUND_QUEUE_A;
+                        case 0x40000A4:
+                            return Timing.SOUND_QUEUE_B;
+                        default:
+                            break;
+                    }
                 }
-            } static if (channel == 3) {
+                return Timing.DISABLED;
+            } else static if (channel == 3) {
                 return Timing.VIDEO_CAPTURE;
             } else {
-                assert (0);
+                throw new Error("Can't use special DMA timing for channel 0");
             }
+        }
     }
 }
 
@@ -274,8 +299,4 @@ private enum Timing {
     SOUND_QUEUE_A,
     SOUND_QUEUE_B,
     VIDEO_CAPTURE
-}
-
-private enum ChannelRunResult {
-    DISABLED, NOT_ENOUGH_CYCLES, RAN
 }
