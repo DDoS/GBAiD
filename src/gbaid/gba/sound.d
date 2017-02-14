@@ -57,8 +57,8 @@ public class SoundChip {
         ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
         ioRegisters.setPostWriteMonitor!0x78(&onNoiseLowPostWrite);
         ioRegisters.setPostWriteMonitor!0x7C(&onNoiseHighPostWrite);
-        ioRegisters.setPostWriteMonitor!0xA0(&onDirectSoundQueuePostWrite!'A');
-        ioRegisters.setPostWriteMonitor!0xA4(&onDirectSoundQueuePostWrite!'B');
+        ioRegisters.setPreWriteMonitor!0xA0(&onDirectSoundQueuePreWrite!'A');
+        ioRegisters.setPreWriteMonitor!0xA4(&onDirectSoundQueuePreWrite!'B');
         ioRegisters.setPostWriteMonitor!0x80(&onSoundControlPostWrite);
         ioRegisters.setReadMonitor!0x84(&onSoundStatusRead);
         ioRegisters.setPostWriteMonitor!0x84(&onSoundStatusPostWrite);
@@ -237,8 +237,8 @@ public class SoundChip {
         }
     }
 
-    private void onDirectSoundQueuePostWrite(char channel)(IoRegisters* ioRegisters, int address, int shift, int mask,
-            int oldData, int newData) {
+    private bool onDirectSoundQueuePreWrite(char channel)
+            (IoRegisters* ioRegisters, int address, int shift, int mask, ref int newData) {
         alias Direct = DirectSound!channel;
         static if (channel == 'A') {
             alias direct = directA;
@@ -261,6 +261,7 @@ public class SoundChip {
             mask >>= 8;
             newData >>= 8;
         }
+        return true;
     }
 
     private void onSoundControlPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
@@ -671,18 +672,14 @@ private struct DirectSound(char channel) {
         timerOverflows = 0;
         // If the queue is half empty them signal the DMAs to transfer more
         if (queueSize <= QUEUE_BYTE_SIZE / 2) {
-            static if (channel == 'A') {
-                dmas.signalSoundQueueA();
-            } else {
-                dmas.signalSoundQueueB();
-            }
+            mixin ("dmas.signalSoundQueue" ~ channel ~ "();");
         }
     }
 
     private short nextSample() {
         // Generate a new sample if we have any
         if (reSampleCount > 0) {
-            // Average the samples, or use zero if we don't have any
+            // Average the samples
             sample = cast(short) (reSample / reSampleCount);
             // Clear the re-sample and count
             reSample = 0;
