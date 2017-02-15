@@ -124,19 +124,27 @@ public int main(string[] args) {
     auto gbaRunning = true;
     void gbaRun() {
         while (gbaRunning) {
+            scope (failure) {
+                gbaRunning = false;
+            }
             auto requiredSamples = audio.nextRequiredSamples();
             auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
             gba.emulate(equivalentCycles);
         }
     }
 
-    // Start the GBA worker
+    // Create the GBA worker
     auto gbaThread = new Thread(&gbaRun);
     gbaThread.name = "GBA";
+    scope (failure) {
+        gbaRunning = false;
+    }
+
+    // Start it
     gbaThread.start();
 
     // Update the input then draw the next frame, waiting for it if needed
-    while (!renderer.isCloseRequested()) {
+    while (gbaRunning && !renderer.isCloseRequested()) {
         // Pass the keypad button state to the GBA
         gba.setKeypadState(input.pollKeypad());
         // Draw the lastest frame

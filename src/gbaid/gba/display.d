@@ -1119,7 +1119,7 @@ public class FrameSwapper {
         return frame0;
     }
 
-    private void swapFrame() {
+    public void swapFrame() {
         synchronized (frameReadySignal.mutex) {
             workFrameIndex = !workFrameIndex;
             newFrameReady = true;

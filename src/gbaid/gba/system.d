@@ -74,6 +74,11 @@ public class GameBoyAdvance {
     }
 
     public void emulate(size_t cycles) {
+        // If an exception occurs during emulation, swap the frame to release any thread waiting on this one
+        scope (failure) {
+            frameSwapper.swapFrame();
+        }
+        // Split cycles into batches, and process these first
         auto fullBatches = cycles / CYCLE_BATCH_SIZE;
         foreach (i; 0 .. fullBatches) {
             displayCycles = display.emulate(displayCycles + CYCLE_BATCH_SIZE);
@@ -83,7 +88,7 @@ public class GameBoyAdvance {
             soundChipCycles = soundChip.emulate(soundChipCycles + CYCLE_BATCH_SIZE);
             keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
         }
-
+        // An incomplete batch of cycles might be lef over, so process it too
         auto partialBatch = cycles % CYCLE_BATCH_SIZE;
         if (partialBatch > 0) {
             displayCycles = display.emulate(displayCycles + partialBatch);
