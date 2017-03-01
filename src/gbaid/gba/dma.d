@@ -96,9 +96,10 @@ public class DMAs {
                     // More cycles left, move to down in priority
                     if (updateChannel!2(cycles)) {
                         // More cycles left, move to down in priority
-                        updateChannel!3(cycles);
-                        // Out of DMAs to run, waste all the cycles left
-                        cycles = 0;
+                        if (updateChannel!3(cycles)) {
+                            // Out of DMAs to run, waste all the cycles left
+                            cycles = 0;
+                        }
                     }
                 }
             }
@@ -113,7 +114,7 @@ public class DMAs {
 
     private bool updateChannel(int channel)(ref size_t cycles) {
         // Only run if triggered
-        if (!(triggered & (1 << channel))) {
+        if (!triggered.checkBit(channel)) {
             // No transfer to do
             return true;
         }
@@ -136,43 +137,41 @@ public class DMAs {
     }
 
     private void finalizeDMA(int channel)() {
-        int control = control!channel;
-
         int dmaAddress = channel * 0xC + 0xB8;
-        if (checkBit(control, 9)) {
+        if (control!channel.checkBit(9)) {
             // Repeating DMA, reload the word count, and optionally the destination address
             wordCount!channel = ioRegisters.getUnMonitored!int(dmaAddress).getWordCount!channel();
-            if (getBits(control, 5, 6) == 3) {
+            if (control!channel.getBits(5, 6) == 3) {
                 // If we reload the destination address, we must also check for timing changes
-                destinationAddress!channel = ioRegisters.getUnMonitored!int(dmaAddress - 4).formatDestinationAddress!channel();
-                timing!channel = (control << 16).getTiming!channel(destinationAddress!channel);
+                destinationAddress!channel =
+                        ioRegisters.getUnMonitored!int(dmaAddress - 4).formatDestinationAddress!channel();
+                timing!channel = (control!channel << 16).getTiming!channel(destinationAddress!channel);
             }
-            // Only keep the trigger for repeating DMAs if the timing is immediate
+            // Clear the trigger is the DMA timing isn't immediate
             if (timing!channel != Timing.IMMEDIATE) {
-                triggered &= ~(1 << channel);
+                triggered.setBit(channel, 0);
             }
         } else {
             // Clear the DMA enable bit
-            ioRegisters.setUnMonitored!short(dmaAddress + 2, cast(short) (control & 0x7FFF));
+            control!channel.setBit(15, 0);
+            ioRegisters.setUnMonitored!short(dmaAddress + 2, cast(short) control!channel);
             timing!channel = Timing.DISABLED;
             // Always clear the trigger for single-run DMAs
-            triggered &= ~(1 << channel);
+            triggered.setBit(channel, 0);
         }
         // Trigger DMA end interrupt if enabled
-        if (checkBit(control, 14)) {
+        if (control!channel.checkBit(14)) {
             interruptHandler.requestInterrupt(InterruptSource.DMA_0 + channel);
         }
     }
 
     private void copyWord(int channel)() {
-        int control = control!channel;
-
         int type = void;
-        int sourceAddressControl = control.getBits(7, 8);
+        int sourceAddressControl = control!channel.getBits(7, 8);
         int destinationAddressControl = void;
-        switch (timing!channel) with(Timing) {
+        switch (timing!channel) with (Timing) {
             case DISABLED:
-                assert (0);
+                throw new Error("DMA channel is disabled");
             case SOUND_QUEUE_A:
             case SOUND_QUEUE_B:
                 type = 1;
@@ -182,8 +181,8 @@ public class DMAs {
                 // TODO: implement video capture
                 throw new Error("Unimplemented: video capture DMAs");
             default:
-                type = control.getBit(10);
-                destinationAddressControl = getBits(control, 5, 6);
+                type = control!channel.getBit(10);
+                destinationAddressControl = control!channel.getBits(5, 6);
         }
         int increment = type ? 4 : 2;
 
@@ -215,17 +214,17 @@ private void modifyAddress(ref int address, int control, int amount) {
 
 private int formatSourceAddress(int channel)(int sourceAddress) {
     static if (channel == 0) {
-        return sourceAddress & 0x7FFFFFF;
+        return sourceAddress & 0x7FFFFFE;
     } else {
-        return sourceAddress & 0xFFFFFFF;
+        return sourceAddress & 0xFFFFFFE;
     }
 }
 
 private int formatDestinationAddress(int channel)(int destinationAddress) {
     static if (channel == 3) {
-        return destinationAddress & 0xFFFFFFF;
+        return destinationAddress & 0xFFFFFFE;
     } else {
-        return destinationAddress & 0x7FFFFFF;
+        return destinationAddress & 0x7FFFFFE;
     }
 }
 
@@ -271,15 +270,13 @@ private Timing getTiming(int channel)(int fullControl, int destinationAddress) {
         }
         case 3: {
             static if (channel == 1 || channel == 2) {
-                if (fullControl.checkBit(25)) {
-                    switch (destinationAddress) {
-                        case 0x40000A0:
-                            return Timing.SOUND_QUEUE_A;
-                        case 0x40000A4:
-                            return Timing.SOUND_QUEUE_B;
-                        default:
-                            break;
-                    }
+                switch (destinationAddress) {
+                    case 0x40000A0:
+                        return Timing.SOUND_QUEUE_A;
+                    case 0x40000A4:
+                        return Timing.SOUND_QUEUE_B;
+                    default:
+                        break;
                 }
                 return Timing.DISABLED;
             } else static if (channel == 3) {

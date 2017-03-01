@@ -45,6 +45,10 @@ public class ARM7TDMI {
         irqSignal = state;
     }
 
+    public bool halted() {
+        return irqSignal;
+    }
+
     public bool inIRQ() {
         return irqSignal;
     }
@@ -521,10 +525,12 @@ public struct Registers {
                 uint j = (i + start) % queueMaxSize;
                 final switch (lastInstructions[j].set) {
                     case Set.ARM:
-                        writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+                        writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address,
+                                lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
                     case Set.THUMB:
-                        writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address, lastInstructions[j].code, lastInstructions[j].mnemonic);
+                        writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address,
+                                lastInstructions[j].code, lastInstructions[j].mnemonic);
                         break;
                 }
             }

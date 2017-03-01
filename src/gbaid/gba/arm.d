@@ -132,7 +132,7 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     static if (immediateShift) {
         int shift = instruction.getBits(7, 11);
     } else {
-        int shift = registers.get(instruction.getBits(8, 11));
+        int shift = registers.get(instruction.getBits(8, 11)) & 0xFF;
     }
     int shiftType = instruction.getBits(5, 6);
     int carry;

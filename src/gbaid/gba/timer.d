@@ -63,7 +63,7 @@ public class Timers {
             return 0;
         }
         // Check for an overflow
-        auto ticksUntilOverflow = ushort.max - ticks!timer + 1;
+        auto ticksUntilOverflow = (ushort.max + 1) - ticks!timer;
         if (newTicks < ticksUntilOverflow) {
             // No overflow, just increment the tick counter
             ticks!timer += newTicks;
@@ -72,7 +72,7 @@ public class Timers {
         // If we overflow, start by consuming the new ticks to that overflow
         newTicks -= ticksUntilOverflow;
         // Reload the value and add any extra ticks past the overflows
-        ticksUntilOverflow = ushort.max - reloadValue!timer + 1;
+        ticksUntilOverflow = (ushort.max + 1) - reloadValue!timer;
         ticks!timer = cast(ushort) (reloadValue!timer + newTicks % ticksUntilOverflow);
         // Trigger an IRQ on overflow if requested
         if (control!timer.checkBit(6)) {
@@ -93,13 +93,14 @@ public class Timers {
             return;
         }
         // Write the tick count to the value
+        mask &= 0xFFFF;
         value = value & ~mask | ticks!timer & mask;
     }
 
     private void onPostWrite(int timer)
             (IoRegisters* ioRegisters, int address, int shift, int mask, int oldTimer, int newTimer) {
         // Update the control and reload value
-        reloadValue!timer = cast(ushort) (newTimer & 0xFFFF);
+        reloadValue!timer = cast(ushort) newTimer;
         control!timer = newTimer >>> 16;
         // Reset the timer if the enable bit goes from 0 to 1
         if (!oldTimer.checkBit(23) && newTimer.checkBit(23)) {
