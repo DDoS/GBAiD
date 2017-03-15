@@ -190,7 +190,7 @@ public class SoundChip {
         }
         tone.rate = newSettings & 0x7FF;
         tone.useDuration = newSettings.checkBit(14);
-        if (newSettings.checkBit(15)) {
+        if (mask.checkBit(15) && newSettings.checkBit(15)) {
             tone.restart();
         }
     }
@@ -208,7 +208,7 @@ public class SoundChip {
             int newSettings) {
         wave.rate = newSettings & 0x7FF;
         wave.useDuration = newSettings.checkBit(14);
-        if (newSettings.checkBit(15)) {
+        if (mask.checkBit(15) && newSettings.checkBit(15)) {
             wave.restart();
         }
     }
@@ -232,7 +232,7 @@ public class SoundChip {
         noise.use7Bits = newSettings.checkBit(3);
         noise.preScaler = newSettings.getBits(4, 7);
         noise.useDuration = newSettings.checkBit(14);
-        if (newSettings.checkBit(15)) {
+        if (mask.checkBit(15) && newSettings.checkBit(15)) {
             noise.restart();
         }
     }
@@ -289,12 +289,12 @@ public class SoundChip {
         directBVolumeDivider = 2 - newSettings.getBit(19);
         directAEnableFlags = newSettings.getBits(24, 25);
         directA.timerIndex = newSettings.getBit(26);
-        if (newSettings.checkBit(27)) {
+        if (mask.checkBit(27) && newSettings.checkBit(27)) {
             directA.reset();
         }
         directBEnableFlags = newSettings.getBits(28, 29);
         directB.timerIndex = newSettings.getBit(30);
-        if (newSettings.checkBit(31)) {
+        if (mask.checkBit(31) && newSettings.checkBit(31)) {
             directB.reset();
         }
     }
