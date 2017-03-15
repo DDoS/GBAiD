@@ -6,7 +6,7 @@ This emulator is written mostly in pure D, with some inline x86 (32 and 64 bit) 
 
 ## Current state ##
 
-All of the GameBoy's built-in hardware has been implemented, with the exception of sound.
+All of the GameBoy's built-in hardware has been implemented.
 
 I've tested 8 games so far:
 - Super Mario Advance
