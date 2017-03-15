@@ -25,6 +25,7 @@ public class GL20Context : Context {
     private uint width = 100;
     private uint height = 100;
     private bool resizable = false;
+    private bool fullScreen = false;
     private bool useVsync = false;
     private SDL_Window* window;
     private SDL_GLContext glContext;
@@ -46,13 +47,13 @@ public class GL20Context : Context {
         }
         // Configure the context
         setContextAttributes();
-        if (msaa > 0) {
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa);
-        }
         // Attempt to create the window
-        int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (resizable ? SDL_WINDOW_RESIZABLE : 0);
-        window = SDL_CreateWindow(toStringz(title), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+        int actualWidth, actualHeight;
+        getActualWindowSize(&actualWidth, &actualHeight);
+        int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+                | (resizable ? SDL_WINDOW_RESIZABLE : 0) | (fullScreen ? SDL_WINDOW_FULLSCREEN : 0);
+        window = SDL_CreateWindow(toStringz(title), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                actualWidth, actualHeight, flags);
         if (!window) {
             throw new Exception("Failed to create an SDL window: " ~ toDString(SDL_GetError()));
         }
@@ -131,13 +132,50 @@ public class GL20Context : Context {
         this.width = width;
         this.height = height;
         if (isCreated()) {
-            SDL_SetWindowSize(window, width, height);
+            int actualWidth, actualHeight;
+            getActualWindowSize(&actualWidth, &actualHeight);
+            SDL_SetWindowSize(window, actualWidth, actualHeight);
+        }
+    }
+
+    private void getActualWindowSize(int* width, int* height) {
+        SDL_Rect maxSize;
+        if (fullScreen) {
+            // In full screen the window size if the full display size
+            SDL_GetDisplayBounds(0, &maxSize);
+            *width = maxSize.w;
+            *height = maxSize.h;
+        } else {
+            // In window mode, we limit the size to the maximum usable area
+            // DerelictSDL2 bug: this should be the display index, not a mode. Hack fix: pass as a pointer
+            SDL_GetDisplayUsableBounds(cast(SDL_DisplayMode*) 0, &maxSize);
+            *width = min(this.width, maxSize.w);
+            *height = min(this.height, maxSize.h);
         }
     }
 
     public override void setResizable(bool resizable) {
-        checkNotCreated();
         this.resizable = resizable;
+        if (isCreated()) {
+            SDL_SetWindowResizable(window, resizable);
+        }
+    }
+
+    public override void setFullScreen(bool fullScreen) {
+        this.fullScreen = fullScreen;
+        if (isCreated()) {
+            // We need to read the actual size before, because full screen changes it
+            int actualWidth, actualHeight;
+            getActualWindowSize(&actualWidth, &actualHeight);
+            // Set to full screen
+            SDL_SetWindowFullscreen(window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0);
+            // Set the window size to the full screen, or restore it to the original
+            SDL_SetWindowSize(window, actualWidth, actualHeight);
+            // Update the resizable state when exiting full screen
+            if (!fullScreen) {
+                SDL_SetWindowResizable(window, resizable);
+            }
+        }
     }
 
     public override void getWindowSize(int* width, int* height) {
@@ -153,8 +191,8 @@ public class GL20Context : Context {
         }
     }
 
-    public override void enableVsync(bool enable) {
-        useVsync = enable;
+    public override void enableVsync(bool useVsync) {
+        this.useVsync = useVsync;
         if (isCreated()) {
             SDL_GL_SetSwapInterval(useVsync ? 1 : 0);
         }

@@ -15,6 +15,7 @@ public class FrameRenderer {
     private VertexArray vertexArray = null;
     private immutable uint frameWidth, frameHeight;
     private int windowWidth, windowHeight;
+    private bool _fullScreen = false;
     private bool _useVsync = false;
     private FilteringMode filteringMode = FilteringMode.NONE;
     private UpscalingMode upscalingMode = UpscalingMode.NONE;
@@ -24,6 +25,14 @@ public class FrameRenderer {
         this.frameHeight = frameHeight;
         windowWidth = frameWidth;
         windowHeight = frameHeight;
+    }
+
+    @property public void fullScreen(bool full) {
+        _fullScreen = full;
+
+        if (context !is null) {
+            context.setFullScreen(full);
+        }
     }
 
     @property public void useVsync(bool use) {
@@ -64,6 +73,7 @@ public class FrameRenderer {
         context.setWindowTitle("GBAiD");
         context.setResizable(true);
         context.setWindowSize(windowWidth, windowHeight);
+        context.setFullScreen(_fullScreen);
         context.enableVsync(_useVsync);
         context.create();
         context.enableCapability(CULL_FACE);

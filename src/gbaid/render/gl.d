@@ -192,8 +192,6 @@ public abstract class Creatable {
  * Represents an OpenGL context. Creating context must be done before any other OpenGL object.
  */
 public abstract class Context : Creatable, GLVersioned {
-    protected int msaa = -1;
-
     public override void destroy() {
         super.destroy();
     }
@@ -255,7 +253,7 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setWindowTitle(string title);
 
     /**
-     * Sets the window size.
+     * Sets the window size. Will be limited to the desktop size.
      *
      * @param width The width
      * @param height The height
@@ -263,11 +261,21 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void setWindowSize(uint width, uint height);
 
     /**
-     * Sets the user resizability of this window. Should be set before creation.
+     * Sets the user resizability of this window. This doesn't do anything if
+     * the window is in full screen mode.
      *
      * @param resizable Whether or not the window is resizable
      */
     public abstract void setResizable(bool resizable);
+
+    /**
+     * Enable or disable full screen mode. The window size will be changed
+     * to the desktop size when enabled, and back to the original size when
+     * disabled.
+     *
+     * @param full Whether or not the window is in full screen mode
+     */
+    public abstract void setFullScreen(bool fullscreen);
 
     /**
      * Enable or disable VSYNC. If enabled, updating the display will cause the
@@ -387,18 +395,6 @@ public abstract class Context : Creatable, GLVersioned {
      * @return Whether or not the window is being requested to close
      */
     public abstract bool isWindowCloseRequested();
-
-    /**
-     * Sets the MSAA value. Must be greater or equal to zero. Zero means no MSAA.
-     *
-     * @param value The MSAA value, greater or equal to zero
-     */
-    public void setMSAA(int value) {
-        if (value < 0) {
-            throw new Exception("MSAA value must be greater or equal to zero");
-        }
-        this.msaa = value;
-    }
 }
 
 public enum : Capability {

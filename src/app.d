@@ -21,6 +21,7 @@ public int main(string[] args) {
     string bios = null, save = null;
     bool noLoad = false, noSave = false;
     float scale = 2;
+    bool fullScreen = false;
     FilteringMode filtering = FilteringMode.NONE;
     UpscalingMode upscaling = UpscalingMode.NONE;
     SaveConfiguration memory = SaveConfiguration.AUTO;
@@ -34,6 +35,7 @@ public int main(string[] args) {
         "nosave|N", &noSave,
         config.noBundling,
         "scale|r", &scale,
+        "fullscreen|R", &fullScreen,
         "filtering|f", &filtering,
         "upscaling|u", &upscaling,
         "controller|c", &controller,
@@ -101,6 +103,7 @@ public int main(string[] args) {
     // Create the renderer, audio and input
     auto renderer = new FrameRenderer(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     renderer.useVsync = true;
+    renderer.fullScreen = fullScreen;
     renderer.setScale(scale);
     renderer.setFilteringMode(filtering);
     renderer.setUpscalingMode(upscaling);
