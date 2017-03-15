@@ -543,6 +543,8 @@ public struct GamePak {
             case 0x6:
                 address &= SAVE_MASK;
                 switch (saveKind) with (SaveMemoryKind) {
+                    case EEPROM:
+                        return cast(T) _unusedMemory(address);
                     case SRAM:
                         return save.sram.get!T(address);
                     case FLASH_512K:
@@ -558,7 +560,7 @@ public struct GamePak {
                             return cast(T) _unusedMemory(address);
                         }
                     default:
-                        assert (0);
+                        throw new Error("Unexpected save kind");
                 }
             default:
                 return cast(T) _unusedMemory(address);
@@ -579,6 +581,8 @@ public struct GamePak {
             case 0x6:
                 address &= SAVE_MASK;
                 switch (saveKind) with (SaveMemoryKind) {
+                    case EEPROM:
+                        return;
                     case SRAM:
                         save.sram.set!T(address, value);
                         return;
@@ -593,7 +597,7 @@ public struct GamePak {
                         }
                         return;
                     default:
-                        assert (0);
+                        throw new Error("Unexpected save kind");
                 }
             default:
         }
@@ -685,6 +689,8 @@ public struct GamePak {
     public void saveSave(string saveFile) {
         RawSaveMemory[] memories;
         switch (saveKind) with (SaveMemoryKind) {
+            case EEPROM:
+                break;
             case SRAM:
                 memories ~= tuple(saveKind, save.sram.getArray!ubyte());
                 break;
@@ -695,7 +701,7 @@ public struct GamePak {
                 memories ~= tuple(saveKind, save.flash1m.getArray!ubyte());
                 break;
             default:
-                assert (0);
+                throw new Error("Unexpected save kind");
         }
         if (eeprom !is null) {
             memories ~= tuple(SaveMemoryKind.EEPROM, eeprom.getArray!ubyte());
