@@ -290,12 +290,12 @@ public class SoundChip {
         directAEnableFlags = newSettings.getBits(24, 25);
         directA.timerIndex = newSettings.getBit(26);
         if (mask.checkBit(27) && newSettings.checkBit(27)) {
-            directA.reset();
+            directA.clearQueue();
         }
         directBEnableFlags = newSettings.getBits(28, 29);
         directB.timerIndex = newSettings.getBit(30);
         if (mask.checkBit(31) && newSettings.checkBit(31)) {
-            directB.reset();
+            directB.clearQueue();
         }
     }
 
@@ -313,7 +313,6 @@ public class SoundChip {
 
     private void onSoundStatusPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
             int newSettings) {
-        // TODO: reset all PSG registers
         auto masterEnable = newSettings.checkBit(7);
         tone1.enabled = masterEnable;
         tone2.enabled = masterEnable;
@@ -321,6 +320,18 @@ public class SoundChip {
         noise.enabled = masterEnable;
         directA.enabled = masterEnable;
         directB.enabled = masterEnable;
+        // Clear the PSG sound channels on disable
+        if (oldSettings.checkBit(7) && !masterEnable) {
+            tone1 = SquareWaveGenerator!true();
+            tone2 = SquareWaveGenerator!false();
+            wave = PatternWaveGenerator();
+            noise = NoiseGenerator();
+            // Also reset PSG output control
+            psgRightVolumeMultiplier = 0;
+            psgLeftVolumeMultiplier = 0;
+            psgRightEnableFlags = 0;
+            psgLeftEnableFlags = 0;
+        }
     }
 }
 
@@ -641,7 +652,7 @@ private struct DirectSound(char channel) {
         this.dmas = dmas;
     }
 
-    private void reset() {
+    private void clearQueue() {
         queueIndex = 0;
         queueSize = 0;
         reSample = 0;

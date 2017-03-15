@@ -164,6 +164,5 @@ public int main(string[] args) {
     return 0;
 
     // TODO:
-    //       possible bug in pokemon emerald at 00000364
     //       implement optional RTC
 }
