@@ -1,5 +1,7 @@
 module gbaid.render.renderer;
 
+import derelict.sdl2.sdl : SDL_ShowCursor, SDL_ENABLE, SDL_DISABLE;
+
 import gbaid.render.gl;
 import gbaid.render.gl20;
 import gbaid.render.shader;
@@ -31,6 +33,7 @@ public class FrameRenderer {
         _fullScreen = full;
 
         if (context !is null) {
+            SDL_ShowCursor(full ? SDL_DISABLE : SDL_ENABLE);
             context.setFullScreen(full);
         }
     }
@@ -77,6 +80,8 @@ public class FrameRenderer {
         context.enableVsync(_useVsync);
         context.create();
         context.enableCapability(CULL_FACE);
+
+        SDL_ShowCursor(_fullScreen ? SDL_DISABLE : SDL_ENABLE);
 
         program = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, WINDOW_OUTPUT_FRAGMENT_SHADER_SOURCE);
         program.use();
