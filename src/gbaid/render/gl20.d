@@ -63,7 +63,9 @@ public class GL20Context : Context {
             throw new Exception("Failed to create OpenGL context: " ~ toDString(SDL_GetError()));
         }
         // Set the swap interval
-        SDL_GL_SetSwapInterval(useVsync ? 1 : 0);
+        if (SDL_GL_SetSwapInterval(useVsync ? 1 : 0) < 0) {
+            throw new Exception("Failed to enable VSYNC: " ~ toDString(SDL_GetError()));
+        }
         // Load the GL1.1+ features if needed
         if (DerelictGL3.loadedVersion == derelict.opengl3.types.GLVersion.GL11) {
             DerelictGL3.reload();
@@ -80,8 +82,12 @@ public class GL20Context : Context {
      * @return The context attributes
      */
     protected void setContextAttributes() {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        if (SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2) < 0) {
+            throw new Exception("Failed to set OpenGL major version: " ~ toDString(SDL_GetError()));
+        }
+        if (SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0) < 0) {
+            throw new Exception("Failed to set OpenGL minor version: " ~ toDString(SDL_GetError()));
+        }
     }
 
     public override void destroy() {
@@ -142,7 +148,9 @@ public class GL20Context : Context {
         SDL_Rect maxSize;
         if (fullScreen) {
             // In full screen the window size if the full display size
-            SDL_GetDisplayBounds(0, &maxSize);
+            if (SDL_GetDisplayBounds(0, &maxSize) < 0) {
+                throw new Exception("Failed to get display bounds: " ~ toDString(SDL_GetError()));
+            }
             if (width != null) {
                 *width = maxSize.w;
             }
@@ -152,7 +160,9 @@ public class GL20Context : Context {
         } else {
             // In window mode, we limit the size to the maximum usable area
             // DerelictSDL2 bug: this should be the display index, not a mode. Hack fix: pass as a pointer
-            SDL_GetDisplayUsableBounds(cast(SDL_DisplayMode*) 0, &maxSize);
+            if (SDL_GetDisplayUsableBounds(cast(SDL_DisplayMode*) 0, &maxSize) < 0) {
+                throw new Exception("Failed to get usable display bounds: " ~ toDString(SDL_GetError()));
+            }
             if (width != null) {
                 *width = min(this.width, maxSize.w);
             }
@@ -176,7 +186,9 @@ public class GL20Context : Context {
             int actualWidth, actualHeight;
             getActualWindowSize(&actualWidth, &actualHeight);
             // Set to full screen
-            SDL_SetWindowFullscreen(window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0);
+            if (SDL_SetWindowFullscreen(window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0) < 0) {
+                throw new Exception("Failed to set window to full screen: " ~ toDString(SDL_GetError()));
+            }
             // Set the window size to the full screen, or restore it to the original
             SDL_SetWindowSize(window, actualWidth, actualHeight);
             // Update the resizable state when exiting full screen
@@ -202,7 +214,9 @@ public class GL20Context : Context {
     public override void enableVsync(bool useVsync) {
         this.useVsync = useVsync;
         if (isCreated()) {
-            SDL_GL_SetSwapInterval(useVsync ? 1 : 0);
+            if (SDL_GL_SetSwapInterval(useVsync ? 1 : 0) < 0) {
+                throw new Exception("Failed to enable VSYNC: " ~ toDString(SDL_GetError()));
+            }
         }
     }
 
@@ -290,7 +304,9 @@ public class GL20Context : Context {
     public override bool isWindowCloseRequested() {
         SDL_PumpEvents();
         SDL_Event event;
-        SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUIT, SDL_QUIT);
+        if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUIT, SDL_QUIT) < 0) {
+            throw new Exception("Failed to peep events: " ~ toDString(SDL_GetError()));
+        }
         return event.type == SDL_QUIT;
     }
 
