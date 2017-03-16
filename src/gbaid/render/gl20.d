@@ -160,8 +160,7 @@ public class GL20Context : Context {
             }
         } else {
             // In window mode, we limit the size to the maximum usable area
-            // DerelictSDL2 bug: this should be the display index, not a mode. Hack fix: pass as a pointer
-            if (SDL_GetDisplayUsableBounds(cast(SDL_DisplayMode*) 0, &maxSize) < 0) {
+            if (SDL_GetDisplayUsableBounds(0, &maxSize) < 0) {
                 throw new Exception("Failed to get usable display bounds: " ~ toDString(SDL_GetError()));
             }
             if (width != null) {

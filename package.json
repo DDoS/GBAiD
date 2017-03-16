@@ -7,7 +7,7 @@
 	"targetPath": "bin",
     "stringImportPaths": ["src/gbaid/gba/assembly"],
 	"dependencies": {
-		"derelict-sdl2":"2.1.0",
-		"derelict-gl3":"1.0.18"
+		"derelict-sdl2":"2.1.2",
+		"derelict-gl3":"1.0.21"
 	},
 }
