@@ -732,7 +732,7 @@ private template conditionalBranch(int code) if (code == 14 || code == 15) {
 
 private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
-    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.getCPSR());
+    registers.setSPSR(Mode.SUPERVISOR, registers.getCPSR());
     registers.set(Mode.SUPERVISOR, Register.LR, registers.getPC() - 2);
     registers.setPC(0x8);
     registers.setFlag(CPSRFlag.I, 1);

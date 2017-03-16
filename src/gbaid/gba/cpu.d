@@ -136,7 +136,7 @@ public class ARM7TDMI {
     }
 
     private void branchIRQ() {
-        registers.set(Mode.IRQ, Register.SPSR, registers.getCPSR());
+        registers.setSPSR(Mode.IRQ, registers.getCPSR());
         registers.set(Mode.IRQ, Register.LR, registers.getExecutedPC() + 4);
         registers.setPC(0x18);
         registers.setFlag(CPSRFlag.I, 1);
@@ -148,20 +148,20 @@ public class ARM7TDMI {
 
 public struct Registers {
     private int[37] registers;
-    private Mode _mode;
-    private Set _set;
+    private int cpsrRegister;
+    private int[1 << 4] sprsRegisters;
     private bool modifiedPC = false;
 
     @property public Mode mode() {
-        return _mode;
+        return cast(Mode) (cpsrRegister & 0x1F);
     }
 
     @property public Set instructionSet() {
-        return _set;
+        return cast(Set) cpsrRegister.getBit(CPSRFlag.T);
     }
 
     public int get(int register) {
-        return get(_mode, register);
+        return get(mode, register);
     }
 
     public int get(Mode mode, int register) {
@@ -173,20 +173,28 @@ public struct Registers {
     }
 
     public int getCPSR() {
-        return registers[Register.CPSR];
+        return cpsrRegister;
+    }
+
+    public int getSPSR() {
+        return getSPSR(mode);
+    }
+
+    public int getSPSR(Mode mode) {
+        if (mode == Mode.SYSTEM || mode == Mode.USER) {
+            throw new Exception("The SPSR register does not exist in the system and user modes");
+        }
+        return sprsRegisters[mode & 0xF];
     }
 
     public void set(int register, int value) {
-        set(_mode, register, value);
+        set(mode, register, value);
     }
 
     public void set(Mode mode, int register, int value) {
         registers[getRegisterIndex(mode, register)] = value;
         if (register == Register.PC) {
             modifiedPC = true;
-        } else if (register == Register.CPSR) {
-            _mode = cast(Mode) value.getBits(0, 4);
-            _set = cast(Set) value.getBit(CPSRFlag.T);
         }
     }
 
@@ -196,32 +204,38 @@ public struct Registers {
     }
 
     public void setCPSR(int value) {
-        registers[Register.CPSR] = value;
-        _mode = cast(Mode) value.getBits(0, 4);
-        _set = cast(Set) value.getBit(CPSRFlag.T);
+        cpsrRegister = value;
+    }
+
+    public void setSPSR(int value) {
+        setSPSR(mode, value);
+    }
+
+    public void setSPSR(Mode mode, int value) {
+        if (mode == Mode.SYSTEM || mode == Mode.USER) {
+            throw new Exception("The SPSR register does not exist in the system and user modes");
+        }
+        sprsRegisters[mode & 0xF] = value;
     }
 
     public int getFlag(CPSRFlag flag) {
-        return registers[Register.CPSR].getBit(flag);
+        return cpsrRegister.getBit(flag);
     }
 
     public void setFlag(CPSRFlag flag, int b) {
-        registers[Register.CPSR].setBit(flag, b);
-        if (flag == CPSRFlag.T) {
-            _set = cast(Set) b;
-        }
+        cpsrRegister.setBit(flag, b);
     }
 
     public void setAPSRFlags(int n, int z) {
-        registers[Register.CPSR].setBits(30, 31, z | n << 1);
+        cpsrRegister.setBits(30, 31, z | n << 1);
     }
 
     public void setAPSRFlags(int n, int z, int c) {
-        registers[Register.CPSR].setBits(29, 31, c | z << 1 | n << 2);
+        cpsrRegister.setBits(29, 31, c | z << 1 | n << 2);
     }
 
     public void setAPSRFlags(int n, int z, int c, int v) {
-        registers[Register.CPSR].setBits(28, 31, v | c << 1 | z << 2 | n << 3);
+        cpsrRegister.setBits(28, 31, v | c << 1 | z << 2 | n << 3);
     }
 
     public template setApsrFlags(string bits) {
@@ -229,12 +243,11 @@ public struct Registers {
     }
 
     public void setMode(Mode mode) {
-        registers[Register.CPSR].setBits(0, 4, mode);
-        _mode = mode;
+        cpsrRegister.setBits(0, 4, mode);
     }
 
     public void incrementPC() {
-        final switch (_set) {
+        final switch (instructionSet) {
             case Set.ARM:
                 registers[Register.PC] = (registers[Register.PC] & ~3) + 4;
                 break;
@@ -245,7 +258,7 @@ public struct Registers {
     }
 
     public int getExecutedPC() {
-        final switch (_set) {
+        final switch (instructionSet) {
             case Set.ARM:
                 return registers[Register.PC] - 8;
             case Set.THUMB:
@@ -361,50 +374,51 @@ public struct Registers {
     }
 
     public bool checkCondition(int condition) {
-        int flags = registers[Register.CPSR];
         final switch (condition) {
             case 0x0:
                 // EQ
-                return flags.checkBit(CPSRFlag.Z);
+                return cpsrRegister.checkBit(CPSRFlag.Z);
             case 0x1:
                 // NE
-                return !flags.checkBit(CPSRFlag.Z);
+                return !cpsrRegister.checkBit(CPSRFlag.Z);
             case 0x2:
                 // CS/HS
-                return flags.checkBit(CPSRFlag.C);
+                return cpsrRegister.checkBit(CPSRFlag.C);
             case 0x3:
                 // CC/LO
-                return !flags.checkBit(CPSRFlag.C);
+                return !cpsrRegister.checkBit(CPSRFlag.C);
             case 0x4:
                 // MI
-                return flags.checkBit(CPSRFlag.N);
+                return cpsrRegister.checkBit(CPSRFlag.N);
             case 0x5:
                 // PL
-                return !flags.checkBit(CPSRFlag.N);
+                return !cpsrRegister.checkBit(CPSRFlag.N);
             case 0x6:
                 // VS
-                return flags.checkBit(CPSRFlag.V);
+                return cpsrRegister.checkBit(CPSRFlag.V);
             case 0x7:
                 // VC
-                return !flags.checkBit(CPSRFlag.V);
+                return !cpsrRegister.checkBit(CPSRFlag.V);
             case 0x8:
                 // HI
-                return flags.checkBit(CPSRFlag.C) && !flags.checkBit(CPSRFlag.Z);
+                return cpsrRegister.checkBit(CPSRFlag.C) && !cpsrRegister.checkBit(CPSRFlag.Z);
             case 0x9:
                 // LS
-                return !flags.checkBit(CPSRFlag.C) || flags.checkBit(CPSRFlag.Z);
+                return !cpsrRegister.checkBit(CPSRFlag.C) || cpsrRegister.checkBit(CPSRFlag.Z);
             case 0xA:
                 // GE
-                return flags.checkBit(CPSRFlag.N) == flags.checkBit(CPSRFlag.V);
+                return cpsrRegister.checkBit(CPSRFlag.N) == cpsrRegister.checkBit(CPSRFlag.V);
             case 0xB:
                 // LT
-                return flags.checkBit(CPSRFlag.N) != flags.checkBit(CPSRFlag.V);
+                return cpsrRegister.checkBit(CPSRFlag.N) != cpsrRegister.checkBit(CPSRFlag.V);
             case 0xC:
                 // GT
-                return !flags.checkBit(CPSRFlag.Z) && flags.checkBit(CPSRFlag.N) == flags.checkBit(CPSRFlag.V);
+                return !cpsrRegister.checkBit(CPSRFlag.Z)
+                        && cpsrRegister.checkBit(CPSRFlag.N) == cpsrRegister.checkBit(CPSRFlag.V);
             case 0xD:
                 // LE
-                return flags.checkBit(CPSRFlag.Z) || flags.checkBit(CPSRFlag.N) != flags.checkBit(CPSRFlag.V);
+                return cpsrRegister.checkBit(CPSRFlag.Z)
+                    || cpsrRegister.checkBit(CPSRFlag.N) != cpsrRegister.checkBit(CPSRFlag.V);
             case 0xE:
                 // AL
                 return true;
@@ -497,14 +511,14 @@ public struct Registers {
         }
 
         public void logInstruction(int address, int code, string mnemonic) {
-            if (_set == Set.THUMB) {
+            if (set == Set.THUMB) {
                 code &= 0xFFFF;
             }
-            lastInstructions[index].mode = _mode;
+            lastInstructions[index].mode = mode;
             lastInstructions[index].address = address;
             lastInstructions[index].code = code;
             lastInstructions[index].mnemonic = mnemonic;
-            lastInstructions[index].set = _set;
+            lastInstructions[index].set = instructionSet;
             index = (index + 1) % queueMaxSize;
             if (queueSize < queueMaxSize) {
                 queueSize++;
@@ -551,6 +565,62 @@ public struct Registers {
             private Set set;
         }
     }
+}
+
+public int rotateRead(int address, int value) {
+    return value.rotateRight((address & 3) << 3);
+}
+
+public int rotateRead(int address, short value) {
+    return rotateRight(value & 0xFFFF, (address & 1) << 3);
+}
+
+public int rotateReadSigned(int address, short value) {
+    return value >> ((address & 1) << 3);
+}
+
+public enum Set {
+    ARM = 0,
+    THUMB = 1
+}
+
+public enum Mode {
+    USER = 16,
+    FIQ = 17,
+    IRQ = 18,
+    SUPERVISOR = 19,
+    ABORT = 23,
+    UNDEFINED = 27,
+    SYSTEM = 31
+}
+
+public enum Register {
+    R0 = 0,
+    R1 = 1,
+    R2 = 2,
+    R3 = 3,
+    R4 = 4,
+    R5 = 5,
+    R6 = 6,
+    R7 = 7,
+    R8 = 8,
+    R9 = 9,
+    R10 = 10,
+    R11 = 11,
+    R12 = 12,
+    SP = 13,
+    LR = 14,
+    PC = 15,
+}
+
+public enum CPSRFlag {
+    N = 31,
+    Z = 30,
+    C = 29,
+    V = 28,
+    I = 7,
+    F = 6,
+    T = 5,
 }
 
 public alias Executor = void function(Registers*, MemoryBus*, int);
@@ -651,64 +721,6 @@ private Executor[] createTable(alias instructionFamily, int bitCount, alias unsu
     }
 }
 
-public int rotateRead(int address, int value) {
-    return value.rotateRight((address & 3) << 3);
-}
-
-public int rotateRead(int address, short value) {
-    return rotateRight(value & 0xFFFF, (address & 1) << 3);
-}
-
-public int rotateReadSigned(int address, short value) {
-    return value >> ((address & 1) << 3);
-}
-
-public enum Set {
-    ARM = 0,
-    THUMB = 1
-}
-
-public enum Mode {
-    USER = 16,
-    FIQ = 17,
-    IRQ = 18,
-    SUPERVISOR = 19,
-    ABORT = 23,
-    UNDEFINED = 27,
-    SYSTEM = 31
-}
-
-public enum Register {
-    R0 = 0,
-    R1 = 1,
-    R2 = 2,
-    R3 = 3,
-    R4 = 4,
-    R5 = 5,
-    R6 = 6,
-    R7 = 7,
-    R8 = 8,
-    R9 = 9,
-    R10 = 10,
-    R11 = 11,
-    R12 = 12,
-    SP = 13,
-    LR = 14,
-    PC = 15,
-    CPSR = 16,
-    SPSR = 17
-}
-
-public enum CPSRFlag {
-    N = 31,
-    Z = 30,
-    C = 29,
-    V = 28,
-    I = 7,
-    F = 6,
-    T = 5,
-}
-
 private string genApsrSetterSignature(size_t argCount) {
     argCount += 1;
     auto signature = "public void setApsrFlags(";
@@ -741,7 +753,7 @@ private string genApsrSetterImpl(string[] flagSets) {
         }
     }
     code ~= ";\n";
-    code ~= format("    registers[Register.CPSR] = registers[Register.CPSR] & 0x%08X | (newFlags << 28);\n",
+    code ~= format("    cpsrRegister = cpsrRegister & 0x%08X | (newFlags << 28);\n",
             ~(mask << 28));
     return format("{\n    %s}", code);
 }

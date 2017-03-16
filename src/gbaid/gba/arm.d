@@ -164,7 +164,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 0, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -183,7 +183,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 1, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -203,7 +203,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 2, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -224,7 +224,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 3, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -245,7 +245,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 4, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -267,7 +267,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -289,7 +289,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -311,7 +311,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -384,7 +384,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 12, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -403,7 +403,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 13, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -422,7 +422,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 14, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -441,7 +441,7 @@ private void dataProcessing(alias decodeOperands, int opCode: 15, bool setFlags)
     // Flag updates
     static if (setFlags) {
         if (rd == Register.PC) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         } else {
             int negative = res < 0;
             int zero = res == 0;
@@ -491,15 +491,15 @@ private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: 
         if (__traits(isSame, decodeOperand, decodeOpPsrTransfer_Reg)) {
     debug (outputInstructions) registers.logInstruction(instruction, "MRS");
     int rd = instruction.getBits(12, 15);
-    registers.set(rd, registers.get(Register.SPSR));
+    registers.set(rd, registers.getSPSR());
 }
 
 private void psrTransfer(alias decodeOperand, bool useSPSR: true, bool notLoad: true)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "MSR");
     mixin decodeOperand;
     int mask = instruction.getPsrMask() & 0xF00000FF;
-    int spsr = registers.get(Register.SPSR);
-    registers.set(Register.SPSR, spsr & ~mask | op & mask);
+    int spsr = registers.getSPSR();
+    registers.setSPSR(spsr & ~mask | op & mask);
 }
 
 @("unsupported")
@@ -887,7 +887,7 @@ private void blockDataTransfer(bool preIncr, bool upIncr, bool loadPSR,
     // Loading and load PSR flag is set, restore CPSR
     static if (loadPSR && load) {
         if (registerList.checkBit(15)) {
-            registers.setCPSR(registers.get(Register.SPSR));
+            registers.setCPSR(registers.getSPSR());
         }
     }
     // Writeback the new address into the base if needed
@@ -919,7 +919,7 @@ private void branchAndBranchWithLink(int code: 1)(Registers* registers, MemoryBu
 
 private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SWI");
-    registers.set(Mode.SUPERVISOR, Register.SPSR, registers.getCPSR());
+    registers.setSPSR(Mode.SUPERVISOR, registers.getCPSR());
     registers.set(Mode.SUPERVISOR, Register.LR, registers.getPC() - 4);
     registers.setPC(0x8);
     registers.setFlag(CPSRFlag.I, 1);
@@ -928,7 +928,7 @@ private void softwareInterrupt()(Registers* registers, MemoryBus* memory, int in
 
 private void undefined(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "UND");
-    registers.set(Mode.UNDEFINED, Register.SPSR, registers.getCPSR());
+    registers.setSPSR(Mode.UNDEFINED, registers.getCPSR());
     registers.set(Mode.UNDEFINED, Register.LR, registers.getPC() - 4);
     registers.setPC(0x4);
     registers.setFlag(CPSRFlag.I, 1);
