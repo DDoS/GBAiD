@@ -138,19 +138,27 @@ public class GL20Context : Context {
         }
     }
 
-    private void getActualWindowSize(int* width, int* height) {
+    public override void getActualWindowSize(int* width, int* height) {
         SDL_Rect maxSize;
         if (fullScreen) {
             // In full screen the window size if the full display size
             SDL_GetDisplayBounds(0, &maxSize);
-            *width = maxSize.w;
-            *height = maxSize.h;
+            if (width != null) {
+                *width = maxSize.w;
+            }
+            if (height != null) {
+                *height = maxSize.h;
+            }
         } else {
             // In window mode, we limit the size to the maximum usable area
             // DerelictSDL2 bug: this should be the display index, not a mode. Hack fix: pass as a pointer
             SDL_GetDisplayUsableBounds(cast(SDL_DisplayMode*) 0, &maxSize);
-            *width = min(this.width, maxSize.w);
-            *height = min(this.height, maxSize.h);
+            if (width != null) {
+                *width = min(this.width, maxSize.w);
+            }
+            if (height != null) {
+                *height = min(this.height, maxSize.h);
+            }
         }
     }
 

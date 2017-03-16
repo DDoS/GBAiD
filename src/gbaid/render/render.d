@@ -100,7 +100,9 @@ public class FrameRenderer {
                 break;
             case BICUBIC:
                 upscaleProgram = makeProgram(TEXTURE_POST_PROCESS_VERTEX_SHADER_SOURCE, BICUBIC_UPSCALE_FRAGMENT_SHADER_SOURCE);
-                upscaledTexture = makeTexture(RGBA, RGBA8, windowWidth, windowHeight);
+                int actualWidth, actualHeight;
+                context.getActualWindowSize(&actualWidth, &actualHeight);
+                upscaledTexture = makeTexture(RGBA, RGBA8, actualWidth, actualHeight);
                 texture.setWraps(CLAMP_TO_EDGE, CLAMP_TO_EDGE);
                 break;
         }

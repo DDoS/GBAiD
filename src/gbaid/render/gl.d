@@ -287,12 +287,22 @@ public abstract class Context : Creatable, GLVersioned {
     public abstract void enableVsync(bool enable);
 
     /**
-     * Sets the window size.
+     * Gets the window size.
      *
      * @param width Where to store the width, may be null
      * @param height Where to store the height, may be null
      */
     public abstract void getWindowSize(int* width, int *height);
+
+    /**
+     * Gets the window size actually being used. This can be different from the one
+     * that was set when running in full screen mode, or if it was bigger than the
+     * display.
+     *
+     * @param width Where to store the width, may be null
+     * @param height Where to store the height, may be null
+     */
+    public abstract void getActualWindowSize(int* width, int* height);
 
     /**
      * Returns the window width.
