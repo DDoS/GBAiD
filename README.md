@@ -72,6 +72,7 @@ The following arguments are also recognized:
 | --noload    | -n         | None                     | Don't load the save                                                         |
 | --nosave    | -N         | None                     | Don't save the save                                                         |
 | --scale     | -r         | Scaling factor (float)   | Draw the display at "factor" times the original resolution                  |
+| --fullscreen| -R         | None                     | Display in full screen mode (`--scale` will be ignored)                     |
 | --filtering | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
 | --upscaling | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
 | --controller| -c         | None                     | Disable keyboard input and use a controller instead                         |
@@ -130,7 +131,8 @@ All upscaling is implemented as OpenGL shaders.
 - BICUBIC is an interpolation method that offers better results than linear filtering at a greater cost.
   It upscales to whatever is defined by the `--scale` switch so it should always be used with this method.
 
- When you use the `--upscaling` switch you should also use the `--scale` switch with the appropriate factor for the selected algorithm.
+ When you use the `--upscaling` switch you should also use the `--scale` switch with the appropriate factor for the selected algorithm
+ (unless you are using the full screen mode).
 
 ## License ##
 
