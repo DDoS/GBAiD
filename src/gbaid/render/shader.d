@@ -272,7 +272,6 @@ void main() {
 }
 `;
 
-// TODO: this is slightly wrong
 public enum string BICUBIC_UPSCALE_FRAGMENT_SHADER_SOURCE =
 `
 // See: http://www.paulinternet.nl/?page=bicubic
@@ -299,8 +298,6 @@ void main() {
     vec2 dx = vec2(sx, 0);
     vec2 dy = vec2(0, sy);
 
-    vec2 fp = fract(textureCoords * size);
-
     vec4 s00 = texture2D(color, textureCoords - dx - dy);
     vec4 s01 = texture2D(color, textureCoords - dy);
     vec4 s02 = texture2D(color, textureCoords + dx - dy);
@@ -321,11 +318,13 @@ void main() {
     vec4 s32 = texture2D(color, textureCoords + dx + 2 * dy);
     vec4 s33 = texture2D(color, textureCoords + 2 * dx + 2 * dy);
 
-    vec4 c0 = cubic(s00, s01, s02, s03, fp.x);
-    vec4 c1 = cubic(s10, s11, s12, s13, fp.x);
-    vec4 c2 = cubic(s20, s21, s22, s23, fp.x);
-    vec4 c3 = cubic(s30, s31, s32, s33, fp.x);
+    vec2 fp = fract(textureCoords * size);
 
-    gl_FragColor = cubic(c0, c1, c2, c3, fp.y);
+    vec4 c0 = cubic(s00, s10, s20, s30, fp.y);
+    vec4 c1 = cubic(s01, s11, s21, s31, fp.y);
+    vec4 c2 = cubic(s02, s12, s22, s32, fp.y);
+    vec4 c3 = cubic(s03, s13, s23, s33, fp.y);
+
+    gl_FragColor = cubic(c0, c1, c2, c3, fp.x);
 }
 `;
