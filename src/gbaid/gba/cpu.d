@@ -147,9 +147,10 @@ public class ARM7TDMI {
 }
 
 public struct Registers {
-    private int[37] registers;
+    private immutable size_t[REGISTER_LOOKUP_LENGTH] registerIndices = createRegisterLookupTable();
+    private int[REGISTER_COUNT] registers;
     private int cpsrRegister;
-    private int[1 << 4] sprsRegisters;
+    private int[1 << MODE_BITS] sprsRegisters;
     private bool modifiedPC = false;
 
     @property public Mode mode() {
@@ -165,7 +166,7 @@ public struct Registers {
     }
 
     public int get(Mode mode, int register) {
-        return registers[getRegisterIndex(mode, register)];
+        return registers[registerIndices[(mode & 0xF) << REGISTER_BITS | register]];
     }
 
     public int getPC() {
@@ -192,7 +193,7 @@ public struct Registers {
     }
 
     public void set(Mode mode, int register, int value) {
-        registers[getRegisterIndex(mode, register)] = value;
+        registers[registerIndices[(mode & 0xF) << REGISTER_BITS | register]] = value;
         if (register == Register.PC) {
             modifiedPC = true;
         }
@@ -428,76 +429,6 @@ public struct Registers {
         }
     }
 
-    private static int getRegisterIndex(Mode mode, int register) {
-        if (register < 8) {
-            return register;
-        }
-        /*
-            R0 - R15: 0 - 15
-            CPSR: 16
-            R8_fiq - R14_fiq: 17 - 23
-            SPSR_fiq = 24
-            R13_svc - R14_svc = 25 - 26
-            SPSR_svc = 27
-            R13_abt - R14_abt = 28 - 29
-            SPSR_abt = 30
-            R13_irq - R14_irq = 31 - 32
-            SPSR_irq = 33
-            R13_und - R14_und = 34 - 35
-            SPSR_und = 36
-        */
-        final switch (mode) with (Mode) {
-            case USER:
-            case SYSTEM:
-                return register;
-            case FIQ:
-                switch (register) {
-                    case 8: .. case 14:
-                        return register + 9;
-                    case 17:
-                        return register + 7;
-                    default:
-                        return register;
-                }
-            case SUPERVISOR:
-                switch (register) {
-                    case 13: .. case 14:
-                        return register + 12;
-                    case 17:
-                        return register + 10;
-                    default:
-                        return register;
-                }
-            case ABORT:
-                switch (register) {
-                    case 13: .. case 14:
-                        return register + 15;
-                    case 17:
-                        return register + 13;
-                    default:
-                        return register;
-                }
-            case IRQ:
-                switch (register) {
-                    case 13: .. case 14:
-                        return register + 18;
-                    case 17:
-                        return register + 16;
-                    default:
-                        return register;
-                }
-            case UNDEFINED:
-                switch (register) {
-                    case 13: .. case 14:
-                        return register + 21;
-                    case 17:
-                        return register + 19;
-                    default:
-                        return register;
-                }
-        }
-    }
-
     debug (outputInstructions) {
         import std.stdio : writefln;
 
@@ -621,6 +552,48 @@ public enum CPSRFlag {
     I = 7,
     F = 6,
     T = 5,
+}
+
+private enum REGISTER_COUNT = 31;
+private enum REGISTER_BITS = 4;
+private enum MODE_BITS = 4;
+private enum REGISTER_LOOKUP_LENGTH = 1 << (MODE_BITS + REGISTER_BITS);
+
+private size_t[] createRegisterLookupTable() {
+    size_t[] table;
+    table.length = REGISTER_LOOKUP_LENGTH;
+    // For all modes: R0 - R15 = 0 - 15
+    void setIndex(int mode, int register, size_t i) {
+        table[(mode & 0xF) << REGISTER_BITS | register] = i;
+    }
+    size_t i = void;
+    foreach (mode; 0 .. 1 << MODE_BITS) {
+        i = 0;
+        foreach (register; 0 .. 1 << REGISTER_BITS) {
+            setIndex(mode, register, i++);
+        }
+    }
+    // Except: R8_fiq - R14_fiq
+    setIndex(Mode.FIQ, 8, i++);
+    setIndex(Mode.FIQ, 9, i++);
+    setIndex(Mode.FIQ, 10, i++);
+    setIndex(Mode.FIQ, 11, i++);
+    setIndex(Mode.FIQ, 12, i++);
+    setIndex(Mode.FIQ, 13, i++);
+    setIndex(Mode.FIQ, 14, i++);
+    // Except: R13_svc - R14_svc
+    setIndex(Mode.SUPERVISOR, 13, i++);
+    setIndex(Mode.SUPERVISOR, 14, i++);
+    // Except: R13_abt - R14_abt
+    setIndex(Mode.ABORT, 13, i++);
+    setIndex(Mode.ABORT, 14, i++);
+    // Except: R13_irq - R14_irq
+    setIndex(Mode.IRQ, 13, i++);
+    setIndex(Mode.IRQ, 14, i++);
+    // Except: R13_und - R14_und
+    setIndex(Mode.UNDEFINED, 13, i++);
+    setIndex(Mode.UNDEFINED, 14, i++);
+    return table;
 }
 
 public alias Executor = void function(Registers*, MemoryBus*, int);

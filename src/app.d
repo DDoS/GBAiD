@@ -168,5 +168,4 @@ public int main(string[] args) {
 
     // TODO:
     //       implement optional RTC
-    //       improve register banking
 }
