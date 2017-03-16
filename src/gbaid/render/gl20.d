@@ -1,12 +1,13 @@
 module gbaid.render.gl20;
 
-import std.stdio;
-import std.conv;
-import std.string;
-import std.container;
-import std.variant;
-import std.regex;
-import std.algorithm;
+import std.stdio : writeln;
+import std.conv : to;
+import std.string : toStringz;
+import std.container : RedBlackTree, make;
+import std.variant : Variant;
+import std.regex : ctRegex, replaceFirst;
+import std.algorithm.comparison : min;
+import std.algorithm.sorting : sort;
 
 import derelict.sdl2.sdl;
 import derelict.opengl3.gl3;

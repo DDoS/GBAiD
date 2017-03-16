@@ -1,9 +1,9 @@
 module gbaid.render.gl;
 
-import std.regex;
-import std.file;
-import std.string;
-import std.conv;
+import std.regex : ctRegex, matchAll;
+import std.file : readText;
+import std.string : splitLines, toUpper;
+import std.conv : to;
 
 import derelict.opengl3.gl3 : glGetError;
 
