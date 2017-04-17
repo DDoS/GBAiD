@@ -901,49 +901,49 @@ public class Display {
     }
 
     private int getWindow(int windowEnables, int objectMode, int line, int column) {
-        if (!windowEnables) {
+        if (windowEnables == 0) {
             return 0;
         }
-
-        if (windowEnables & 0b1) {
-            int horizontalDimensions = ioRegisters.getUnMonitored!short(0x40);
-
-            int x1 = getBits(horizontalDimensions, 8, 15);
-            int x2 = horizontalDimensions & 0xFF;
-
-            int verticalDimensions = ioRegisters.getUnMonitored!short(0x44);
-
-            int y1 = getBits(verticalDimensions, 8, 15);
-            int y2 = verticalDimensions & 0xFF;
-
-            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x48;
-            }
+        // If any window is enabled, then we check that the dot is inside, using the priority order
+        if (windowEnables.checkBit(0) && insideWindow!0(line, column)) {
+            return 0x48;
         }
-
-        if (windowEnables & 0b10) {
-            int horizontalDimensions = ioRegisters.getUnMonitored!short(0x42);
-
-            int x1 = getBits(horizontalDimensions, 8, 15);
-            int x2 = horizontalDimensions & 0xFF;
-
-            int verticalDimensions = ioRegisters.getUnMonitored!short(0x46);
-
-            int y1 = getBits(verticalDimensions, 8, 15);
-            int y2 = verticalDimensions & 0xFF;
-
-            if (column >= x1 && column < x2 && line >= y1 && line < y2) {
-                return 0x49;
-            }
+        if (windowEnables.checkBit(1) && insideWindow!1(line, column)) {
+            return 0x49;
         }
-
-        if (windowEnables & 0b100) {
-            if (objectMode & 0b10) {
-                return 0x4B;
-            }
+        if (windowEnables.checkBit(2) && objectMode.checkBit(1)) {
+            return 0x4B;
         }
-
         return 0x4A;
+    }
+
+    private bool insideWindow(int index)(int line, int column) {
+        // When the bounds are max < min, the window is in [0, max) and [min, size)
+        int horizontalDimensions = ioRegisters.getUnMonitored!short(0x40 + index * 2);
+        int x1 = horizontalDimensions.getBits(8, 15);
+        int x2 = horizontalDimensions & 0xFF;
+        if (x1 <= x2) {
+            if (column < x1 || column >= x2) {
+                return false;
+            }
+        } else {
+            if (column >= x2 && column < x1) {
+                return false;
+            }
+        }
+        int verticalDimensions = ioRegisters.getUnMonitored!short(0x44 + index * 2);
+        int y1 = verticalDimensions.getBits(8, 15);
+        int y2 = verticalDimensions & 0xFF;
+        if (y1 <= y2) {
+            if (line < y1 || line >= y2) {
+                return false;
+            }
+        } else {
+            if (line >= y2 && line < y1) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void applyBrightnessIncreaseEffect(ref short first) {
