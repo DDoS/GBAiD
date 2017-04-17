@@ -872,29 +872,27 @@ public class Display {
                 }
             }
 
-            if (specialEffectEnabled) {
-                if ((objMode & 0b1) && checkBit(blendControl, secondLayer + 8)) {
-                    firstColor = applyBlendEffect(firstColor, secondColor);
-                } else {
-                    final switch (colorEffect) {
-                        case 0:
-                            break;
-                        case 1:
-                            if (checkBit(blendControl, firstLayer) && checkBit(blendControl, secondLayer + 8)) {
-                                firstColor = applyBlendEffect(firstColor, secondColor);
-                            }
-                            break;
-                        case 2:
-                            if (checkBit(blendControl, firstLayer)) {
-                                applyBrightnessIncreaseEffect(firstColor);
-                            }
-                            break;
-                        case 3:
-                            if (checkBit(blendControl, firstLayer)) {
-                                applyBrightnessDecreaseEffect(firstColor);
-                            }
-                            break;
-                    }
+            if (firstLayer == 4 && (objMode & 0b1) && checkBit(blendControl, secondLayer + 8)) {
+                firstColor = applyBlendEffect(firstColor, secondColor);
+            } else if (specialEffectEnabled) {
+                final switch (colorEffect) {
+                    case 0:
+                        break;
+                    case 1:
+                        if (checkBit(blendControl, firstLayer) && checkBit(blendControl, secondLayer + 8)) {
+                            firstColor = applyBlendEffect(firstColor, secondColor);
+                        }
+                        break;
+                    case 2:
+                        if (checkBit(blendControl, firstLayer)) {
+                            applyBrightnessIncreaseEffect(firstColor);
+                        }
+                        break;
+                    case 3:
+                        if (checkBit(blendControl, firstLayer)) {
+                            applyBrightnessDecreaseEffect(firstColor);
+                        }
+                        break;
                 }
             }
 
