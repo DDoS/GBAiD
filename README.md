@@ -70,7 +70,7 @@ The following arguments are also recognized:
 | --bios      | -b         | Path to bios             | Specify bios image                                                          |
 | --save      | -s         | Path to save             | Specify path for loading and saving saves                                   |
 | --noload    | -n         | None                     | Don't load the save                                                         |
-| --nosave    | -N         | None                     | Don't save the save                                                         |
+| --nosave    | -N         | None                     | Don't save the save, either on exit or quick save                           |
 | --scale     | -r         | Scaling factor (float)   | Draw the display at "factor" times the original resolution                  |
 | --fullscreen| -R         | None                     | Display in full screen mode (`--scale` will be ignored)                     |
 | --filtering | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
@@ -105,7 +105,7 @@ For Classic NES Series games, use `EEPROM`
 
 These flags are only needed when creating a new save, after that the format is saved in the save file.
 
-### Controls ###
+### GBA controls ###
 
 These will be re-mapable in a future version.
 
@@ -121,6 +121,16 @@ These will be re-mapable in a future version.
 | L       | L-shift  | LB or LT         |
 | Start   | Enter    | Start            |
 | Select  | Tab      | Select           |
+
+### Emulator controls ###
+
+These will be re-mapable in a future version.
+
+| Function   | Keyboard | Controller       |
+|------------|----------|------------------|
+| Quick save | Q        | Y                |
+
+Note that quick saves are disabled when using the `-N` switch.
 
 ### Upscaling ###
 

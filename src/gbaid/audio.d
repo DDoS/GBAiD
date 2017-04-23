@@ -46,7 +46,6 @@ public class AudioQueue(uint channelCount) {
         if (!device) {
             throw new Exception("Failed to open audio device: " ~ toDString(SDL_GetError()));
         }
-        SDL_PauseAudioDevice(device, false);
     }
 
     public void destroy() {
@@ -54,6 +53,14 @@ public class AudioQueue(uint channelCount) {
             return;
         }
         SDL_CloseAudioDevice(device);
+    }
+
+    public void pause() {
+        SDL_PauseAudioDevice(device, true);
+    }
+
+    public void resume() {
+        SDL_PauseAudioDevice(device, false);
     }
 
     public void queueAudio(short[] newSamples) {

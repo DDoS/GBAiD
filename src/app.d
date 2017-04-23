@@ -155,15 +155,33 @@ public int main(string[] args) {
 
     // Start it
     gbaThread.start();
+    audio.resume();
 
     // Update the input then draw the next frame, waiting for it if needed
+    bool previousQuickSave = false;
     while (gbaRunning && !renderer.isCloseRequested()) {
         // Pass the keypad button state to the GBA
-        auto keypadState = keyboardInput.pollKeypad();
+        keyboardInput.poll();
+        auto keypadState = keyboardInput.keypadState;
+        auto quickSave = keyboardInput.quickSave;
         if (auxiliaryInput !is null) {
-            keypadState = auxiliaryInput.pollKeypad().combine(keypadState);
+            auxiliaryInput.poll();
+            keypadState |= auxiliaryInput.keypadState;
+            quickSave |= auxiliaryInput.quickSave;
         }
         gba.setKeypadState(keypadState);
+        // Quick save if requested
+        if (!previousQuickSave && quickSave) {
+            if (noSave) {
+                writeln("Saving is disabled");
+            } else {
+                audio.pause();
+                gba.saveSave(save);
+                writeln("Quick saved \"", save, "\"");
+                audio.resume();
+            }
+        }
+        previousQuickSave = quickSave;
         // Draw the lastest frame
         renderer.draw(gba.frameSwapper.nextFrame);
     }
@@ -173,7 +191,9 @@ public int main(string[] args) {
     gbaThread.join();
 
     // Save Game Pak save
-    if (!noSave) {
+    if (noSave) {
+        writeln("Saving is disabled");
+    } else {
         gba.saveSave(save);
         writeln("Saved \"", save, "\"");
     }

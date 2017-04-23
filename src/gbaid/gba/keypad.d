@@ -20,7 +20,12 @@ public enum Button {
 }
 
 public struct KeypadState {
-    private short bits = 0b1111111111;
+    private enum short CLEARED = 0b1111111111;
+    private short bits = CLEARED;
+
+    public void clear() {
+        bits = CLEARED;
+    }
 
     public bool isPressed(Button button) {
         return !bits.checkBit(button);
@@ -34,10 +39,15 @@ public struct KeypadState {
         }
     }
 
-    public KeypadState combine(KeypadState that) {
+    public KeypadState opBinary(string op)(KeypadState that) if (op == "|") {
         KeypadState combined;
         combined.bits = this.bits & that.bits;
         return combined;
+    }
+
+    public KeypadState opOpAssign(string op)(KeypadState that) if (op == "|") {
+        bits &= that.bits;
+        return this;
     }
 }
 

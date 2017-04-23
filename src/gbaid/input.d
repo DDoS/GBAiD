@@ -11,7 +11,11 @@ public interface InputSource {
 
     public void destroy();
 
-    public KeypadState pollKeypad();
+    public void poll();
+
+    @property public KeypadState keypadState();
+
+    @property public bool quickSave();
 }
 
 public class Keyboard : InputSource {
@@ -27,6 +31,9 @@ public class Keyboard : InputSource {
         SDL_SCANCODE_RSHIFT,
         SDL_SCANCODE_LSHIFT
     ];
+    private int quickSaveKey = SDL_SCANCODE_Q;
+    private KeypadState state;
+    private bool save = false;
 
     public void map(Button button, int key) {
         buttonCodeMap[button] = key;
@@ -38,13 +45,21 @@ public class Keyboard : InputSource {
     public override void destroy() {
     }
 
-    public override KeypadState pollKeypad() {
+    public override void poll() {
+        state.clear();
         const ubyte* keyboard = SDL_GetKeyboardState(null);
-        KeypadState state;
         foreach (buttonIndex, buttonCode; buttonCodeMap) {
             state.setPressed(cast(Button) buttonIndex, cast(bool) keyboard[buttonCode]);
         }
+        save = cast(bool) keyboard[quickSaveKey];
+    }
+
+    @property public override KeypadState keypadState() {
         return state;
+    }
+
+    @property public override bool quickSave() {
+        return save;
     }
 }
 
@@ -74,6 +89,9 @@ public class Controller : InputSource {
         StickMapping(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 0x3000, true),
         StickMapping(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 0x3000, true)
     ];
+    private int quickSaveButton = SDL_CONTROLLER_BUTTON_Y;
+    private KeypadState state;
+    private bool save = false;
 
     public void map(Button button, int controllerButton) {
         buttonCodeMap[button] = controllerButton;
@@ -90,20 +108,19 @@ public class Controller : InputSource {
         }
         if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER)) {
             if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
-                throw new InputException("Failed to initialize the SDL controller system", toDString(SDL_GetError()));
+                throw new Exception("Failed to initialize the SDL controller system", toDString(SDL_GetError()));
             }
         }
         foreach (i; 0 .. SDL_NumJoysticks()) {
             if (SDL_IsGameController(i)) {
                 controller = SDL_GameControllerOpen(i);
-                if (controller) {
-                    return;
-                } else {
-                    throw new InputException("Could not open controller", toDString(SDL_GetError()));
+                if (!controller) {
+                    throw new Exception("Could not open controller", toDString(SDL_GetError()));
                 }
+                return;
             }
         }
-        throw new InputException("No controller found");
+        throw new Exception("No controller found");
     }
 
     public override void destroy() {
@@ -112,40 +129,40 @@ public class Controller : InputSource {
         }
     }
 
-    public override KeypadState pollKeypad() {
-        KeypadState state;
+    public override void poll() {
         if (!controller) {
-            return state;
+            return;
         }
+        state.clear();
         foreach (buttonIndex, buttonCode; buttonCodeMap) {
-            if (buttonCode != SDL_CONTROLLER_BUTTON_INVALID) {
-                state.setPressed(cast(Button) buttonIndex, cast(bool) SDL_GameControllerGetButton(controller, buttonCode));
+            if (buttonCode == SDL_CONTROLLER_BUTTON_INVALID) {
+                continue;
             }
+            state.setPressed(cast(Button) buttonIndex, cast(bool) SDL_GameControllerGetButton(controller, buttonCode));
         }
         foreach (buttonIndex, stick; stickMap) {
-            if (stick.axis != SDL_CONTROLLER_AXIS_INVALID) {
-                int amplitude = SDL_GameControllerGetAxis(controller, stick.axis);
-                if ((stick.direction ? amplitude : -amplitude) >= stick.threshold) {
-                    state.setPressed(cast(Button) buttonIndex, true);
-                }
+            if (stick.axis == SDL_CONTROLLER_AXIS_INVALID) {
+                continue;
+            }
+            auto amplitude = cast(int) SDL_GameControllerGetAxis(controller, stick.axis);
+            if ((stick.direction ? amplitude : -amplitude) >= stick.threshold) {
+                state.setPressed(cast(Button) buttonIndex);
             }
         }
+        save = cast(bool) SDL_GameControllerGetButton(controller, quickSaveButton);
+    }
+
+    @property public override KeypadState keypadState() {
         return state;
+    }
+
+    @property public override bool quickSave() {
+        return save;
     }
 
     private static struct StickMapping {
         private int axis = SDL_CONTROLLER_AXIS_INVALID;
         private int threshold;
         private bool direction;
-    }
-}
-
-public class InputException : Exception {
-    protected this(string msg) {
-        super(msg);
-    }
-
-    protected this(string msg, string info) {
-        super(msg ~ ": " ~ info);
     }
 }
