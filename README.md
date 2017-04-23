@@ -166,7 +166,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 - Replace most classes with structs
 - Fix Classic SNES series bug(s): visuals and most game mechanics are completely broken
 - Investigate possible Pokémon Emerald bug: odour sleuth animation
-- Investigate possible Pokémon Emerald bug: wild encounter transition animation with zigzagoon in front of party
 
 ## Useful information ##
 
