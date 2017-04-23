@@ -89,7 +89,7 @@ public class Controller : InputSource {
         StickMapping(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 0x3000, true),
         StickMapping(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 0x3000, true)
     ];
-    private int quickSaveButton = SDL_CONTROLLER_BUTTON_Y;
+    private int quickSaveButton = SDL_CONTROLLER_BUTTON_X;
     private KeypadState state;
     private bool save = false;
 

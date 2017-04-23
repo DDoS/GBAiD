@@ -128,9 +128,11 @@ These will be re-mapable in a future version.
 
 | Function   | Keyboard | Controller       |
 |------------|----------|------------------|
-| Quick save | Q        | Y                |
+| Quick save | Q        | X                |
 
-Note that quick saves are disabled when using the `-N` switch.
+Quick saves are not save states, they just write the contents of the save memory to the save file immediately.
+Otherwise this is only done on exit. This is useful to ensure you do not loose game progress if the emulator crashes
+or fails to close normally. Note that quick saves are disabled when using the `-N` switch.
 
 ### Upscaling ###
 
