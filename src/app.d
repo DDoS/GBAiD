@@ -111,13 +111,23 @@ public int main(string[] args) {
     auto audio = new AudioQueue!2(SOUND_OUTPUT_FREQUENCY);
     gba.audioReceiver = &audio.queueAudio;
 
-    auto input = cast(InputSource) (controller ? new Controller() : new Keyboard());
+    auto keyboardInput = new Keyboard();
+    InputSource auxiliaryInput = null;
+    if (controller) {
+        auxiliaryInput = new Controller();
+    }
 
     renderer.create();
     audio.create();
-    input.create();
+    keyboardInput.create();
+    if (auxiliaryInput !is null) {
+        auxiliaryInput.create();
+    }
     scope (exit) {
-        input.destroy();
+        keyboardInput.destroy();
+        if (auxiliaryInput !is null) {
+            auxiliaryInput.destroy();
+        }
         audio.destroy();
         renderer.destroy();
         SDL_Quit();
@@ -149,7 +159,11 @@ public int main(string[] args) {
     // Update the input then draw the next frame, waiting for it if needed
     while (gbaRunning && !renderer.isCloseRequested()) {
         // Pass the keypad button state to the GBA
-        gba.setKeypadState(input.pollKeypad());
+        auto keypadState = keyboardInput.pollKeypad();
+        if (auxiliaryInput !is null) {
+            keypadState = auxiliaryInput.pollKeypad().combine(keypadState);
+        }
+        gba.setKeypadState(keypadState);
         // Draw the lastest frame
         renderer.draw(gba.frameSwapper.nextFrame);
     }

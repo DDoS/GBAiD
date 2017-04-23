@@ -33,6 +33,12 @@ public struct KeypadState {
             bits |= 1 << button;
         }
     }
+
+    public KeypadState combine(KeypadState that) {
+        KeypadState combined;
+        combined.bits = this.bits & that.bits;
+        return combined;
+    }
 }
 
 public class Keypad {

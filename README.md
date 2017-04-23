@@ -75,7 +75,7 @@ The following arguments are also recognized:
 | --fullscreen| -R         | None                     | Display in full screen mode (`--scale` will be ignored)                     |
 | --filtering | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
 | --upscaling | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
-| --controller| -c         | None                     | Disable keyboard input and use a controller instead                         |
+| --controller| -c         | None                     | Enable the controller as an input method                                    |
 | --memory    | -m         | See saves section        | What memory configuration to use for the save format                        |
 
 Note that these arguments are case sensitive and that bundling is only supported by the `noload` and `nosave` switches.
