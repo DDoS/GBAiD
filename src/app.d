@@ -199,7 +199,4 @@ public int main(string[] args) {
     }
 
     return 0;
-
-    // TODO:
-    //       implement optional RTC
 }

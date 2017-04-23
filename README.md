@@ -6,7 +6,7 @@ This emulator is written mostly in pure D, with some inline x86 (32 and 64 bit) 
 
 ## Current state ##
 
-All of the GameBoy's built-in hardware has been implemented.
+All of the GameBoy's built-in hardware has been implemented, except for the serial communication port.
 
 I've tested 8 games so far:
 - Super Mario Advance
@@ -149,6 +149,24 @@ All upscaling is implemented as OpenGL shaders.
 ## License ##
 
 GBAiD is licensed under [MIT](LICENSE.txt)
+
+
+## TODO ##
+
+- Implement optional RTC
+- Implement SIO
+- Implement emulator networking for SIO
+- Remove module cycle in cpu.d, arm.d and thumb.d
+- Move the save system out of the emulator core
+- Cleanup and comment display.d
+- Rewrite IoRegisters to remove the intermediate MonitoredMemory
+- Emulator pause feature
+- Save states with quick saves
+- Replace getters and setters with @property
+- Replace most classes with structs
+- Fix Classic SNES series bug(s): visuals and most game mechanics are completely broken
+- Investigate possible Pokémon Emerald bug: odour sleuth animation
+- Investigate possible Pokémon Emerald bug: wild encounter transition animation with zigzagoon in front of party
 
 ## Useful information ##
 
