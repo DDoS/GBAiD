@@ -858,7 +858,7 @@ public struct MemoryBus {
                     address &= VRAM_HIGH_MASK;
                 }
                 static if (is(T == byte) || is(T == ubyte)) {
-                    if (address < 0x10000 || (ioRegisters.get!short(0x0) & 0b111) > 2 && address < 0x14000) {
+                    if (address < 0x10000 || (ioRegisters.getUnMonitored!short(0x0) & 0b111) > 2 && address < 0x14000) {
                         _vram.set!short(address, value << 8 | value & 0xFF);
                     }
                 } else {
