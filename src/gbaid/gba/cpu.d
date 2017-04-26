@@ -150,7 +150,7 @@ public struct Registers {
     private immutable size_t[REGISTER_LOOKUP_LENGTH] registerIndices = createRegisterLookupTable();
     private int[REGISTER_COUNT] registers;
     private int cpsrRegister;
-    private int[1 << MODE_BITS] sprsRegisters;
+    private int[1 << MODE_BITS] spsrRegisters;
     private bool modifiedPC = false;
 
     @property public Mode mode() {
@@ -185,7 +185,7 @@ public struct Registers {
         if (mode == Mode.SYSTEM || mode == Mode.USER) {
             throw new Exception("The SPSR register does not exist in the system and user modes");
         }
-        return sprsRegisters[mode & 0xF];
+        return spsrRegisters[mode & 0xF];
     }
 
     public void set(int register, int value) {
@@ -216,7 +216,7 @@ public struct Registers {
         if (mode == Mode.SYSTEM || mode == Mode.USER) {
             throw new Exception("The SPSR register does not exist in the system and user modes");
         }
-        sprsRegisters[mode & 0xF] = value;
+        spsrRegisters[mode & 0xF] = value;
     }
 
     public int getFlag(CPSRFlag flag) {
@@ -225,18 +225,6 @@ public struct Registers {
 
     public void setFlag(CPSRFlag flag, int b) {
         cpsrRegister.setBit(flag, b);
-    }
-
-    public void setAPSRFlags(int n, int z) {
-        cpsrRegister.setBits(30, 31, z | n << 1);
-    }
-
-    public void setAPSRFlags(int n, int z, int c) {
-        cpsrRegister.setBits(29, 31, c | z << 1 | n << 2);
-    }
-
-    public void setAPSRFlags(int n, int z, int c, int v) {
-        cpsrRegister.setBits(28, 31, v | c << 1 | z << 2 | n << 3);
     }
 
     public template setApsrFlags(string bits) {
@@ -442,7 +430,7 @@ public struct Registers {
         }
 
         public void logInstruction(int address, int code, string mnemonic) {
-            if (set == Set.THUMB) {
+            if (instructionSet == Set.THUMB) {
                 code &= 0xFFFF;
             }
             lastInstructions[index].mode = mode;
@@ -483,9 +471,11 @@ public struct Registers {
 
         public void dumpRegisters() {
             writefln("Dumping last known register states:");
-            foreach (i; 0 .. 18) {
+            foreach (i; 0 .. 16) {
                 writefln("%-4s: %08x", cast(Register) i, get(i));
             }
+            writefln("CPSR: %08x", cpsrRegister);
+            writefln("SPSR: %08x", spsrRegisters[mode & 0xF]);
         }
 
         private static struct Executor {
