@@ -69,7 +69,6 @@ public class ARM7TDMI {
         debug (outputInstructions) {
             scope (failure) {
                 registers.dumpInstructions();
-                registers.dumpRegisters();
             }
         }
         // Discard all the cycles if halted
@@ -418,12 +417,12 @@ public struct Registers {
     }
 
     debug (outputInstructions) {
-        import std.stdio : writefln;
+        import std.stdio : writeln, writef, writefln;
 
-        private enum uint queueMaxSize = 1024;
-        private Executor[queueMaxSize] lastInstructions;
-        private uint queueSize = 0;
-        private uint index = 0;
+        private enum size_t CPU_LOG_SIZE = 32;
+        private CpuState[CPU_LOG_SIZE] cpuLog;
+        private size_t logSize = 0;
+        private size_t index = 0;
 
         public void logInstruction(int code, string mnemonic) {
             logInstruction(getExecutedPC(), code, mnemonic);
@@ -433,57 +432,75 @@ public struct Registers {
             if (instructionSet == Set.THUMB) {
                 code &= 0xFFFF;
             }
-            lastInstructions[index].mode = mode;
-            lastInstructions[index].address = address;
-            lastInstructions[index].code = code;
-            lastInstructions[index].mnemonic = mnemonic;
-            lastInstructions[index].set = instructionSet;
-            index = (index + 1) % queueMaxSize;
-            if (queueSize < queueMaxSize) {
-                queueSize++;
+            cpuLog[index].mode = mode;
+            cpuLog[index].address = address;
+            cpuLog[index].code = code;
+            cpuLog[index].mnemonic = mnemonic;
+            cpuLog[index].set = instructionSet;
+            foreach (i; 0 .. 16) {
+                cpuLog[index].registers[i] = get(i);
+            }
+            cpuLog[index].cpsrRegister = cpsrRegister;
+            if (mode != Mode.SYSTEM && mode != Mode.USER) {
+                cpuLog[index].spsrRegister = getSPSR();
+            }
+            index = (index + 1) % CPU_LOG_SIZE;
+            if (logSize < CPU_LOG_SIZE) {
+                logSize++;
             }
         }
 
         public void dumpInstructions() {
-            dumpInstructions(queueSize);
+            dumpInstructions(logSize);
         }
 
-        public void dumpInstructions(uint amount) {
-            amount = amount > queueSize ? queueSize : amount;
-            uint start = (queueSize < queueMaxSize ? 0 : index) + queueSize - amount;
+        public void dumpInstructions(size_t amount) {
+            amount = amount > logSize ? logSize : amount;
+            auto start = (logSize < CPU_LOG_SIZE ? 0 : index) + logSize - amount;
             if (amount > 1) {
                 writefln("Dumping last %s instructions executed:", amount);
             }
-            foreach (uint i; 0 .. amount) {
-                uint j = (i + start) % queueMaxSize;
-                final switch (lastInstructions[j].set) {
-                    case Set.ARM:
-                        writefln("%-10s| %08x: %08x %s", lastInstructions[j].mode, lastInstructions[j].address,
-                                lastInstructions[j].code, lastInstructions[j].mnemonic);
-                        break;
-                    case Set.THUMB:
-                        writefln("%-10s| %08x: %04x     %s", lastInstructions[j].mode, lastInstructions[j].address,
-                                lastInstructions[j].code, lastInstructions[j].mnemonic);
-                        break;
-                }
+            foreach (i; 0 .. amount) {
+                cpuLog[(i + start) % CPU_LOG_SIZE].dump();
             }
         }
 
-        public void dumpRegisters() {
-            writefln("Dumping last known register states:");
-            foreach (i; 0 .. 16) {
-                writefln("%-4s: %08x", cast(Register) i, get(i));
-            }
-            writefln("CPSR: %08x", cpsrRegister);
-            writefln("SPSR: %08x", spsrRegisters[mode & 0xF]);
-        }
-
-        private static struct Executor {
+        private static struct CpuState {
             private Mode mode;
             private int address;
             private int code;
             private string mnemonic;
             private Set set;
+            private int[16] registers;
+            private int cpsrRegister;
+            private int spsrRegister;
+
+            private void dump() {
+                writefln("%s", mode);
+                // Dump register values
+                foreach (i; 0 .. 4) {
+                    writef("%-4s", cast(Register) (i * 4));
+                    foreach (j; 0 .. 4) {
+                        writef(" %08X", registers[i * 4 + j]);
+                    }
+                    writeln();
+                }
+                writef("CPSR %08X", cpsrRegister);
+                if (mode != Mode.SYSTEM && mode != Mode.USER) {
+                    writef(", SPSR %08X", spsrRegister);
+                }
+                writeln();
+                // Dump instruction
+                final switch (set) {
+                    case Set.ARM:
+                        writefln("%08X: %08X %s", address, code, mnemonic);
+                        break;
+                    case Set.THUMB:
+                        writefln("%08X: %08X     %s", address, code, mnemonic);
+                        break;
+                }
+                writeln();
+            }
         }
     }
 }
