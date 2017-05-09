@@ -19,8 +19,6 @@ I've tested 8 games so far:
 - Classic NES Series: Metroid
 - Street Fighter Alpha 3
 
-The Classic NES Series games load, but are very glitchy. Considering the anti-emulation features implemented in them, just the fact that they load is a good thing.
-
 The emulator uses under 40% CPU on an Intel Core i7-4980HQ (2.80GHz), for a single core.
 
 ## Building ##

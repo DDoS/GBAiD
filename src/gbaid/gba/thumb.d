@@ -305,25 +305,25 @@ private alias aluOperations(int code: 7) = aluOperationsShift!3;
 private void aluOperations(int code: 5)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOpAluOperations;
-    int carry = registers.getFlag(CPSRFlag.C);
+    int op3 = registers.getFlag(CPSRFlag.C);
     int tmp = op1 + op2;
-    int res = tmp + carry;
+    int res = tmp + op3;
     registers.set(rd, res);
     registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0,
-        carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res),
-        overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res));
+        carriedAdd(op1, op2, tmp) || carriedAdd(tmp, op3, res),
+        overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, op3, res));
 }
 
 private void aluOperations(int code: 6)(Registers* registers, MemoryBus* memory, int instruction) {
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOpAluOperations;
-    int carry = registers.getFlag(CPSRFlag.C);
+    int op3 = !registers.getFlag(CPSRFlag.C);
     int tmp = op1 - op2;
-    int res = tmp - !carry;
+    int res = tmp - op3;
     registers.set(rd, res);
     registers.setApsrFlags!"N,Z,C,V"(res < 0, res == 0,
-        !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res),
-        overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res));
+        !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, op3, res),
+        overflowedSub(op1, op2, tmp) || overflowedSub(tmp, op3, res));
 }
 
 private void aluOperations(int code: 8)(Registers* registers, MemoryBus* memory, int instruction) {

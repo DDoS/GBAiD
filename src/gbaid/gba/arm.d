@@ -261,8 +261,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
     debug (outputInstructions) registers.logInstruction(instruction, "ADC");
     mixin decodeOperands;
     // Operation
+    int op3 = registers.getFlag(CPSRFlag.C);
     int tmp = op1 + op2;
-    int res = tmp + carry;
+    int res = tmp + op3;
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
@@ -271,8 +272,8 @@ private void dataProcessing(alias decodeOperands, int opCode: 5, bool setFlags)
         } else {
             int negative = res < 0;
             int zero = res == 0;
-            carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, carry, res);
-            int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, carry, res);
+            carry = carriedAdd(op1, op2, tmp) || carriedAdd(tmp, op3, res);
+            int overflow = overflowedAdd(op1, op2, tmp) || overflowedAdd(tmp, op3, res);
             registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
         }
     }
@@ -283,8 +284,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
     debug (outputInstructions) registers.logInstruction(instruction, "SBC");
     mixin decodeOperands;
     // Operation
+    int op3 = !registers.getFlag(CPSRFlag.C);
     int tmp = op1 - op2;
-    int res = tmp - !carry;
+    int res = tmp - op3;
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
@@ -293,8 +295,8 @@ private void dataProcessing(alias decodeOperands, int opCode: 6, bool setFlags)
         } else {
             int negative = res < 0;
             int zero = res == 0;
-            carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, !carry, res);
-            int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, !carry, res);
+            carry = !borrowedSub(op1, op2, tmp) && !borrowedSub(tmp, op3, res);
+            int overflow = overflowedSub(op1, op2, tmp) || overflowedSub(tmp, op3, res);
             registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
         }
     }
@@ -305,8 +307,9 @@ private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
     debug (outputInstructions) registers.logInstruction(instruction, "RSC");
     mixin decodeOperands;
     // Operation
+    int op3 = !registers.getFlag(CPSRFlag.C);
     int tmp = op2 - op1;
-    int res = tmp - !carry;
+    int res = tmp - op3;
     registers.set(rd, res);
     // Flag updates
     static if (setFlags) {
@@ -315,8 +318,8 @@ private void dataProcessing(alias decodeOperands, int opCode: 7, bool setFlags)
         } else {
             int negative = res < 0;
             int zero = res == 0;
-            carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, !carry, res);
-            int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, !carry, res);
+            carry = !borrowedSub(op2, op1, tmp) && !borrowedSub(tmp, op3, res);
+            int overflow = overflowedSub(op2, op1, tmp) || overflowedSub(tmp, op3, res);
             registers.setApsrFlags!"N,Z,C,V"(negative, zero, carry, overflow);
         }
     }
