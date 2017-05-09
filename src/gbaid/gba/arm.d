@@ -130,9 +130,9 @@ private mixin template decodeOpDataProcessing_RegShiftReg(bool immediateShift) {
     int op1 = registers.get(rn);
     // Get op2
     static if (immediateShift) {
-        int shift = instruction.getBits(7, 11);
+        ubyte shift = cast(ubyte) instruction.getBits(7, 11);
     } else {
-        int shift = registers.get(instruction.getBits(8, 11)) & 0xFF;
+        ubyte shift = cast(ubyte) registers.get(instruction.getBits(8, 11));
     }
     int shiftType = instruction.getBits(5, 6);
     int carry;
@@ -766,7 +766,7 @@ private void singleDataTransfer(bool notImmediate, bool preIncr, bool upIncr, bo
     int rn = instruction.getBits(16, 19);
     int rd = instruction.getBits(12, 15);
     static if (notImmediate) {
-        int shift = instruction.getBits(7, 11);
+        ubyte shift = cast(ubyte) instruction.getBits(7, 11);
         int shiftType = instruction.getBits(5, 6);
         int carry;
         int offset = registers.applyShift!false(shiftType, shift, registers.get(instruction & 0b1111), carry);

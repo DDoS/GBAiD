@@ -122,7 +122,7 @@ private Executor[] createTHUMBTable() {
 
 private void moveShiftedRegister(int code)(Registers* registers, MemoryBus* memory, int instruction)
         if (code >= 0 && code <= 2) {
-    int shift = instruction.getBits(6, 10);
+    ubyte shift = cast(ubyte) instruction.getBits(6, 10);
     int op = registers.get(instruction.getBits(3, 5));
     int rd = instruction & 0b111;
     static if (code == 0) {
@@ -285,7 +285,7 @@ private void aluOperationsShift(int type)(Registers* registers, MemoryBus* memor
     }
     mixin decodeOpAluOperations;
     int carry;
-    int res = registers.applyShift!true(type, op2 & 0xFF, op1, carry);
+    int res = registers.applyShift!true(type, cast(ubyte) op2, op1, carry);
     registers.set(rd, res);
     registers.setApsrFlags!"N,Z,C"(res < 0, res == 0, carry);
 }

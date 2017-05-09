@@ -87,7 +87,7 @@ public class ARM7TDMI {
             }
             // Fetch the next instruction in the pipeline
             int nextInstruction = fetchInstruction();
-            // Decode the second instruction in the pipeline
+            // "Decode" the second instruction in the pipeline (we don't need to actually do anything)
             int nextDecoded = instruction;
             instruction = nextInstruction;
             // Execute the last instruction in the pipeline
@@ -260,7 +260,7 @@ public struct Registers {
         return value;
     }
 
-    public int applyShift(bool registerShift)(int shiftType, int shift, int op, out int carry) {
+    public int applyShift(bool registerShift)(int shiftType, ubyte shift, int op, out int carry) {
         final switch (shiftType) {
             // LSL
             case 0:
