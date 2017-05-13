@@ -504,6 +504,7 @@ public struct GamePak {
 
     public this(string romFile, string saveFile) {
         rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
+        actualRomByteSize = actualRomByteSize.nextPowerOf2();
         if (saveFile is null) {
             allocateNewSave(saveMemoryForConfiguration[SaveConfiguration.AUTO]);
         } else {
@@ -513,6 +514,7 @@ public struct GamePak {
 
     public this(string romFile, SaveConfiguration saveConfig) {
         rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
+        actualRomByteSize = actualRomByteSize.nextPowerOf2();
         allocateNewSave(saveMemoryForConfiguration[saveConfig]);
     }
 
@@ -525,11 +527,8 @@ public struct GamePak {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x0: .. case 0x4:
-                address &= ROM_MASK;
-                if (address < actualRomByteSize) {
-                    return rom.get!T(address);
-                }
-                return cast(T) _unusedMemory(address);
+                address &= actualRomByteSize - 1;
+                return rom.get!T(address);
             case 0x5:
                 auto lowAddress = address & 0xFFFFFF;
                 if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {

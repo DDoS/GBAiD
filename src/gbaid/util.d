@@ -66,6 +66,16 @@ public int rotateRight(int i, int shift) {
     return i >>> shift | i << 32 - shift;
 }
 
+int nextPowerOf2(int i) {
+    i--;
+    i |= i >> 1;
+    i |= i >> 2;
+    i |= i >> 4;
+    i |= i >> 8;
+    i |= i >> 16;
+    return i + 1;
+}
+
 public bool carriedAdd(int a, int b, int c) {
     int negativeA = a >> 31;
     int negativeB = b >> 31;
