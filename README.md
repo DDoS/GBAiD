@@ -163,7 +163,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 - Replace getters and setters with @property
 - Replace most classes with structs
 - Fix Classic SNES series bug(s): visuals and most game mechanics are completely broken
-- Investigate possible Pokémon Emerald bug: odour sleuth animation
 
 ## Useful information ##
 
