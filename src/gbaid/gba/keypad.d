@@ -72,10 +72,10 @@ public class Keypad {
             cyclesUntilNextUpdate += CYCLES_PER_FRAME;
             ioRegisters.setUnMonitored!short(0x130, state.bits);
             int control = ioRegisters.getUnMonitored!short(0x132);
-            if (checkBit(control, 14)) {
+            if (control.checkBit(14)) {
                 int state = ~state.bits & 0x3FF;
                 int requested = control & 0x3FF;
-                if (checkBit(control, 15)) {
+                if (control.checkBit(15)) {
                     if ((state & requested) == requested) {
                         interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
                     }

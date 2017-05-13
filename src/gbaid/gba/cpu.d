@@ -496,7 +496,7 @@ public struct Registers {
                         writefln("%08X: %08X %s", address, code, mnemonic);
                         break;
                     case Set.THUMB:
-                        writefln("%08X: %08X     %s", address, code, mnemonic);
+                        writefln("%08X: %04X     %s", address, code, mnemonic);
                         break;
                 }
                 writeln();
