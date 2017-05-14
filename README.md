@@ -162,7 +162,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 - Save states with quick saves
 - Replace getters and setters with @property
 - Replace most classes with structs
-- Fix Classic SNES series bug(s): visuals and most game mechanics are completely broken
 
 ## Useful information ##
 
