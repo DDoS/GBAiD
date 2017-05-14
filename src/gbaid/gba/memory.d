@@ -80,7 +80,8 @@ public enum uint VRAM_HIGH_MASK = 0x17FFF;
 public enum uint OAM_MASK = 0x3FF;
 public enum uint GAME_PAK_START = 0x08000000;
 public enum uint ROM_MASK = 0x1FFFFFF;
-public enum uint SAVE_MASK = 0xFFFF;
+public enum uint SRAM_MASK = 0x7FFF;
+public enum uint FLASH_MASK = 0xFFFF;
 public enum uint EEPROM_MASK_HIGH = 0xFFFF00;
 public enum uint EEPROM_MASK_LOW = 0x0;
 
@@ -540,20 +541,22 @@ public struct GamePak {
                 }
                 goto case 0x4;
             case 0x6:
-                address &= SAVE_MASK;
                 switch (saveKind) with (SaveMemoryKind) {
                     case EEPROM:
                         return cast(T) _unusedMemory(address);
                     case SRAM:
+                        address &= SRAM_MASK;
                         return save.sram.get!T(address);
                     case FLASH_512K:
                         static if (is(T == byte) || is(T == ubyte)) {
+                            address &= FLASH_MASK;
                             return save.flash512k.get!T(address);
                         } else {
                             return cast(T) _unusedMemory(address);
                         }
                     case FLASH_1M:
                         static if (is(T == byte) || is(T == ubyte)) {
+                            address &= FLASH_MASK;
                             return save.flash1m.get!T(address);
                         } else {
                             return cast(T) _unusedMemory(address);
@@ -578,21 +581,23 @@ public struct GamePak {
                 }
                 return;
             case 0x6:
-                address &= SAVE_MASK;
                 switch (saveKind) with (SaveMemoryKind) {
                     case EEPROM:
                         return;
                     case SRAM:
+                        address &= SRAM_MASK;
                         save.sram.set!T(address, value);
                         return;
                     case FLASH_512K:
                         static if (is(T == byte) || is(T == ubyte)) {
+                            address &= FLASH_MASK;
                             save.flash512k.set!T(address, value);
                         }
                         return;
                     case FLASH_1M:
                         static if (is(T == byte) || is(T == ubyte)) {
-                             save.flash1m.set!T(address, value);
+                            address &= FLASH_MASK;
+                            save.flash1m.set!T(address, value);
                         }
                         return;
                     default:
