@@ -26,6 +26,7 @@ public int main(string[] args) {
     UpscalingMode upscaling = UpscalingMode.NONE;
     SaveConfiguration memory = SaveConfiguration.AUTO;
     bool controller = false;
+    bool rtc = false;
     getopt(args,
         config.caseSensitive,
         "bios|b", &bios,
@@ -38,8 +39,9 @@ public int main(string[] args) {
         "fullscreen|R", &fullScreen,
         "filtering|f", &filtering,
         "upscaling|u", &upscaling,
+        "memory|m", &memory,
         "controller|c", &controller,
-        "memory|m", &memory
+        "rtc", &rtc
     );
 
     // Resolve BIOS
@@ -92,6 +94,11 @@ public int main(string[] args) {
         gba = new GameBoyAdvance(bios, rom, memory);
     } else {
         gba = new GameBoyAdvance(bios, rom, save);
+    }
+
+    // Enable the Real Time clock if required
+    if (rtc) {
+        gba.enableRtc();
     }
 
     // Load and initialize SDL

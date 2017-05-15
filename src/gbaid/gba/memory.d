@@ -11,6 +11,7 @@ import std.format : format;
 
 import gbaid.util;
 
+import gbaid.gba.gpio;
 import gbaid.gba.save;
 
 public alias Ram(uint byteSize) = Memory!(byteSize, false);
@@ -494,6 +495,7 @@ private union SaveMemory {
 
 public struct GamePak {
     private GameRom rom;
+    private GpioPort gpio;
     private SaveMemoryKind saveKind;
     private SaveMemory save;
     private Eeprom* eeprom;
@@ -503,20 +505,22 @@ public struct GamePak {
 
     @disable public this();
 
-    public this(string romFile, string saveFile) {
+    public this(Save)(string romFile, Save save) {
         rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
         actualRomByteSize = actualRomByteSize.nextPowerOf2();
-        if (saveFile is null) {
-            allocateNewSave(saveMemoryForConfiguration[SaveConfiguration.AUTO]);
-        } else {
-            loadSave(saveFile);
-        }
-    }
+        gpio.valueAtCa = rom.get!short(0xCA);
 
-    public this(string romFile, SaveConfiguration saveConfig) {
-        rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
-        actualRomByteSize = actualRomByteSize.nextPowerOf2();
-        allocateNewSave(saveMemoryForConfiguration[saveConfig]);
+        static if (is(Save == SaveConfiguration)) {
+            allocateNewSave(saveMemoryForConfiguration[save]);
+        } else static if (is(Save == string)) {
+            if (save is null) {
+                allocateNewSave(saveMemoryForConfiguration[SaveConfiguration.AUTO]);
+            } else {
+                loadSave(save);
+            }
+        } else {
+            static assert (0, "Expected a SaveConfiguration value or a file path as a string");
+        }
     }
 
     @property public void unusedMemory(int delegate(uint) unusedMemory) {
@@ -524,11 +528,24 @@ public struct GamePak {
         _unusedMemory = unusedMemory;
     }
 
+    public void enableRtc() {
+        gpio.emitter = delegate() {
+            import std.stdio; writeln("read");
+            return ubyte.init;
+        };
+        gpio.receiver = delegate(ubyte value) {
+            import std.stdio; writefln("write %04b", value);
+        };
+    }
+
     public T get(T)(uint address) if (IsValidSize!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x0: .. case 0x4:
                 address &= actualRomByteSize - 1;
+                if (address >= GPIO_ROM_START_ADDRESS && address < GPIO_ROM_END_ADDRESS && gpio.enabled) {
+                    return gpio.get!T(address);
+                }
                 return rom.get!T(address);
             case 0x5:
                 auto lowAddress = address & 0xFFFFFF;
@@ -572,6 +589,12 @@ public struct GamePak {
     public void set(T)(uint address, T value) if (IsValidSize!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
+            case 0x0: .. case 0x4:
+                address &= actualRomByteSize - 1;
+                if (address >= GPIO_ROM_START_ADDRESS && address < GPIO_ROM_END_ADDRESS && gpio.enabled) {
+                    gpio.set!T(address, value);
+                }
+                return;
             case 0x5:
                 auto lowAddress = address & 0xFFFFFF;
                 if (eeprom !is null && (lowAddress & eepromMask) == eepromMask) {
@@ -604,6 +627,7 @@ public struct GamePak {
                         throw new Error("Unexpected save kind");
                 }
             default:
+                return;
         }
     }
 
@@ -733,20 +757,17 @@ public struct MemoryBus {
     private Vram _vram;
     private Oam _oam;
     private GamePak _gamePak;
-    private int delegate(uint) _unusedMemory = null;
-    private bool delegate(uint) _biosReadGuard = null;
+    private int delegate(uint) _unusedMemory;
+    private bool delegate(uint) _biosReadGuard;
     private int delegate(uint) _biosReadFallback = null;
 
     @disable public this();
 
-    public this(string biosFile, string romFile, SaveConfiguration saveConfig) {
+    public this(Save)(string biosFile, string romFile, Save saveConfig) {
         _bios = Bios(biosFile);
         _gamePak = GamePak(romFile, saveConfig);
-    }
-
-    public this(string biosFile, string romFile, string saveFile) {
-        _bios = Bios(biosFile);
-        _gamePak = GamePak(romFile, saveFile);
+        _unusedMemory = &zeroUnusedMemory;
+        _biosReadGuard = &noBiosReadGuard;
     }
 
     @property public Bios* bios() {
@@ -795,6 +816,14 @@ public struct MemoryBus {
         _biosReadFallback = biosReadFallback;
     }
 
+    private int zeroUnusedMemory(uint address) {
+        return 0;
+    }
+
+    private bool noBiosReadGuard(uint address) {
+        return true;
+    }
+
     public T get(T)(uint address) if (IsValidSize!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
@@ -840,22 +869,22 @@ public struct MemoryBus {
         switch (highAddress) {
             case 0x2:
                 _boardWRAM.set!T(address & BOARD_WRAM_MASK, value);
-                break;
+                return;
             case 0x3:
                 _chipWRAM.set!T(address & CHIP_WRAM_MASK, value);
-                break;
+                return;
             case 0x4:
                 if (address <= IO_REGISTERS_END) {
                     _ioRegisters.set!T(address & IO_REGISTERS_MASK, value);
                 }
-                break;
+                return;
             case 0x5:
                 static if (is(T == byte) || is(T == ubyte)) {
                     _palette.set!short(address & PALETTE_MASK, value << 8 | value & 0xFF);
                 } else {
                     _palette.set!T(address & PALETTE_MASK, value);
                 }
-                break;
+                return;
             case 0x6:
                 address &= VRAM_MASK;
                 if (address & ~VRAM_LOWER_MASK) {
@@ -868,16 +897,17 @@ public struct MemoryBus {
                 } else {
                     _vram.set!T(address, value);
                 }
-                break;
+                return;
             case 0x7:
                 static if (!is(T == byte) && !is(T == ubyte)) {
                     _oam.set!T(address & OAM_MASK, value);
                 }
-                break;
+                return;
             case 0x8: .. case 0xE:
                 _gamePak.set!T(address - GAME_PAK_START, value);
-                break;
+                return;
             default:
+                return;
         }
     }
 }

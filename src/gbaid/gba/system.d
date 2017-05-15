@@ -42,13 +42,7 @@ public class GameBoyAdvance {
 
         systemLock = new Mutex();
 
-        static if (is(Save == SaveConfiguration) || is(Save == string)) {
-            memory = MemoryBus(biosFile, romFile, save);
-        } else {
-            static assert (0, "Expected a SaveConfiguration value or a file path as a string");
-        }
-
-        memory.biosReadGuard = &nullBiosReadGuard;
+        memory = MemoryBus(biosFile, romFile, save);
         memory.biosReadFallback = &biosReadFallback;
         memory.unusedMemory = &unusedReadFallBack;
 
@@ -76,6 +70,10 @@ public class GameBoyAdvance {
 
     public void setKeypadState(KeypadState state) {
         keypad.setState(state);
+    }
+
+    public void enableRtc() {
+        memory.gamePak.enableRtc();
     }
 
     public void emulate(size_t cycles) {
@@ -111,10 +109,6 @@ public class GameBoyAdvance {
         synchronized (systemLock) {
             memory.gamePak.saveSave(saveFile);
         }
-    }
-
-    private bool nullBiosReadGuard(uint address) {
-        return true;
     }
 
     private bool biosReadGuard(uint address) {
