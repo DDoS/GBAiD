@@ -11,11 +11,11 @@ public class DMAs {
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
-    mixin privateFields!(int, "sourceAddress", 0, 4);
-    mixin privateFields!(int, "destinationAddress", 0, 4);
-    mixin privateFields!(int, "wordCount", 0, 4);
-    mixin privateFields!(int, "control", 0, 4);
-    mixin privateFields!(Timing, "timing", Timing.DISABLED, 4);
+    mixin declareFields!(int, true, "sourceAddress", 0, 4);
+    mixin declareFields!(int, true, "destinationAddress", 0, 4);
+    mixin declareFields!(int, true, "wordCount", 0, 4);
+    mixin declareFields!(int, true, "control", 0, 4);
+    mixin declareFields!(Timing, true, "timing", Timing.DISABLED, 4);
     private int triggered = 0;
 
     public this(MemoryBus* memory, IoRegisters* ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {

@@ -10,10 +10,10 @@ public class Timers {
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private SoundChip soundChip;
-    mixin privateFields!(ushort, "reloadValue", 0, 4);
-    mixin privateFields!(int, "control", 0, 4);
-    mixin privateFields!(int, "subTicks", 0, 4);
-    mixin privateFields!(ushort, "ticks", 0, 4);
+    mixin declareFields!(ushort, true, "reloadValue", 0, 4);
+    mixin declareFields!(int, true, "control", 0, 4);
+    mixin declareFields!(int, true, "subTicks", 0, 4);
+    mixin declareFields!(ushort, true, "ticks", 0, 4);
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler, SoundChip soundChip) {
         this.ioRegisters = ioRegisters;

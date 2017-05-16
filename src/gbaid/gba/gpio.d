@@ -1,34 +1,34 @@
 module gbaid.gba.gpio;
 
 import std.conv : to;
+import std.meta : AliasSeq;
+
+import gbaid.util;
 
 public enum uint GPIO_ROM_START_ADDRESS = 0xC4;
 public enum uint GPIO_ROM_END_ADDRESS = 0xCA;
 
-public alias IoEmitter = ubyte delegate();
-public alias IoReceiver = void delegate(ubyte data);
+public alias IoPinOut = bool delegate();
+public alias IoPinIn = void delegate(bool pin);
+
+public struct GpioChip {
+    mixin declareFields!(IoPinOut, false, "readPin", null, 4);
+    mixin declareFields!(IoPinIn, false, "writePin", null, 4);
+}
 
 public struct GpioPort {
+    public bool enabled = false;
     private bool readable = false;
     private ubyte directionFlags = 0b0000;
     private short _valueAtCa = 0;
-    private IoReceiver _receiver = null;
-    private IoEmitter _emitter = null;
+    private GpioChip _chip;
 
     @property public void valueAtCa(short value) {
         _valueAtCa = value;
     }
 
-    @property public bool enabled() {
-        return _receiver !is null && _emitter !is null;
-    }
-
-    @property public void emitter(IoEmitter emitter) {
-        _emitter = emitter;
-    }
-
-    @property public void receiver(IoReceiver receiver) {
-        _receiver = receiver;
+    @property public void chip(GpioChip chip) {
+        _chip = chip;
     }
 
     public T get(T)(uint address) {
@@ -46,7 +46,7 @@ public struct GpioPort {
                 shortValue = direction;
                 break;
             case 0xC8:
-                shortValue = data;
+                shortValue = control;
                 break;
             case 0xCA:
                 shortValue = _valueAtCa;
@@ -87,7 +87,7 @@ public struct GpioPort {
                 direction = shortValue;
                 break;
             case 0xC8:
-                data = shortValue;
+                control = shortValue;
                 break;
             case 0xCA:
                 break;
@@ -96,36 +96,46 @@ public struct GpioPort {
         }
     }
 
-    @property private short direction() {
-        if (!readable) {
-            return 0;
-        }
-        return cast(short) readable & 0b1;
-    }
-
-    @property private void direction(short value) {
-        readable = value & 0b1;
-    }
-
     @property private short control() {
         if (!readable) {
             return 0;
         }
-        return cast(short) directionFlags & 0b1111;
+        return cast(short) readable.checkBit(0);
     }
 
     @property private void control(short value) {
-        directionFlags = value & 0b1111;
+        readable = value.checkBit(0);
+    }
+
+    @property private short direction() {
+        if (!readable) {
+            return 0;
+        }
+        return cast(short) directionFlags.getBits(0, 3);
+    }
+
+    @property private void direction(short value) {
+        directionFlags = cast(ubyte) value.getBits(0, 3);
     }
 
     @property private short data() {
         if (!readable) {
             return 0;
         }
-        return cast(short) _emitter() & directionFlags;
+        int data = 0;
+        foreach (pin; AliasSeq!(0, 1, 2, 3)) {
+            if (!directionFlags.checkBit(pin)) {
+                data.setBit(pin, _chip.readPin!pin());
+            }
+        }
+        return cast(short) data;
     }
 
     @property private void data(short value) {
-        _receiver(value & (~directionFlags & 0b1111));
+        foreach (pin; AliasSeq!(0, 1, 2, 3)) {
+            if (directionFlags.checkBit(pin)) {
+                _chip.writePin!pin(value.checkBit(pin));
+            }
+        }
     }
 }

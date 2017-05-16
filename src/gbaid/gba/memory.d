@@ -529,13 +529,23 @@ public struct GamePak {
     }
 
     public void enableRtc() {
-        gpio.emitter = delegate() {
-            import std.stdio; writeln("read");
-            return ubyte.init;
-        };
-        gpio.receiver = delegate(ubyte value) {
-            import std.stdio; writefln("write %04b", value);
-        };
+        GpioChip rtc;
+        import std.meta : AliasSeq;
+        foreach (pin; AliasSeq!(0, 1, 2, 3)) {
+            rtc.readPin!pin = &readDummy!pin;
+            rtc.writePin!pin = &writeDummy!pin;
+        }
+        gpio.chip = rtc;
+        gpio.enabled = true;
+    }
+
+    private bool readDummy(int pin)() {
+        import std.stdio; writeln("read ", pin);
+        return false;
+    }
+
+    private void writeDummy(int pin)(bool value) {
+        import std.stdio; writefln("write %s: %b", pin, value);
     }
 
     public T get(T)(uint address) if (IsValidSize!T) {
