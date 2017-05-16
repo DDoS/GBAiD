@@ -37,6 +37,10 @@ public void setBit(ref int i, int b, int n) {
     i = i & ~(1 << b) | (n & 1) << b;
 }
 
+public void setBit(ref long i, int b, long n) {
+    i = i & ~(1L << b) | (n & 1L) << b;
+}
+
 public int getBits(int i, int a, int b) {
     return i >> a & (1 << b - a + 1) - 1;
 }

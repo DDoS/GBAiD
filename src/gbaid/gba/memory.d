@@ -12,6 +12,7 @@ import std.format : format;
 import gbaid.util;
 
 import gbaid.gba.gpio;
+import gbaid.gba.rtc;
 import gbaid.gba.save;
 
 public alias Ram(uint byteSize) = Memory!(byteSize, false);
@@ -499,6 +500,7 @@ public struct GamePak {
     private SaveMemoryKind saveKind;
     private SaveMemory save;
     private Eeprom* eeprom;
+    private Rtc* rtc;
     private int delegate(uint) _unusedMemory = null;
     private uint eepromMask;
     private uint actualRomByteSize;
@@ -529,13 +531,8 @@ public struct GamePak {
     }
 
     public void enableRtc() {
-        GpioChip rtc;
-        import std.meta : AliasSeq;
-        foreach (pin; AliasSeq!(0, 1, 2, 3)) {
-            rtc.readPin!pin = &readDummy!pin;
-            rtc.writePin!pin = &writeDummy!pin;
-        }
-        gpio.chip = rtc;
+        rtc = new Rtc();
+        gpio.chip = rtc.chip;
         gpio.enabled = true;
     }
 
