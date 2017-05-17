@@ -25,20 +25,12 @@ public bool checkBit(int i, int b) {
     return cast(bool) getBit(i, b);
 }
 
-public bool checkBits(int i, int m, int b) {
-    return (i & m) == b;
-}
-
 public int getBit(int i, int b) {
     return i >> b & 1;
 }
 
 public void setBit(ref int i, int b, int n) {
     i = i & ~(1 << b) | (n & 1) << b;
-}
-
-public void setBit(ref long i, int b, long n) {
-    i = i & ~(1L << b) | (n & 1L) << b;
 }
 
 public int getBits(int i, int a, int b) {

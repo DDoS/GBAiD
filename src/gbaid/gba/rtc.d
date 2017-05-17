@@ -4,12 +4,35 @@ import gbaid.util;
 
 import gbaid.gba.gpio;
 
+private enum Register {
+    NONE = 0,
+    CONTROL = 1,
+    DATETIME = 2,
+    TIME = 3,
+    FORCE_RESET = 4,
+    FORCE_IRQ = 5
+}
+
+private enum Register[] REGISTER_INDICES = [
+    Register.FORCE_RESET, Register.NONE, Register.DATETIME, Register.FORCE_IRQ,
+    Register.CONTROL, Register.NONE, Register.TIME, Register.NONE
+];
+
+private enum int[] REGISTER_PARAMETER_COUNTS = [0, 1, 7, 3, 0, 0];
+
+private enum State {
+    READ_COMMAND, READ_PARAMETERS
+}
+
 public struct Rtc {
     private bool selected = false;
     private bool clock = false;
     private bool io = false;
-    private long bitBuffer = 0;
+    private ubyte bitBuffer = 0;
     private uint bufferIndex = 0;
+    private State state = State.READ_COMMAND;
+    private Register register = Register.NONE;
+    private bool readCommand = false;
 
     @property public GpioChip chip() {
         GpioChip chip;
@@ -29,16 +52,41 @@ public struct Rtc {
     }
 
     private void writeClock(bool value) {
+        if (!selected) {
+            return;
+        }
+        // We read or write the IO pin on the rising edge
         if (!clock && value) {
-            // We read or write the IO pin on the rising edge
-            bitBuffer.setBit(bufferIndex, io);
+            bitBuffer |= io << bufferIndex;
             bufferIndex += 1;
+            // We received a byte, so process it
             if (bufferIndex == 8) {
-                import std.stdio; writefln("%08b", bitBuffer);
+                processByte(bitBuffer);
+                bitBuffer = 0;
+                bufferIndex = 0;
             }
-            bufferIndex %= typeof(bitBuffer).sizeof * 8;
         }
         clock = value;
+    }
+
+    private void processByte(ubyte b) {
+        final switch (state) with (State) {
+            case READ_COMMAND: {
+                // The first nibble must be 6
+                if ((b & 0b1111) != 6) {
+                    break;
+                }
+                // Update the state accordingly
+                state = READ_PARAMETERS;
+                register = REGISTER_INDICES[b >>> 4 & 0b111];
+                readCommand = b >>> 7;
+                import std.stdio; writefln("%08b %s %s", bitBuffer, register, readCommand ? "read" : "write");
+                break;
+            }
+            case READ_PARAMETERS: {
+                import std.stdio; writefln("%08b", bitBuffer);
+            }
+        }
     }
 
     private bool readIo() {
@@ -55,9 +103,10 @@ public struct Rtc {
 
     private void writeSelect(bool value) {
         if (selected && !value) {
-            // Clear the bit buffer when deselected
+            // Clear the bit buffer when deselected and reset the state
             bitBuffer = 0;
             bufferIndex = 0;
+            state = State.READ_COMMAND;
         }
         selected = value;
     }
