@@ -235,10 +235,15 @@ public struct Rtc {
 
     private void updateDateTimeRegisters() {
         // Convert the original datetime registers to a DateTime object
+        auto oldYear = lastSetDatetimeRegisters[0].bcdToDecimal() + 2000;
+        auto oldHour = (lastSetDatetimeRegisters[4] & 0x3F).bcdToDecimal();
+        // If the RTC is in 12h mode, we have to adjust the hour when it's PM
+        if (!(controlRegister & 0x40) && (lastSetDatetimeRegisters[4] & 0x40)) {
+            oldHour += 12;
+        }
         auto oldDateTime = DateTime(
-                lastSetDatetimeRegisters[0].bcdToDecimal() + 2000, lastSetDatetimeRegisters[1].bcdToDecimal(),
-                lastSetDatetimeRegisters[2].bcdToDecimal(), lastSetDatetimeRegisters[4].bcdToDecimal(),
-                lastSetDatetimeRegisters[5].bcdToDecimal(), lastSetDatetimeRegisters[6].bcdToDecimal()
+                oldYear, lastSetDatetimeRegisters[1].bcdToDecimal(), lastSetDatetimeRegisters[2].bcdToDecimal(),
+                oldHour, lastSetDatetimeRegisters[5].bcdToDecimal(), lastSetDatetimeRegisters[6].bcdToDecimal()
         );
         // Add to it the time elapsed since it was set. This is the RTC's current datetime
         auto dateTime = oldDateTime + hnsecs(Clock.currStdTime() - lastSetDatetimeTime);
@@ -246,15 +251,23 @@ public struct Rtc {
         if (dateTime.year < 2000 || dateTime.year > 2099) {
             throw new Exception(format("I'm sorry, but the RTC wasn't designed to work in the year %d", dateTime.year));
         }
-        // Calculate the day of the week offset (the number assignment in the RTC is decided by the user)
-        auto dowOffset = cast(int) lastSetDatetimeRegisters[3] - oldDateTime.dayOfWeek;
+        auto year = (dateTime.year - 2000).decimalToBcd();
+        // Calculate the day of the week (the number assignment in the RTC is decided by the user)
+        auto dayOfTheWeekOffset = cast(int) lastSetDatetimeRegisters[3] - oldDateTime.dayOfWeek;
+        auto dayOfTheWeek = (dateTime.dayOfWeek + dayOfTheWeekOffset) % 7;
+        // Calculate the hour register: start with the AM/PM flag
+        auto hour = (dateTime.hour >= 12) << 6;
+        // If the RTC is in 12h mode, we have to adjust the hour
+        if (hour & 0x40) {
+            hour |= dateTime.hour.decimalToBcd();
+        } else {
+            hour |= (dateTime.hour % 12).decimalToBcd();
+        }
         // Update the datetime registers to the current datetime
         datetimeRegisters = [
-            (dateTime.year - 2000).decimalToBcd(), dateTime.month.decimalToBcd(), dateTime.day.decimalToBcd(),
-            cast (ubyte) ((dateTime.dayOfWeek + dowOffset) % 7),
-            dateTime.hour.decimalToBcd(), dateTime.minute.decimalToBcd(), dateTime.second.decimalToBcd()
+            year, dateTime.month.decimalToBcd(), dateTime.day.decimalToBcd(), cast(ubyte) dayOfTheWeek,
+            cast(ubyte) hour, dateTime.minute.decimalToBcd(), dateTime.second.decimalToBcd()
         ];
-        // TODO: AM/PM flags
     }
 
     private bool readIo() {
