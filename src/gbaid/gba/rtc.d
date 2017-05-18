@@ -27,9 +27,6 @@ private enum State {
     WRITE_COMMAND, WRITE_PARAMETERS, READ_PARAMETERS
 }
 
-// In order: year, month, day, day of the week, hour, minutes and seconds
-private enum ubyte[] DATETIME_CLEARED_VALUES = [0, 1, 1, 0, 0, 0, 0];
-
 public struct Rtc {
     private bool selected = false;
     private bool clock = false;
@@ -39,19 +36,14 @@ public struct Rtc {
     private State state;
     private Register command;
     private uint parameterIndex;
-    private ubyte controlRegister;
-    private ubyte[7] datetimeRegisters;
-    private ubyte[7] lastSetDatetimeRegisters;
-    private long lastSetDatetimeTime;
+    private RtcData data;
 
     @disable public this();
 
     public this(bool clear) {
         if (clear) {
-            // Set the power-off bit
-            controlRegister = 0x80;
-            datetimeRegisters = DATETIME_CLEARED_VALUES;
-            updateLastSetDatetime();
+            // Simulate power-on for the first time
+            data.powerOff();
         }
     }
 
@@ -123,10 +115,7 @@ public struct Rtc {
                 // Process commands that don't have any parameters
                 switch (command) with (Register) {
                     case FORCE_RESET:
-                        // Clear all the registers
-                        controlRegister = 0;
-                        datetimeRegisters = DATETIME_CLEARED_VALUES;
-                        updateLastSetDatetime();
+                        data.forceReset();
                         break;
                     case FORCE_IRQ:
                         // TODO: Trigger a GamePak interrupt
@@ -144,26 +133,26 @@ public struct Rtc {
                         // Input one byte
                         if (parameterIndex < 1) {
                             // Clear the unused bits
-                            controlRegister = input & 0b01101010;
+                            data.controlRegister = input & 0b01101010;
                         }
                         break;
                     case DATETIME:
                         // Input seven bytes
                         if (parameterIndex < 7) {
-                            datetimeRegisters[parameterIndex] = input;
+                            data.datetimeRegisters[parameterIndex] = input;
                             // Update the last set datetime after the last parameter
                             if (parameterIndex == 6) {
-                                updateLastSetDatetime();
+                                data.updateLastSetDatetime();
                             }
                         }
                         break;
                     case TIME:
                         // Input three bytes
                         if (parameterIndex < 3) {
-                            datetimeRegisters[parameterIndex + 4] = input;
+                            data.datetimeRegisters[parameterIndex + 4] = input;
                             // Update the last set datetime after the last parameter
                             if (parameterIndex == 2) {
-                                updateLastSetDatetime();
+                                data.updateLastSetDatetime();
                             }
                         }
                         break;
@@ -188,7 +177,7 @@ public struct Rtc {
             case CONTROL:
                 // Output one byte
                 if (parameterIndex < 1) {
-                    output = controlRegister;
+                    output = data.controlRegister;
                 }
                 break;
             case DATETIME:
@@ -196,9 +185,9 @@ public struct Rtc {
                 if (parameterIndex < 7) {
                     // Update the current datetime before the first parameter
                     if (parameterIndex == 0) {
-                        updateDateTimeRegisters();
+                        data.updateDateTimeRegisters();
                     }
-                    output = datetimeRegisters[parameterIndex];
+                    output = data.datetimeRegisters[parameterIndex];
                 }
                 break;
             case TIME:
@@ -206,9 +195,9 @@ public struct Rtc {
                 if (parameterIndex < 3) {
                     // Update the current datetime before the first parameter
                     if (parameterIndex == 0) {
-                        updateDateTimeRegisters();
+                        data.updateDateTimeRegisters();
                     }
-                    output = datetimeRegisters[parameterIndex + 4];
+                    output = data.datetimeRegisters[parameterIndex + 4];
                 }
                 break;
             default:
@@ -218,6 +207,57 @@ public struct Rtc {
         // Increment for the next parameter
         parameterIndex += 1;
         return output;
+    }
+
+    private bool readIo() {
+        return io;
+    }
+
+    private void writeIo(bool value) {
+        io = value;
+    }
+
+    private bool readSelect() {
+        return selected;
+    }
+
+    private void writeSelect(bool value) {
+        if (!selected && value) {
+            // Clear the bit buffer and update the state when selected
+            bitBuffer = 0;
+            bufferIndex = 0;
+            state = State.WRITE_COMMAND;
+        }
+        selected = value;
+    }
+
+    private bool readFloating() {
+        return false;
+    }
+
+    private void writeFloating(bool value) {
+    }
+}
+
+// In order: year, month, day, day of the week, hour, minutes and seconds
+private enum ubyte[] DATETIME_CLEARED_VALUES = [0, 1, 1, 0, 0, 0, 0];
+
+private struct RtcData {
+    private ubyte controlRegister;
+    private ubyte[7] datetimeRegisters;
+    private ubyte[7] lastSetDatetimeRegisters;
+    private long lastSetDatetimeTime;
+
+    private void powerOff() {
+        controlRegister = 0x80;
+        datetimeRegisters = DATETIME_CLEARED_VALUES;
+        updateLastSetDatetime();
+    }
+
+    private void forceReset() {
+        controlRegister = 0;
+        datetimeRegisters = DATETIME_CLEARED_VALUES;
+        updateLastSetDatetime();
     }
 
     private void updateLastSetDatetime() {
@@ -268,35 +308,6 @@ public struct Rtc {
             year, dateTime.month.decimalToBcd(), dateTime.day.decimalToBcd(), cast(ubyte) dayOfTheWeek,
             cast(ubyte) hour, dateTime.minute.decimalToBcd(), dateTime.second.decimalToBcd()
         ];
-    }
-
-    private bool readIo() {
-        return io;
-    }
-
-    private void writeIo(bool value) {
-        io = value;
-    }
-
-    private bool readSelect() {
-        return selected;
-    }
-
-    private void writeSelect(bool value) {
-        if (!selected && value) {
-            // Clear the bit buffer and update the state when selected
-            bitBuffer = 0;
-            bufferIndex = 0;
-            state = State.WRITE_COMMAND;
-        }
-        selected = value;
-    }
-
-    private bool readFloating() {
-        return false;
-    }
-
-    private void writeFloating(bool value) {
     }
 }
 
