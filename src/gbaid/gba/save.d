@@ -16,6 +16,7 @@ public enum SaveMemoryKind : int {
     SRAM = 1,
     FLASH_512K = 2,
     FLASH_1M = 3,
+    RTC = 4,
     UNKNOWN = -1
 }
 
@@ -27,6 +28,7 @@ public enum int[SaveMemoryKind] memoryCapacityForSaveKind = [
     SaveMemoryKind.SRAM: 32 * BYTES_PER_KIB,
     SaveMemoryKind.FLASH_512K: 64 * BYTES_PER_KIB,
     SaveMemoryKind.FLASH_1M: 128 * BYTES_PER_KIB,
+    SaveMemoryKind.RTC: 24,
 ];
 
 /*

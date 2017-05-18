@@ -530,19 +530,13 @@ public struct GamePak {
         _unusedMemory = unusedMemory;
     }
 
-    public void enableRtc() {
-        rtc = new Rtc(true);
+    public void enableRtc(ubyte[] data = null) {
+        if (rtc !is null) {
+            return;
+        }
+        rtc = data is null ? new Rtc(true) : new Rtc(data);
         gpio.chip = rtc.chip;
         gpio.enabled = true;
-    }
-
-    private bool readDummy(int pin)() {
-        import std.stdio; writeln("read ", pin);
-        return false;
-    }
-
-    private void writeDummy(int pin)(bool value) {
-        import std.stdio; writefln("write %s: %b", pin, value);
     }
 
     public T get(T)(uint address) if (IsValidSize!T) {
@@ -656,6 +650,8 @@ public struct GamePak {
             case EEPROM:
                 save.sram = null;
                 break;
+            case RTC:
+                throw new Exception("Not a valid save memory configuration: RTC");
         }
         eeprom = saveConfig[1] ? new Eeprom(true) : null;
     }
@@ -692,8 +688,7 @@ public struct GamePak {
         }
 
         RawSaveMemory[] memories = saveFile.loadSaveFile();
-        bool foundSave = false;
-        bool foundEeprom = false;
+        bool foundSave = false, foundEeprom = false, foundRtc = false;
         foreach (memory; memories) {
             switch (memory[0]) with (SaveMemoryKind) {
                 case SRAM:
@@ -715,6 +710,10 @@ public struct GamePak {
                     checkSaveMissing(foundEeprom);
                     eeprom = new Eeprom(memory[1]);
                     break;
+                case RTC:
+                    checkSaveMissing(foundRtc);
+                    enableRtc(memory[1]);
+                    break;
                 default:
                     throw new Exception(format("Unsupported memory save type: %d", memory[0]));
             }
@@ -723,7 +722,8 @@ public struct GamePak {
 
     public void saveSave(string saveFile) {
         RawSaveMemory[] memories;
-        switch (saveKind) with (SaveMemoryKind) {
+        final switch (saveKind) with (SaveMemoryKind) {
+            case RTC:
             case EEPROM:
                 break;
             case SRAM:
@@ -735,11 +735,14 @@ public struct GamePak {
             case FLASH_1M:
                 memories ~= tuple(saveKind, save.flash1m.getArray!ubyte());
                 break;
-            default:
-                throw new Error("Unexpected save kind");
+            case UNKNOWN:
+                throw new Error("Unknown save kind");
         }
         if (eeprom !is null) {
             memories ~= tuple(SaveMemoryKind.EEPROM, eeprom.getArray!ubyte());
+        }
+        if (rtc !is null) {
+            memories ~= tuple(SaveMemoryKind.RTC, rtc.dataArray);
         }
         memories.saveSaveFile(saveFile);
     }

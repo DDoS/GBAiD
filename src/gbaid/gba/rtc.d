@@ -47,6 +47,10 @@ public struct Rtc {
         }
     }
 
+    public this(ubyte[] data) {
+        (cast(ubyte*) &this.data)[0 .. RtcData.sizeof] = data[];
+    }
+
     @property public GpioChip chip() {
         GpioChip chip;
         chip.readPin0 = &readClock;
@@ -58,6 +62,10 @@ public struct Rtc {
         chip.readPin3 = &readFloating;
         chip.writePin3 = &writeFloating;
         return chip;
+    }
+
+    @property public ubyte[] dataArray() {
+        return (cast(ubyte*) &data)[0 .. RtcData.sizeof];
     }
 
     private bool readClock() {
@@ -243,10 +251,16 @@ public struct Rtc {
 private enum ubyte[] DATETIME_CLEARED_VALUES = [0, 1, 1, 0, 0, 0, 0];
 
 private struct RtcData {
+    private long lastSetDatetimeTime;
     private ubyte controlRegister;
     private ubyte[7] datetimeRegisters;
     private ubyte[7] lastSetDatetimeRegisters;
-    private long lastSetDatetimeTime;
+
+    static assert (lastSetDatetimeTime.offsetof == 0);
+    static assert (controlRegister.offsetof == 8);
+    static assert (datetimeRegisters.offsetof == 9);
+    static assert (lastSetDatetimeRegisters.offsetof == 16);
+    static assert (RtcData.sizeof == 24);
 
     private void powerOff() {
         controlRegister = 0x80;
