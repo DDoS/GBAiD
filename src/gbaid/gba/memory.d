@@ -531,7 +531,7 @@ public struct GamePak {
     }
 
     public void enableRtc() {
-        rtc = new Rtc();
+        rtc = new Rtc(true);
         gpio.chip = rtc.chip;
         gpio.enabled = true;
     }
