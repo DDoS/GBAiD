@@ -1,11 +1,14 @@
-module gbaid.gba.save;
+module gbaid.save;
 
 import std.format : format;
 import std.typecons : tuple, Tuple;
+import std.file : read, FileException;
 import std.stdio : File;
 import std.bitmanip : littleEndianToNative, nativeToLittleEndian;
 import std.digest.crc : CRC32;
 import std.zlib : compress, uncompress;
+
+import gbaid.gba.memory : GamePakData, MainSaveKind, EEPROM_SIZE, SRAM_SIZE, FLASH_512K_SIZE, FLASH_1M_SIZE, RTC_SIZE;
 
 import gbaid.util;
 
@@ -24,12 +27,171 @@ private enum int SAVE_CURRENT_VERSION = 1;
 private immutable char[8] SAVE_FORMAT_MAGIC = "GBAiDSav";
 
 public enum int[SaveMemoryKind] memoryCapacityForSaveKind = [
-    SaveMemoryKind.EEPROM: 8 * BYTES_PER_KIB,
-    SaveMemoryKind.SRAM: 32 * BYTES_PER_KIB,
-    SaveMemoryKind.FLASH_512K: 64 * BYTES_PER_KIB,
-    SaveMemoryKind.FLASH_1M: 128 * BYTES_PER_KIB,
-    SaveMemoryKind.RTC: 24,
+    SaveMemoryKind.EEPROM: EEPROM_SIZE,
+    SaveMemoryKind.SRAM: SRAM_SIZE,
+    SaveMemoryKind.FLASH_512K: FLASH_512K_SIZE,
+    SaveMemoryKind.FLASH_1M: FLASH_1M_SIZE,
+    SaveMemoryKind.RTC: RTC_SIZE,
 ];
+
+private enum string[][SaveMemoryKind] saveMemoryIdsForKind = [
+    SaveMemoryKind.EEPROM: ["EEPROM_V"],
+    SaveMemoryKind.SRAM: ["SRAM_V"],
+    SaveMemoryKind.FLASH_512K: ["FLASH_V", "FLASH512_V"],
+    SaveMemoryKind.FLASH_1M: ["FLASH1M_V"],
+];
+
+public enum MainSaveConfig : int {
+    SRAM = MainSaveKind.SRAM,
+    FLASH_512K = MainSaveKind.FLASH_512K,
+    FLASH_1M = MainSaveKind.FLASH_1M,
+    NONE = MainSaveKind.NONE,
+    AUTO = -1
+}
+
+public enum EepromConfig {
+    ON, OFF, AUTO
+}
+
+public enum RtcConfig {
+    ON, OFF, AUTO
+}
+
+public class GameFiles {
+    private string romFile;
+    private string saveFile;
+    private MainSaveConfig mainSaveConfig;
+    private EepromConfig eepromConfig;
+    private RtcConfig rtcConfig;
+    private GamePakData _gamePakData;
+    private bool loaded = false;
+
+    public this(string romFile = null, MainSaveConfig mainSaveConfig = MainSaveConfig.AUTO,
+            EepromConfig eepromConfig = EepromConfig.AUTO,
+            RtcConfig rtcConfig = RtcConfig.AUTO) {
+        this.romFile = romFile;
+        this.saveFile = null;
+        this.mainSaveConfig = mainSaveConfig;
+        this.eepromConfig = eepromConfig;
+        this.rtcConfig = rtcConfig;
+    }
+
+    public this(string romFile, string saveFile,
+            EepromConfig eepromConfig = EepromConfig.AUTO,
+            RtcConfig rtcConfig = RtcConfig.AUTO) {
+        this.romFile = romFile;
+        this.saveFile = saveFile;
+        this.mainSaveConfig = MainSaveConfig.AUTO;
+        this.eepromConfig = eepromConfig;
+        this.rtcConfig = rtcConfig;
+    }
+
+    @property public GamePakData gamePakData() {
+        loadData();
+        return _gamePakData;
+    }
+
+    private void loadData() {
+        if (loaded) {
+            return;
+        }
+        // Load the ROM if provided, else use empty
+        if (romFile !is null) {
+            try {
+                _gamePakData.rom = romFile.read();
+            } catch (FileException ex) {
+                throw new Exception("Cannot read ROM file", ex);
+            }
+        } else {
+            _gamePakData.rom = [];
+        }
+        // Load the save file if provided, otherwise create the main save from the config
+        if (saveFile !is null) {
+            loadSave();
+        } else {
+            final switch (mainSaveConfig) with (MainSaveConfig) {
+                case SRAM:
+                case FLASH_512K:
+                case FLASH_1M:
+                case NONE:
+                    _gamePakData.mainSave = [];
+                    _gamePakData.mainSaveKind = cast(MainSaveKind) mainSaveConfig;
+                    break;
+                case AUTO:
+                    // TODO
+            }
+        }
+        // Load the EEPROM
+        final switch (eepromConfig) with (EepromConfig) {
+            case ON:
+                _gamePakData.eeprom = [];
+                break;
+            case OFF:
+                _gamePakData.eeprom = null;
+                break;
+            case AUTO:
+                // TODO
+        }
+        // Load the RTC
+        final switch (rtcConfig) with (RtcConfig) {
+            case ON:
+                _gamePakData.rtc = [];
+                break;
+            case OFF:
+                _gamePakData.rtc = null;
+                break;
+            case AUTO:
+                // TODO
+        }
+        // Mark as loaded so we don't do it twice
+        loaded = true;
+    }
+
+    private void loadSave() {
+        RawSaveMemory[] memories = saveFile.loadSaveFile();
+        bool foundSave = false, foundEeprom = false, foundRtc = false;
+        foreach (memory; memories) {
+            switch (memory[0]) with (SaveMemoryKind) {
+                case SRAM:
+                    checkSaveMissing(foundSave);
+                    _gamePakData.mainSave = memory[1];
+                    _gamePakData.mainSaveKind = MainSaveKind.SRAM;
+                    break;
+                case FLASH_512K:
+                    checkSaveMissing(foundSave);
+                    _gamePakData.mainSave = memory[1];
+                    _gamePakData.mainSaveKind = MainSaveKind.FLASH_512K;
+                    break;
+                case FLASH_1M:
+                    checkSaveMissing(foundSave);
+                    _gamePakData.mainSave = memory[1];
+                    _gamePakData.mainSaveKind = MainSaveKind.FLASH_1M;
+                    break;
+                case EEPROM:
+                    checkSaveMissing(foundEeprom);
+                    _gamePakData.eeprom = memory[1];
+                    break;
+                case RTC:
+                    checkSaveMissing(foundRtc);
+                    _gamePakData.rtc = memory[1];
+                    break;
+                default:
+                    throw new Exception(format("Unsupported memory save type: %d", memory[0]));
+            }
+        }
+        // The Classis NES series games only have an EEPROM, so this is can happen
+        if (!foundSave) {
+            _gamePakData.mainSaveKind = MainSaveKind.NONE;
+        }
+    }
+
+    private void checkSaveMissing(ref bool found) {
+        if (found) {
+            throw new Exception("Found more than one possible save memory in the save file");
+        }
+        found = true;
+    }
+}
 
 /*
 All ints are 32 bit and stored in little endian.

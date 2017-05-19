@@ -1,7 +1,5 @@
 module gbaid.gba.system;
 
-import core.sync.mutex;
-
 import gbaid.util;
 
 import gbaid.gba.display;
@@ -13,11 +11,9 @@ import gbaid.gba.halt;
 import gbaid.gba.keypad;
 import gbaid.gba.sound;
 import gbaid.gba.timer;
-import gbaid.gba.save;
 
 public class GameBoyAdvance {
     private static enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
-    private Mutex systemLock;
     private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -35,14 +31,8 @@ public class GameBoyAdvance {
     private size_t soundChipCycles = 0;
     private size_t keypadCycles = 0;
 
-    public this(Save)(string biosFile, string romFile, Save save) {
-        if (biosFile is null) {
-            throw new NullPathException("BIOS");
-        }
-
-        systemLock = new Mutex();
-
-        memory = MemoryBus(biosFile, romFile, save);
+    public this(void[] bios, GamePakData gamePakData) {
+        memory = MemoryBus(bios, gamePakData);
         memory.biosReadFallback = &biosReadFallback;
         memory.unusedMemory = &unusedReadFallBack;
 
@@ -72,42 +62,30 @@ public class GameBoyAdvance {
         keypad.setState(state);
     }
 
-    public void enableRtc() {
-        memory.gamePak.enableRtc();
-    }
-
     public void emulate(size_t cycles) {
         // If an exception occurs during emulation, swap the frame to release any thread waiting on this one
         scope (failure) {
             frameSwapper.swapFrame();
         }
-        synchronized (systemLock) {
-            // Split cycles into batches, and process these first
-            auto fullBatches = cycles / CYCLE_BATCH_SIZE;
-            foreach (i; 0 .. fullBatches) {
-                displayCycles = display.emulate(displayCycles + CYCLE_BATCH_SIZE);
-                processorCycles = processor.emulate(processorCycles + CYCLE_BATCH_SIZE);
-                dmasCycles = dmas.emulate(dmasCycles + CYCLE_BATCH_SIZE);
-                timersCycles = timers.emulate(timersCycles + CYCLE_BATCH_SIZE);
-                soundChipCycles = soundChip.emulate(soundChipCycles + CYCLE_BATCH_SIZE);
-                keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
-            }
-            // An incomplete batch of cycles might be lef over, so process it too
-            auto partialBatch = cycles % CYCLE_BATCH_SIZE;
-            if (partialBatch > 0) {
-                displayCycles = display.emulate(displayCycles + partialBatch);
-                processorCycles = processor.emulate(processorCycles + partialBatch);
-                dmasCycles = dmas.emulate(dmasCycles + partialBatch);
-                timersCycles = timers.emulate(timersCycles + partialBatch);
-                soundChipCycles = soundChip.emulate(soundChipCycles + partialBatch);
-                keypadCycles = keypad.emulate(keypadCycles + partialBatch);
-            }
+        // Split cycles into batches, and process these first
+        auto fullBatches = cycles / CYCLE_BATCH_SIZE;
+        foreach (i; 0 .. fullBatches) {
+            displayCycles = display.emulate(displayCycles + CYCLE_BATCH_SIZE);
+            processorCycles = processor.emulate(processorCycles + CYCLE_BATCH_SIZE);
+            dmasCycles = dmas.emulate(dmasCycles + CYCLE_BATCH_SIZE);
+            timersCycles = timers.emulate(timersCycles + CYCLE_BATCH_SIZE);
+            soundChipCycles = soundChip.emulate(soundChipCycles + CYCLE_BATCH_SIZE);
+            keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
         }
-    }
-
-    public void saveSave(string saveFile) {
-        synchronized (systemLock) {
-            memory.gamePak.saveSave(saveFile);
+        // An incomplete batch of cycles might be lef over, so process it too
+        auto partialBatch = cycles % CYCLE_BATCH_SIZE;
+        if (partialBatch > 0) {
+            displayCycles = display.emulate(displayCycles + partialBatch);
+            processorCycles = processor.emulate(processorCycles + partialBatch);
+            dmasCycles = dmas.emulate(dmasCycles + partialBatch);
+            timersCycles = timers.emulate(timersCycles + partialBatch);
+            soundChipCycles = soundChip.emulate(soundChipCycles + partialBatch);
+            keypadCycles = keypad.emulate(keypadCycles + partialBatch);
         }
     }
 

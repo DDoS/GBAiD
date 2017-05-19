@@ -27,6 +27,8 @@ private enum State {
     WRITE_COMMAND, WRITE_PARAMETERS, READ_PARAMETERS
 }
 
+public enum uint RTC_SIZE = RtcData.sizeof;
+
 public struct Rtc {
     private bool selected = false;
     private bool clock = false;
@@ -40,15 +42,15 @@ public struct Rtc {
 
     @disable public this();
 
-    public this(bool clear) {
-        if (clear) {
+    public this(void[] data) {
+        if (data.length == 0) {
             // Simulate power-on for the first time
-            data.powerOff();
+            this.data.powerOff();
+        } else if (data.length == RTC_SIZE) {
+            (cast(void*) &this.data)[0 .. RtcData.sizeof] = data[];
+        } else {
+            throw new Exception("Expected 0 or 24 bytes");
         }
-    }
-
-    public this(ubyte[] data) {
-        (cast(ubyte*) &this.data)[0 .. RtcData.sizeof] = data[];
     }
 
     @property public GpioChip chip() {

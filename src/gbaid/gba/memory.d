@@ -6,14 +6,14 @@ import std.traits : MutableOf, ImmutableOf;
 import std.meta : Alias, AliasSeq, staticIndexOf;
 import std.typecons : tuple, Tuple;
 import std.algorithm.comparison : min;
-import std.file : read, FileException;
 import std.format : format;
 
 import gbaid.util;
 
 import gbaid.gba.gpio;
 import gbaid.gba.rtc;
-import gbaid.gba.save;
+
+public import gbaid.gba.rtc : RTC_SIZE;
 
 public alias Ram(uint byteSize) = Memory!(byteSize, false);
 public alias Rom(uint byteSize) = Memory!(byteSize, true);
@@ -25,14 +25,16 @@ public alias Palette = Ram!PALETTE_SIZE;
 public alias Vram = Ram!VRAM_SIZE;
 public alias Oam = Ram!OAM_SIZE;
 public alias GameRom = Rom!MAX_ROM_SIZE;
-public alias Sram = Ram!(memoryCapacityForSaveKind[SaveMemoryKind.SRAM]);
-public alias Flash512K = Flash!(memoryCapacityForSaveKind[SaveMemoryKind.FLASH_512K]);
-public alias Flash1M = Flash!(memoryCapacityForSaveKind[SaveMemoryKind.FLASH_1M]);
+public alias Sram = Ram!SRAM_SIZE;
+public alias Flash512K = Flash!FLASH_512K_SIZE;
+public alias Flash1M = Flash!FLASH_1M_SIZE;
 
 private alias ValidSizes = AliasSeq!(byte, ubyte, short, ushort, int, uint);
 private alias IsValidSize(T) = Alias!(staticIndexOf!(T, ValidSizes) >= 0);
 
-public alias SaveMemoryConfiguration = Tuple!(SaveMemoryKind, bool);
+public enum MainSaveKind {
+    SRAM, FLASH_512K, FLASH_1M, NONE
+}
 
 private template SizeBase2Power(T) {
     static if (is(T == byte) || is(T == ubyte)) {
@@ -48,17 +50,6 @@ private template SizeBase2Power(T) {
 
 private alias AlignmentMask(T) = Alias!(~((1 << SizeBase2Power!T) - 1));
 
-public enum SaveConfiguration {
-    SRAM,
-    SRAM_EEPROM,
-    FLASH_512K,
-    FLASH_512K_EEPROM,
-    FLASH_1M,
-    FLASH_1M_EEPROM,
-    EEPROM,
-    AUTO
-}
-
 public enum uint BIOS_SIZE = 16 * BYTES_PER_KIB;
 public enum uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
 public enum uint CHIP_WRAM_SIZE = 32 * BYTES_PER_KIB;
@@ -67,7 +58,10 @@ public enum uint PALETTE_SIZE = 1 * BYTES_PER_KIB;
 public enum uint VRAM_SIZE = 96 * BYTES_PER_KIB;
 public enum uint OAM_SIZE = 1 * BYTES_PER_KIB;
 public enum uint MAX_ROM_SIZE = 32 * BYTES_PER_MIB;
-public enum uint EEPROM_SIZE = memoryCapacityForSaveKind[SaveMemoryKind.EEPROM];
+public enum uint SRAM_SIZE = 32 * BYTES_PER_KIB;
+public enum uint FLASH_512K_SIZE = 64 * BYTES_PER_KIB;
+public enum uint FLASH_1M_SIZE = 128 * BYTES_PER_KIB;
+public enum uint EEPROM_SIZE = 8 * BYTES_PER_KIB;
 
 public enum uint BIOS_START = 0x00000000;
 public enum uint BIOS_MASK = 0x3FFF;
@@ -87,24 +81,6 @@ public enum uint FLASH_MASK = 0xFFFF;
 public enum uint EEPROM_MASK_HIGH = 0xFFFF00;
 public enum uint EEPROM_MASK_LOW = 0x0;
 
-public enum string[][SaveMemoryKind] saveMemoryIdsForKind = [
-    SaveMemoryKind.EEPROM: ["EEPROM_V"],
-    SaveMemoryKind.SRAM: ["SRAM_V"],
-    SaveMemoryKind.FLASH_512K: ["FLASH_V", "FLASH512_V"],
-    SaveMemoryKind.FLASH_1M: ["FLASH1M_V"],
-];
-
-public enum SaveMemoryConfiguration[SaveConfiguration] saveMemoryForConfiguration = [
-    SaveConfiguration.SRAM: tuple(SaveMemoryKind.SRAM, false),
-    SaveConfiguration.SRAM_EEPROM: tuple(SaveMemoryKind.SRAM, true),
-    SaveConfiguration.FLASH_512K: tuple(SaveMemoryKind.FLASH_512K, false),
-    SaveConfiguration.FLASH_512K_EEPROM: tuple(SaveMemoryKind.FLASH_512K, true),
-    SaveConfiguration.FLASH_1M: tuple(SaveMemoryKind.FLASH_1M, false),
-    SaveConfiguration.FLASH_1M_EEPROM: tuple(SaveMemoryKind.FLASH_1M, true),
-    SaveConfiguration.EEPROM: tuple(SaveMemoryKind.EEPROM, true),
-    SaveConfiguration.AUTO: tuple(SaveMemoryKind.UNKNOWN, false)
-];
-
 public struct Memory(uint byteSize, bool readOnly) {
     private Mod!(void[byteSize]) memory;
 
@@ -117,14 +93,6 @@ public struct Memory(uint byteSize, bool readOnly) {
             throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
         }
         this.memory[0 .. memory.length] = memory[];
-    }
-
-    public this(string file) {
-        try {
-            this(file.read());
-        } catch (FileException ex) {
-            throw new Exception("Cannot read memory file", ex);
-        }
     }
 
     public Mod!T get(T)(uint address) if (IsValidSize!T) {
@@ -252,18 +220,14 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
     private uint eraseSectorTarget;
     private uint sectorOffset = 0;
 
-    public this(bool erase) {
-        if (!erase) {
-            return;
-        }
-        this.erase(0x0, byteSize);
-    }
-
     public this(void[] memory) {
-        if (memory.length > byteSize) {
-            throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        if (memory.length == 0) {
+            this.erase(0x0, byteSize);
+        } else if (memory.length <= byteSize) {
+            this.memory[0 .. memory.length] = memory[];
+        } else {
+            throw new Exception(format("Expected a memory size of 0 or %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[0 .. memory.length] = memory[];
     }
 
     public T get(T)(uint address) if (is(T == byte) || is(T == ubyte)) {
@@ -372,19 +336,15 @@ public struct Eeprom {
     private int currentReadBit = 0;
     private int[3] writeBuffer;
 
-    public this(bool erase) {
-        if (!erase) {
-            return;
-        }
-        (cast(byte[]) memory)[0 .. $] = cast(byte) 0xFF;
-    }
-
     public this(void[] memory) {
         auto byteSize = this.memory.length;
-        if (memory.length > byteSize) {
-            throw new Exception(format("Expected a memory size of %dB, but got %dB", byteSize, memory.length));
+        if (memory.length == 0) {
+            (cast(byte[]) memory)[0 .. $] = cast(byte) 0xFF;
+        } else if (memory.length <= byteSize) {
+            this.memory[0 .. memory.length] = memory[];
+        } else {
+            throw new Exception(format("Expected a memory size of 0 or %dB, but got %dB", byteSize, memory.length));
         }
-        this.memory[0 .. memory.length] = memory[];
     }
 
     public T get(T)(uint address) if (is(T == short) || is (T == ushort)) {
@@ -488,6 +448,14 @@ public struct Eeprom {
     }
 }
 
+public struct GamePakData {
+    public void[] rom;
+    public void[] mainSave;
+    public MainSaveKind mainSaveKind;
+    public void[] eeprom;
+    public void[] rtc;
+}
+
 private union SaveMemory {
     private Sram* sram;
     private Flash512K* flash512k;
@@ -497,46 +465,51 @@ private union SaveMemory {
 public struct GamePak {
     private GameRom rom;
     private GpioPort gpio;
-    private SaveMemoryKind saveKind;
+    private MainSaveKind saveKind;
     private SaveMemory save;
-    private Eeprom* eeprom;
-    private Rtc* rtc;
+    private Eeprom* eeprom = null;
+    private Rtc* rtc = null;
     private int delegate(uint) _unusedMemory = null;
     private uint eepromMask;
     private uint actualRomByteSize;
 
     @disable public this();
 
-    public this(Save)(string romFile, Save save) {
-        rom = GameRom(readFileAndSize(romFile, actualRomByteSize));
-        actualRomByteSize = actualRomByteSize.nextPowerOf2();
+    public this(GamePakData data) {
+        rom = GameRom(data.rom);
+        actualRomByteSize = (cast(int) data.rom.length).nextPowerOf2();
+
         gpio.valueAtCa = rom.get!short(0xCA);
 
-        static if (is(Save == SaveConfiguration)) {
-            allocateNewSave(saveMemoryForConfiguration[save]);
-        } else static if (is(Save == string)) {
-            if (save is null) {
-                allocateNewSave(saveMemoryForConfiguration[SaveConfiguration.AUTO]);
-            } else {
-                loadSave(save);
-            }
-        } else {
-            static assert (0, "Expected a SaveConfiguration value or a file path as a string");
+        saveKind = data.mainSaveKind;
+        final switch (saveKind) with (MainSaveKind) {
+            case SRAM:
+                save.sram = new Sram(data.mainSave);
+                break;
+            case FLASH_512K:
+                save.flash512k = new Flash512K(data.mainSave);
+                break;
+            case FLASH_1M:
+                save.flash1m = new Flash1M(data.mainSave);
+                break;
+            case NONE:
+                break;
+        }
+
+        if (data.eeprom !is null) {
+            eeprom = new Eeprom(data.eeprom);
+        }
+
+        if (data.rtc !is null) {
+            rtc = new Rtc(data.rtc);
+            gpio.chip = rtc.chip;
+            gpio.enabled = true;
         }
     }
 
     @property public void unusedMemory(int delegate(uint) unusedMemory) {
         assert (unusedMemory !is null);
         _unusedMemory = unusedMemory;
-    }
-
-    public void enableRtc(ubyte[] data = null) {
-        if (rtc !is null) {
-            return;
-        }
-        rtc = data is null ? new Rtc(true) : new Rtc(data);
-        gpio.chip = rtc.chip;
-        gpio.enabled = true;
     }
 
     public T get(T)(uint address) if (IsValidSize!T) {
@@ -559,9 +532,7 @@ public struct GamePak {
                 }
                 goto case 0x4;
             case 0x6:
-                switch (saveKind) with (SaveMemoryKind) {
-                    case EEPROM:
-                        return cast(T) _unusedMemory(address);
+                final switch (saveKind) with (MainSaveKind) {
                     case SRAM:
                         address &= SRAM_MASK;
                         return save.sram.get!T(address);
@@ -579,8 +550,8 @@ public struct GamePak {
                         } else {
                             return cast(T) _unusedMemory(address);
                         }
-                    default:
-                        throw new Error("Unexpected save kind");
+                    case NONE:
+                        return cast(T) _unusedMemory(address);
                 }
             default:
                 return cast(T) _unusedMemory(address);
@@ -605,9 +576,7 @@ public struct GamePak {
                 }
                 return;
             case 0x6:
-                switch (saveKind) with (SaveMemoryKind) {
-                    case EEPROM:
-                        return;
+                final switch (saveKind) with (MainSaveKind) {
                     case SRAM:
                         address &= SRAM_MASK;
                         save.sram.set!T(address, value);
@@ -624,136 +593,11 @@ public struct GamePak {
                             save.flash1m.set!T(address, value);
                         }
                         return;
-                    default:
-                        throw new Error("Unexpected save kind");
+                    case NONE:
+                        return;
                 }
             default:
                 return;
-        }
-    }
-
-    private void allocateNewSave(SaveMemoryConfiguration saveConfig) {
-        saveKind = saveConfig[0];
-        final switch (saveKind) with (SaveMemoryKind) {
-            case UNKNOWN:
-                autoNewSave();
-                return;
-            case SRAM:
-                save.sram = new Sram();
-                break;
-            case FLASH_512K:
-                save.flash512k = new Flash512K(true);
-                break;
-            case FLASH_1M:
-                save.flash1m = new Flash1M(true);
-                break;
-            case EEPROM:
-                save.sram = null;
-                break;
-            case RTC:
-                throw new Exception("Not a valid save memory configuration: RTC");
-        }
-        eeprom = saveConfig[1] ? new Eeprom(true) : null;
-    }
-
-    private void autoNewSave() {
-        // Detect save types and size using ID strings in ROM
-        auto foundKind = SaveMemoryKind.SRAM;
-        auto hasEeprom = false;
-        auto romChars = rom.getArray!ubyte(0x0, actualRomByteSize);
-        foreach (saveKind, saveIds; saveMemoryIdsForKind) {
-            foreach (saveId; saveIds) {
-                for (size_t i = 0; i < romChars.length; i += 4) {
-                    if (romChars[i .. min(i + saveId.length, $)] != saveId) {
-                        continue;
-                    }
-                    if (saveKind == SaveMemoryKind.EEPROM) {
-                        hasEeprom = true;
-                    } else {
-                        foundKind = saveKind;
-                    }
-                }
-            }
-        }
-        // Allocate the memory
-        allocateNewSave(tuple(foundKind, hasEeprom));
-    }
-
-    private void loadSave(string saveFile) {
-        void checkSaveMissing(ref bool found) {
-            if (found) {
-                throw new Exception("Found more than one possible save memory in the save file");
-            }
-            found = true;
-        }
-
-        RawSaveMemory[] memories = saveFile.loadSaveFile();
-        bool foundSave = false, foundEeprom = false, foundRtc = false;
-        foreach (memory; memories) {
-            switch (memory[0]) with (SaveMemoryKind) {
-                case SRAM:
-                    checkSaveMissing(foundSave);
-                    save.sram = new Sram(memory[1]);
-                    saveKind = SRAM;
-                    break;
-                case FLASH_512K:
-                    checkSaveMissing(foundSave);
-                    save.flash512k = new Flash512K(memory[1]);
-                    saveKind = FLASH_512K;
-                    break;
-                case FLASH_1M:
-                    checkSaveMissing(foundSave);
-                    save.flash1m = new Flash1M(memory[1]);
-                    saveKind = FLASH_1M;
-                    break;
-                case EEPROM:
-                    checkSaveMissing(foundEeprom);
-                    eeprom = new Eeprom(memory[1]);
-                    break;
-                case RTC:
-                    checkSaveMissing(foundRtc);
-                    enableRtc(memory[1]);
-                    break;
-                default:
-                    throw new Exception(format("Unsupported memory save type: %d", memory[0]));
-            }
-        }
-    }
-
-    public void saveSave(string saveFile) {
-        RawSaveMemory[] memories;
-        final switch (saveKind) with (SaveMemoryKind) {
-            case RTC:
-            case EEPROM:
-                break;
-            case SRAM:
-                memories ~= tuple(saveKind, save.sram.getArray!ubyte());
-                break;
-            case FLASH_512K:
-                memories ~= tuple(saveKind, save.flash512k.getArray!ubyte());
-                break;
-            case FLASH_1M:
-                memories ~= tuple(saveKind, save.flash1m.getArray!ubyte());
-                break;
-            case UNKNOWN:
-                throw new Error("Unknown save kind");
-        }
-        if (eeprom !is null) {
-            memories ~= tuple(SaveMemoryKind.EEPROM, eeprom.getArray!ubyte());
-        }
-        if (rtc !is null) {
-            memories ~= tuple(SaveMemoryKind.RTC, rtc.dataArray);
-        }
-        memories.saveSaveFile(saveFile);
-    }
-
-    private static void[] readFileAndSize(string file, ref uint size) {
-        try {
-            auto memory = file.read();
-            size = cast(uint) memory.length;
-            return memory;
-        } catch (FileException ex) {
-            throw new Exception("Cannot read memory file", ex);
         }
     }
 }
@@ -773,9 +617,9 @@ public struct MemoryBus {
 
     @disable public this();
 
-    public this(Save)(string biosFile, string romFile, Save saveConfig) {
-        _bios = Bios(biosFile);
-        _gamePak = GamePak(romFile, saveConfig);
+    public this(void[] bios, GamePakData gamePakData) {
+        _bios = Bios(bios);
+        _gamePak = GamePak(gamePakData);
         _unusedMemory = &zeroUnusedMemory;
         _biosReadGuard = &noBiosReadGuard;
     }

@@ -1,10 +1,9 @@
 import core.thread : Thread;
 
-import std.stdio;
-import std.getopt;
-import std.string;
-import std.file;
-import std.path;
+import std.stdio : writeln;
+import std.getopt: getopt, config;
+import std.file : read, FileException;
+import std.path : exists, setExtension;
 
 import derelict.sdl2.sdl;
 
@@ -13,24 +12,26 @@ import gbaid.gba;
 import gbaid.input;
 import gbaid.audio;
 import gbaid.render.renderer;
+import gbaid.save;
 
 private enum string SAVE_EXTENSION = ".gsf";
 
 public int main(string[] args) {
     // Parse comand line arguments
-    string bios = null, save = null;
+    string biosFile = null, saveFile = null;
     bool noLoad = false, noSave = false;
     float scale = 2;
     bool fullScreen = false;
     FilteringMode filtering = FilteringMode.NONE;
     UpscalingMode upscaling = UpscalingMode.NONE;
-    SaveConfiguration memory = SaveConfiguration.AUTO;
+    MainSaveConfig mainSaveConfig = MainSaveConfig.AUTO;
+    EepromConfig eepromConfig = EepromConfig.AUTO;
+    RtcConfig rtcConfig = RtcConfig.AUTO;
     bool controller = false;
-    bool rtc = false;
     getopt(args,
         config.caseSensitive,
-        "bios|b", &bios,
-        "save|s", &save,
+        "bios|b", &biosFile,
+        "save|s", &saveFile,
         config.bundling,
         "noload|n", &noLoad,
         "nosave|N", &noSave,
@@ -39,49 +40,57 @@ public int main(string[] args) {
         "fullscreen|R", &fullScreen,
         "filtering|f", &filtering,
         "upscaling|u", &upscaling,
-        "memory|m", &memory,
-        "controller|c", &controller,
-        "rtc", &rtc
+        "save-memory", &mainSaveConfig,
+        "eeprom", &eepromConfig,
+        "rtc", &rtcConfig,
+        "controller|c", &controller
     );
 
     // Resolve BIOS
-    if (bios is null) {
+    if (biosFile is null) {
         writeln("Missing BIOS file path, sepcify with \"-b (path to bios)\"");
         return 1;
     }
-    bios = expandPath(bios);
-    if (!exists(bios)) {
+    biosFile = expandPath(biosFile);
+    if (!exists(biosFile)) {
         writeln("BIOS file doesn't exist");
         return 1;
     }
 
-    // Resolve ROM
-    string rom = args.getSafe!string(1, null);
-    if (rom is null) {
-        writeln("Missing ROM file path, sepcify as last argument");
-        return 1;
-    }
-    rom = expandPath(rom);
-    if (!exists(rom)) {
-        writeln("ROM file doesn't exist");
+    // Load the BIOS
+    void[] bios = void;
+    try {
+        bios = biosFile.read();
+    } catch (FileException exception) {
+        writeln("Could not read the BIOS file: ", exception.msg);
         return 1;
     }
 
+    // Resolve ROM
+    auto romFile = args.getSafe!string(1, null);
+    if (romFile !is null) {
+        romFile = expandPath(romFile);
+        if (!exists(romFile)) {
+            writeln("ROM file doesn't exist");
+            return 1;
+        }
+    }
+
     // Resolve save
-    if (save is null) {
-        save = setExtension(rom, SAVE_EXTENSION);
-        writeln("Save path not specified, using default \"", save, "\"");
+    if (saveFile is null) {
+        saveFile = setExtension(romFile, SAVE_EXTENSION);
+        writeln("Save path not specified, using default \"", saveFile, "\"");
     } else {
-        save = expandPath(save);
+        saveFile = expandPath(saveFile);
     }
     bool newSave = void;
     if (noLoad) {
         newSave = true;
         writeln("Using new save");
     } else {
-        if (exists(save)) {
+        if (exists(saveFile)) {
             newSave = false;
-            writeln("Found save \"", save, "\"");
+            writeln("Found save \"", saveFile, "\"");
         } else {
             newSave = true;
             writeln("Save file not found, using new save");
@@ -89,17 +98,13 @@ public int main(string[] args) {
     }
 
     // Create and configure GBA
-    GameBoyAdvance gba = void;
+    GameFiles gameFiles = void;
     if (newSave) {
-        gba = new GameBoyAdvance(bios, rom, memory);
+        gameFiles = new GameFiles(romFile, mainSaveConfig, eepromConfig, rtcConfig);
     } else {
-        gba = new GameBoyAdvance(bios, rom, save);
+        gameFiles = new GameFiles(romFile, saveFile, eepromConfig, rtcConfig);
     }
-
-    // Enable the Real Time clock if required
-    if (rtc) {
-        gba.enableRtc();
-    }
+    auto gba = new GameBoyAdvance(bios, gameFiles.gamePakData);
 
     // Load and initialize SDL
     if (!DerelictSDL2.isLoaded) {
@@ -183,8 +188,8 @@ public int main(string[] args) {
                 writeln("Saving is disabled");
             } else {
                 audio.pause();
-                gba.saveSave(save);
-                writeln("Quick saved \"", save, "\"");
+                //gba.saveSave(saveFile);
+                writeln("Quick saved \"", saveFile, "\"");
                 audio.resume();
             }
         }
@@ -201,8 +206,8 @@ public int main(string[] args) {
     if (noSave) {
         writeln("Saving is disabled");
     } else {
-        gba.saveSave(save);
-        writeln("Saved \"", save, "\"");
+        //gba.saveSave(saveFile);
+        writeln("Saved \"", saveFile, "\"");
     }
 
     return 0;
