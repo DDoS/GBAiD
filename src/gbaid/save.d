@@ -125,9 +125,10 @@ public class GameFiles {
         final switch (eepromConfig) with (EepromConfig) {
             case ON:
                 _gamePakData.eeprom = [];
+                _gamePakData.eepromEnabled = true;
                 break;
             case OFF:
-                _gamePakData.eeprom = null;
+                _gamePakData.eepromEnabled = false;
                 break;
             case AUTO:
                 // TODO
@@ -136,9 +137,10 @@ public class GameFiles {
         final switch (rtcConfig) with (RtcConfig) {
             case ON:
                 _gamePakData.rtc = [];
+                _gamePakData.rtcEnabled = true;
                 break;
             case OFF:
-                _gamePakData.rtc = null;
+                _gamePakData.rtcEnabled = false;
                 break;
             case AUTO:
                 // TODO
@@ -170,10 +172,12 @@ public class GameFiles {
                 case EEPROM:
                     checkSaveMissing(foundEeprom);
                     _gamePakData.eeprom = memory[1];
+                    _gamePakData.eepromEnabled = true;
                     break;
                 case RTC:
                     checkSaveMissing(foundRtc);
                     _gamePakData.rtc = memory[1];
+                    _gamePakData.rtcEnabled = true;
                     break;
                 default:
                     throw new Exception(format("Unsupported memory save type: %d", memory[0]));

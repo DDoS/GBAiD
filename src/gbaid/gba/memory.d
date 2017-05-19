@@ -453,7 +453,9 @@ public struct GamePakData {
     public void[] mainSave;
     public MainSaveKind mainSaveKind;
     public void[] eeprom;
+    public bool eepromEnabled;
     public void[] rtc;
+    public bool rtcEnabled;
 }
 
 private union SaveMemory {
@@ -496,11 +498,11 @@ public struct GamePak {
                 break;
         }
 
-        if (data.eeprom !is null) {
+        if (data.eepromEnabled) {
             eeprom = new Eeprom(data.eeprom);
         }
 
-        if (data.rtc !is null) {
+        if (data.rtcEnabled) {
             rtc = new Rtc(data.rtc);
             gpio.chip = rtc.chip;
             gpio.enabled = true;

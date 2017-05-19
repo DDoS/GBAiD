@@ -68,7 +68,10 @@ public int main(string[] args) {
 
     // Resolve ROM
     auto romFile = args.getSafe!string(1, null);
-    if (romFile !is null) {
+    if (romFile is null) {
+        noSave = true;
+        writeln("ROM file is missing; saving is disabled");
+    } else {
         romFile = expandPath(romFile);
         if (!exists(romFile)) {
             writeln("ROM file doesn't exist");
@@ -77,23 +80,27 @@ public int main(string[] args) {
     }
 
     // Resolve save
-    if (saveFile is null) {
-        saveFile = setExtension(romFile, SAVE_EXTENSION);
-        writeln("Save path not specified, using default \"", saveFile, "\"");
-    } else {
-        saveFile = expandPath(saveFile);
-    }
     bool newSave = void;
-    if (noLoad) {
+    if (romFile is null) {
         newSave = true;
-        writeln("Using new save");
     } else {
-        if (exists(saveFile)) {
-            newSave = false;
-            writeln("Found save \"", saveFile, "\"");
+        if (saveFile is null) {
+            saveFile = setExtension(romFile, SAVE_EXTENSION);
+            writeln("Save path not specified, using default \"", saveFile, "\"");
         } else {
+            saveFile = expandPath(saveFile);
+        }
+        if (noLoad) {
             newSave = true;
-            writeln("Save file not found, using new save");
+            writeln("Using new save");
+        } else {
+            if (exists(saveFile)) {
+                newSave = false;
+                writeln("Found save \"", saveFile, "\"");
+            } else {
+                newSave = true;
+                writeln("Save file not found, using new save");
+            }
         }
     }
 
