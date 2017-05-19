@@ -4,6 +4,7 @@ import std.format : format;
 import std.typecons : tuple, Tuple;
 import std.file : read, FileException;
 import std.stdio : File;
+import std.algorithm.comparison : min;
 import std.bitmanip : littleEndianToNative, nativeToLittleEndian;
 import std.digest.crc : CRC32;
 import std.zlib : compress, uncompress;
@@ -34,12 +35,13 @@ public enum int[SaveMemoryKind] memoryCapacityForSaveKind = [
     SaveMemoryKind.RTC: RTC_SIZE,
 ];
 
-private enum string[][SaveMemoryKind] saveMemoryIdsForKind = [
-    SaveMemoryKind.EEPROM: ["EEPROM_V"],
-    SaveMemoryKind.SRAM: ["SRAM_V"],
-    SaveMemoryKind.FLASH_512K: ["FLASH_V", "FLASH512_V"],
-    SaveMemoryKind.FLASH_1M: ["FLASH1M_V"],
+private enum string[][MainSaveKind] mainSaveKindIds = [
+    MainSaveKind.SRAM: ["SRAM_V"],
+    MainSaveKind.FLASH_512K: ["FLASH_V", "FLASH512_V"],
+    MainSaveKind.FLASH_1M: ["FLASH1M_V"],
 ];
+
+private enum string eepromSaveId = "EEPROM_V";
 
 public enum MainSaveConfig : int {
     SRAM = MainSaveKind.SRAM,
@@ -114,36 +116,42 @@ public class GameFiles {
                 case FLASH_512K:
                 case FLASH_1M:
                 case NONE:
-                    _gamePakData.mainSave = [];
                     _gamePakData.mainSaveKind = cast(MainSaveKind) mainSaveConfig;
                     break;
                 case AUTO:
-                    // TODO
+                    _gamePakData.mainSaveKind = detectMainSaveKind();
+                    break;
             }
+            _gamePakData.mainSave = [];
         }
         // Load the EEPROM
         final switch (eepromConfig) with (EepromConfig) {
             case ON:
-                _gamePakData.eeprom = [];
                 _gamePakData.eepromEnabled = true;
                 break;
             case OFF:
                 _gamePakData.eepromEnabled = false;
                 break;
             case AUTO:
-                // TODO
+                _gamePakData.eepromEnabled = detectNeedEeprom();
+                break;
+        }
+        if (_gamePakData.eepromEnabled) {
+            _gamePakData.eeprom = [];
         }
         // Load the RTC
         final switch (rtcConfig) with (RtcConfig) {
             case ON:
-                _gamePakData.rtc = [];
                 _gamePakData.rtcEnabled = true;
                 break;
             case OFF:
                 _gamePakData.rtcEnabled = false;
                 break;
             case AUTO:
-                // TODO
+                _gamePakData.rtcEnabled = detectNeedRtc();
+        }
+        if (_gamePakData.rtcEnabled) {
+            _gamePakData.rtc = [];
         }
         // Mark as loaded so we don't do it twice
         loaded = true;
@@ -189,11 +197,53 @@ public class GameFiles {
         }
     }
 
-    private void checkSaveMissing(ref bool found) {
+    private static void checkSaveMissing(ref bool found) {
         if (found) {
             throw new Exception("Found more than one possible save memory in the save file");
         }
         found = true;
+    }
+
+    private MainSaveKind detectMainSaveKind() {
+        auto romChars = cast(char[]) _gamePakData.rom;
+        // The Classic NES series game lie about having and SRAM and refuse to boot if you have one
+        if (romChars[0xAC] == 'F') {
+            // If the 4 character game code starts with F, then it is a Classic NES series game
+            return MainSaveKind.NONE;
+        }
+        foreach (saveKind, saveIds; mainSaveKindIds) {
+            foreach (saveId; saveIds) {
+                for (size_t i = 0; i < romChars.length; i += 4) {
+                    if (romChars[i .. min(i + saveId.length, $)] == saveId) {
+                        return saveKind;
+                    }
+                }
+            }
+        }
+        // Most games that don't declare a save memory kind use an SRAM
+        return MainSaveKind.SRAM;
+    }
+
+    private bool detectNeedEeprom() {
+        auto romChars = cast(char[]) _gamePakData.rom;
+        for (size_t i = 0; i < romChars.length; i += 4) {
+            if (romChars[i .. min(i + eepromSaveId.length, $)] == eepromSaveId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool detectNeedRtc() {
+        auto romChars = cast(char[]) _gamePakData.rom;
+        // Pokémon Ruby/Sapphire/Emerald and Botkai 1 and 2 use and RTC
+        if (romChars[0xAC] == 'U') {
+            // This is the Botkai code
+            return true;
+        }
+        // For Pokémon we use the game title
+        auto title = romChars[0xA0 .. 0xAC];
+        return title == "POKEMON RUBY" || title == "POKEMON SAPP" || title == "POKEMON EMER";
     }
 }
 

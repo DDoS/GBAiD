@@ -4,8 +4,6 @@ import core.time : TickDuration;
 
 import std.traits : MutableOf, ImmutableOf;
 import std.meta : Alias, AliasSeq, staticIndexOf;
-import std.typecons : tuple, Tuple;
-import std.algorithm.comparison : min;
 import std.format : format;
 
 import gbaid.util;
