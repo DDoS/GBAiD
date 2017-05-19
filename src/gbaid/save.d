@@ -97,15 +97,13 @@ public class GameFiles {
         if (loaded) {
             return;
         }
-        // Load the ROM if provided, else use empty
+        // Load the ROM if provided
         if (romFile !is null) {
             try {
                 _gamePakData.rom = romFile.read();
             } catch (FileException ex) {
                 throw new Exception("Cannot read ROM file", ex);
             }
-        } else {
-            _gamePakData.rom = [];
         }
         // Load the save file if provided, otherwise create the main save from the config
         if (saveFile !is null) {
@@ -122,7 +120,6 @@ public class GameFiles {
                     _gamePakData.mainSaveKind = detectMainSaveKind();
                     break;
             }
-            _gamePakData.mainSave = [];
         }
         // Load the EEPROM
         final switch (eepromConfig) with (EepromConfig) {
@@ -133,11 +130,10 @@ public class GameFiles {
                 _gamePakData.eepromEnabled = false;
                 break;
             case AUTO:
-                _gamePakData.eepromEnabled = detectNeedEeprom();
+                if (saveFile is null) {
+                    _gamePakData.eepromEnabled = detectNeedEeprom();
+                }
                 break;
-        }
-        if (_gamePakData.eepromEnabled) {
-            _gamePakData.eeprom = [];
         }
         // Load the RTC
         final switch (rtcConfig) with (RtcConfig) {
@@ -148,10 +144,10 @@ public class GameFiles {
                 _gamePakData.rtcEnabled = false;
                 break;
             case AUTO:
-                _gamePakData.rtcEnabled = detectNeedRtc();
-        }
-        if (_gamePakData.rtcEnabled) {
-            _gamePakData.rtc = [];
+                if (saveFile is null) {
+                    _gamePakData.rtcEnabled = detectNeedRtc();
+                }
+                break;
         }
         // Mark as loaded so we don't do it twice
         loaded = true;
