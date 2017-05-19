@@ -203,7 +203,7 @@ public class GameFiles {
     private MainSaveKind detectMainSaveKind() {
         auto romChars = cast(char[]) _gamePakData.rom;
         // The Classic NES series game lie about having and SRAM and refuse to boot if you have one
-        if (romChars[0xAC] == 'F') {
+        if (romChars.length >= 0xAC && romChars[0xAC] == 'F') {
             // If the 4 character game code starts with F, then it is a Classic NES series game
             return MainSaveKind.NONE;
         }
@@ -232,6 +232,9 @@ public class GameFiles {
 
     private bool detectNeedRtc() {
         auto romChars = cast(char[]) _gamePakData.rom;
+        if (romChars.length < 0xAC) {
+            return false;
+        }
         // Pokémon Ruby/Sapphire/Emerald and Botkai 1 and 2 use and RTC
         if (romChars[0xAC] == 'U') {
             // This is the Botkai code
