@@ -310,7 +310,7 @@ private struct RtcData {
         auto year = (dateTime.year - 2000).decimalToBcd();
         // Calculate the day of the week (the number assignment in the RTC is decided by the user)
         auto dayOfTheWeekOffset = cast(int) lastSetDatetimeRegisters[3] - oldDateTime.dayOfWeek;
-        auto dayOfTheWeek = (dateTime.dayOfWeek + dayOfTheWeekOffset) % 7;
+        auto dayOfTheWeek = (dateTime.dayOfWeek + dayOfTheWeekOffset + 7) % 7;
         // Calculate the hour register: start with the AM/PM flag
         auto hour = (dateTime.hour >= 12) << 6;
         // If the RTC is in 12h mode, we have to adjust the hour
