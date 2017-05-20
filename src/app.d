@@ -105,13 +105,13 @@ public int main(string[] args) {
     }
 
     // Create and configure GBA
-    GameFiles gameFiles = void;
+    GamePakData gamePakData = void;
     if (newSave) {
-        gameFiles = new GameFiles(romFile, mainSaveConfig, eepromConfig, rtcConfig);
+        gamePakData = gamePakForNewRom(romFile, mainSaveConfig, eepromConfig, rtcConfig);
     } else {
-        gameFiles = new GameFiles(romFile, saveFile, eepromConfig, rtcConfig);
+        gamePakData = gamePakForExistingRom(romFile, saveFile, eepromConfig, rtcConfig);
     }
-    auto gba = new GameBoyAdvance(bios, gameFiles.gamePakData);
+    auto gba = new GameBoyAdvance(bios, gamePakData);
 
     // Load and initialize SDL
     if (!DerelictSDL2.isLoaded) {
