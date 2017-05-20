@@ -63,20 +63,22 @@ At minimum, you must specify the path to the bios and rom images with
 
 The following arguments are also recognized:
 
-| Long form   | Short form | Argument                 | Usage                                                                       |
-|-------------|------------|--------------------------|-----------------------------------------------------------------------------|
-| --bios      | -b         | Path to bios             | Specify bios image                                                          |
-| --save      | -s         | Path to save             | Specify path for loading and saving saves                                   |
-| --noload    | -n         | None                     | Don't load the save                                                         |
-| --nosave    | -N         | None                     | Don't save the save, either on exit or quick save                           |
-| --scale     | -r         | Scaling factor (float)   | Draw the display at "factor" times the original resolution                  |
-| --fullscreen| -R         | None                     | Display in full screen mode (`--scale` will be ignored)                     |
-| --filtering | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
-| --upscaling | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
-| --controller| -c         | None                     | Enable the controller as an input method                                    |
-| --memory    | -m         | See saves section        | What memory configuration to use for the save format                        |
+| Long form    | Short form | Argument                 | Usage                                                                       |
+|--------------|------------|--------------------------|-----------------------------------------------------------------------------|
+| --bios       | -b         | Path to bios             | Specify bios image                                                          |
+| --save       | -s         | Path to save             | Specify path for loading and saving saves                                   |
+| --noload     | -n         | None                     | Don't load the save                                                         |
+| --nosave     | -N         | None                     | Don't save the save, either on exit or quick save                           |
+| --scale      | -r         | Scaling factor (float)   | Draw the display at "factor" times the original resolution                  |
+| --fullscreen | -R         | None                     | Display in full screen mode (`--scale` will be ignored)                     |
+| --filtering  | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
+| --upscaling  | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
+| --controller | -c         | None                     | Enable the controller as an input method                                    |
+| --save-memory| N/A        | See saves section        | What memory configuration to use for the main save                          |
+| --eeprom     | N/A        | See saves section        | What memory configuration to use for the EEPROM                             |
+| --rtc        | N/A        | See saves section        | What memory configuration to use for the RTC                                |
 
-Note that these arguments are case sensitive and that bundling is only supported by the `noload` and `nosave` switches.
+Note that these arguments are case sensitive and that bundling is only supported by the `--noload` and `--nosave` switches.
 
 ### Saves ###
 
@@ -85,21 +87,27 @@ the same path as the ROM is used, but with the `.gsf` extension instead of whate
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the `--nosave` argument is used.
 
-The emulator can almost always auto-detect the save type, but for some games, such as the Classic NES Series, this will not work.
-Instead, the `--memory` flag should be used, with one of the arguments from below.
+The emulator can almost always auto-detect the save type, but it's not guaranteed to always work. If it doesn't work, then you will need to
+use the following switches to configure the save memory manually.
 
-| Argument         | Description                     |
-|------------------|---------------------------------|
-| SRAM             | 64K of static RAM               |
-| SRAM_EEPROM      | 64K of static RAM and an EEPROM |
-| FLASH64K         | 64K of Flash                    |
-| FLASH64K_EEPROM  | 64K of Flash and an EEPROM      |
-| FLASH128K        | 128K of Flash                   |
-| FLASH128K_EEPROM | 128K of Flash and an EEPROM     |
-| EEPROM           | Only an EEPROM                  |
-| AUTO             | Auto-detect, default            |
+The `--save-memory` switch is used to configure the main save memory. It takes any one of the following arguments (case senstive).
 
-For Classic NES Series games, use `EEPROM`
+| Argument   | Description         |
+|------------|---------------------|
+| SRAM       | 64KB of static RAM  |
+| FLASH_512K | 512Kb of Flash      |
+| FLASH_1M   | 1Mb of Flash        |
+| NONE       | No main save memory |
+| AUTO       | Decide from the ROM |
+
+The `--eeprom` and `--rtc` switches are used to configure the optional EEPROM and RTC respectively.
+They take any one of the following arguments (case senstive).
+
+| Argument | Description         |
+|----------|---------------------|
+| ON       | Enabled             |
+| OFF      | Disabled            |
+| AUTO     | Decide from the ROM |
 
 These flags are only needed when creating a new save, after that the format is saved in the save file.
 
@@ -151,11 +159,9 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 
 ## TODO ##
 
-- Implement optional RTC
 - Implement SIO
 - Implement emulator networking for SIO
 - Remove module cycle in cpu.d, arm.d and thumb.d
-- Move the save system out of the emulator core
 - Cleanup and comment display.d
 - Rewrite IoRegisters to remove the intermediate MonitoredMemory
 - Emulator pause feature
