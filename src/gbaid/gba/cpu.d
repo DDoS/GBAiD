@@ -4,7 +4,6 @@ import std.array : array;
 import std.algorithm.searching : count;
 import std.algorithm.iteration : splitter;
 import std.string : format;
-import std.traits : hasUDA;
 
 import gbaid.util;
 
@@ -687,18 +686,24 @@ public void addSubTable(string bits, alias instructionFamily, alias nullInstruct
     }
 }
 
-private Executor[] createTable(alias instructionFamily, int bitCount, alias unsupported, int index = 0)() {
+private Executor[] createTable(alias instructionFamily, int bitCount, alias unsupported)() {
+    import std.range : iota;
+    import std.traits : hasUDA;
+    import std.meta : aliasSeqOf;
+
     static if (bitCount == 0) {
-        return [&instructionFamily!()];
-    } else static if (index < (1 << bitCount)) {
-        static if (hasUDA!(instructionFamily!index, "unsupported")) {
-            return [&unsupported] ~ createTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        } else {
-            return [&instructionFamily!index] ~ createTable!(instructionFamily, bitCount, unsupported, index + 1)();
-        }
+        Executor[] table = [&instructionFamily!()];
     } else {
-        return [];
+        Executor[] table;
+        foreach (i; aliasSeqOf!(iota(0, 1 << bitCount))) {
+            static if (hasUDA!(instructionFamily!i, "unsupported")) {
+                table ~= [&unsupported];
+            } else {
+                table ~= [&instructionFamily!i];
+            }
+        }
     }
+    return table;
 }
 
 private string genApsrSetterSignature(size_t argCount) {
