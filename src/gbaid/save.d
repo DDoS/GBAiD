@@ -13,15 +13,14 @@ import gbaid.gba.memory : GamePakData, MainSaveKind, EEPROM_SIZE, SRAM_SIZE, FLA
 
 import gbaid.util;
 
-public alias RawSaveMemory = Tuple!(SaveMemoryKind, ubyte[]);
+public alias RawSaveMemory = Tuple!(SaveMemoryKind, void[]);
 
 public enum SaveMemoryKind : int {
     EEPROM = 0,
     SRAM = 1,
     FLASH_512K = 2,
     FLASH_1M = 3,
-    RTC = 4,
-    UNKNOWN = -1
+    RTC = 4
 }
 
 private enum int SAVE_CURRENT_VERSION = 1;
@@ -222,6 +221,30 @@ private bool detectNeedRtc(void[] rom) {
     return title == "POKEMON RUBY" || title == "POKEMON SAPP" || title == "POKEMON EMER";
 }
 
+public void saveGamePak(GamePakData gamePakData, string saveFile) {
+    RawSaveMemory[] memories;
+    final switch (gamePakData.mainSaveKind) with (MainSaveKind) {
+        case SRAM:
+            memories ~= tuple(SaveMemoryKind.SRAM, gamePakData.mainSave);
+            break;
+        case FLASH_512K:
+            memories ~= tuple(SaveMemoryKind.FLASH_512K, gamePakData.mainSave);
+            break;
+        case FLASH_1M:
+            memories ~= tuple(SaveMemoryKind.FLASH_1M, gamePakData.mainSave);
+            break;
+        case NONE:
+            break;
+    }
+    if (gamePakData.eepromEnabled) {
+        memories ~= tuple(SaveMemoryKind.EEPROM, gamePakData.eeprom);
+    }
+    if (gamePakData.rtcEnabled) {
+        memories ~= tuple(SaveMemoryKind.RTC, gamePakData.rtc);
+    }
+    memories.saveSaveFile(saveFile);
+}
+
 /*
 All ints are 32 bit and stored in little endian.
 The CRCs are calculated on the little endian values
@@ -305,7 +328,7 @@ private RawSaveMemory readRawSaveMemory(int versionNumber: 1)(File file) {
     auto saveKind = cast(SaveMemoryKind) kindId;
     auto uncompressedSize = memoryCapacityForSaveKind[saveKind];
     // Uncompress the memory
-    auto memoryUncompressed = cast(ubyte[]) memoryCompressed.uncompress(uncompressedSize);
+    auto memoryUncompressed = memoryCompressed.uncompress(uncompressedSize);
     // Check that the uncompressed length matches the one for the kind
     if (memoryUncompressed.length != uncompressedSize) {
         throw new Exception(format("The uncompressed save memory has a different length than its kind: %d != %d",

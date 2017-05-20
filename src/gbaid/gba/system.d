@@ -58,6 +58,10 @@ public class GameBoyAdvance {
         soundChip.receiver = receiver;
     }
 
+    @property public GamePakData gamePakSaveData() {
+        return memory.gamePak.saveData;
+    }
+
     public void setKeypadState(KeypadState state) {
         keypad.setState(state);
     }

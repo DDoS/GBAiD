@@ -495,16 +495,46 @@ public struct GamePak {
             case NONE:
                 break;
         }
-
         if (data.eepromEnabled) {
             eeprom = new Eeprom(data.eeprom);
         }
-
         if (data.rtcEnabled) {
             rtc = new Rtc(data.rtc);
             gpio.chip = rtc.chip;
             gpio.enabled = true;
         }
+    }
+
+    @property public GamePakData saveData() {
+        GamePakData data;
+        data.mainSaveKind = saveKind;
+        final switch (saveKind) with (MainSaveKind) {
+            case SRAM:
+                data.mainSave = save.sram.getArray!ubyte();
+                break;
+            case FLASH_512K:
+                data.mainSave = save.flash512k.getArray!ubyte();
+                break;
+            case FLASH_1M:
+                data.mainSave = save.flash1m.getArray!ubyte();
+                break;
+            case NONE:
+                data.mainSave = null;
+                break;
+        }
+        if (eeprom !is null) {
+            data.eeprom = eeprom.getArray!ubyte();
+            data.eepromEnabled = true;
+        } else {
+            data.eepromEnabled = false;
+        }
+        if (rtc !is null) {
+            data.rtc = rtc.dataArray;
+            data.rtcEnabled = true;
+        } else {
+            data.rtcEnabled = false;
+        }
+        return data;
     }
 
     @property public void unusedMemory(int delegate(uint) unusedMemory) {

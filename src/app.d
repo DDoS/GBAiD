@@ -1,4 +1,5 @@
 import core.thread : Thread;
+import core.sync.mutex : Mutex;
 
 import std.stdio : writeln;
 import std.getopt: getopt, config;
@@ -152,6 +153,9 @@ public int main(string[] args) {
         SDL_Quit();
     }
 
+    // Create a mutex for the main and GBA threads
+    auto emulatorLock = new Mutex();
+
     // Declare a function for the GBA thread worker
     auto gbaRunning = true;
     void gbaRun() {
@@ -161,7 +165,9 @@ public int main(string[] args) {
             }
             auto requiredSamples = audio.nextRequiredSamples();
             auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
-            gba.emulate(equivalentCycles);
+            synchronized (emulatorLock) {
+                gba.emulate(equivalentCycles);
+            }
         }
     }
 
@@ -195,7 +201,9 @@ public int main(string[] args) {
                 writeln("Saving is disabled");
             } else {
                 audio.pause();
-                //gba.saveSave(saveFile);
+                synchronized (emulatorLock) {
+                    gba.gamePakSaveData.saveGamePak(saveFile);
+                }
                 writeln("Quick saved \"", saveFile, "\"");
                 audio.resume();
             }
@@ -213,7 +221,7 @@ public int main(string[] args) {
     if (noSave) {
         writeln("Saving is disabled");
     } else {
-        //gba.saveSave(saveFile);
+        gba.gamePakSaveData.saveGamePak(saveFile);
         writeln("Saved \"", saveFile, "\"");
     }
 
