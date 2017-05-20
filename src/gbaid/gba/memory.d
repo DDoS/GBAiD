@@ -76,8 +76,8 @@ public enum uint GAME_PAK_START = 0x08000000;
 public enum uint ROM_MASK = 0x1FFFFFF;
 public enum uint SRAM_MASK = 0x7FFF;
 public enum uint FLASH_MASK = 0xFFFF;
-public enum uint EEPROM_MASK_HIGH = 0xFFFF00;
-public enum uint EEPROM_MASK_LOW = 0x0;
+public enum uint EEPROM_MASK_NARROW = 0xFFFF00;
+public enum uint EEPROM_MASK_WIDE = 0x0;
 
 public struct Memory(uint byteSize, bool readOnly) {
     private Mod!(void[byteSize]) memory;
@@ -478,7 +478,7 @@ public struct GamePak {
     public this(GamePakData data) {
         rom = GameRom(data.rom);
         actualRomByteSize = (cast(int) data.rom.length).nextPowerOf2();
-
+        eepromMask = actualRomByteSize <= 16 * BYTES_PER_MIB ? EEPROM_MASK_WIDE : EEPROM_MASK_NARROW;
         gpio.valueAtCa = rom.get!short(0xCA);
 
         saveKind = data.mainSaveKind;
