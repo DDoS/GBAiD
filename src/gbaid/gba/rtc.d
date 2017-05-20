@@ -121,7 +121,6 @@ public struct Rtc {
                 // Update the state accordingly
                 state =  input & 0x80 ? READ_PARAMETERS : WRITE_PARAMETERS;
                 command = REGISTER_INDICES[input >>> 4 & 0b111];
-                import std.stdio; writefln("%08b %s %s", input, command, state);
                 // Process commands that don't have any parameters
                 switch (command) with (Register) {
                     case FORCE_RESET:
@@ -137,7 +136,6 @@ public struct Rtc {
                 break;
             }
             case WRITE_PARAMETERS: {
-                import std.stdio; writefln("%08b", input);
                 switch (command) with (Register) {
                     case CONTROL:
                         // Input one byte
@@ -213,7 +211,6 @@ public struct Rtc {
             default:
                 // No parameters or doesn't correspond to any register
         }
-        import std.stdio; writefln("%02x", output);
         // Increment for the next parameter
         parameterIndex += 1;
         return output;
