@@ -350,7 +350,7 @@ private struct RtcData {
         datetimeRegisters[1] &= 0b00011111;
         datetimeRegisters[2] &= 0b00111111;
         datetimeRegisters[3] &= 0b00000111;
-        datetimeRegisters[4] &= 0b01111111;
+        datetimeRegisters[4] &= 0b10111111;
         datetimeRegisters[5] &= 0b01111111;
         datetimeRegisters[6] &= 0b01111111;
         // We'll use this data to update the datetime registers when they are read
@@ -363,7 +363,7 @@ private struct RtcData {
         auto oldYear = lastSetDatetimeRegisters[0].bcdToDecimal() + 2000;
         auto oldHour = (lastSetDatetimeRegisters[4] & 0x3F).bcdToDecimal();
         // If the RTC is in 12h mode, we have to adjust the hour when it's PM
-        if (!(controlRegister & 0x40) && (lastSetDatetimeRegisters[4] & 0x40)) {
+        if (!(controlRegister & 0x40) && (lastSetDatetimeRegisters[4] & 0x80)) {
             oldHour += 12;
         }
         auto oldDateTime = DateTime(
@@ -381,9 +381,9 @@ private struct RtcData {
         auto dayOfTheWeekOffset = cast(int) lastSetDatetimeRegisters[3] - oldDateTime.dayOfWeek;
         auto dayOfTheWeek = (dateTime.dayOfWeek + dayOfTheWeekOffset + 7) % 7;
         // Calculate the hour register: start with the AM/PM flag
-        auto hour = (dateTime.hour >= 12) << 6;
+        auto hour = (dateTime.hour >= 12) << 7;
         // If the RTC is in 12h mode, we have to adjust the hour
-        if (hour & 0x40) {
+        if (controlRegister & 0x40) {
             hour |= dateTime.hour.decimalToBcd();
         } else {
             hour |= (dateTime.hour % 12).decimalToBcd();
