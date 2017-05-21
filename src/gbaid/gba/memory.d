@@ -10,6 +10,7 @@ import gbaid.util;
 
 import gbaid.gba.gpio;
 import gbaid.gba.rtc;
+import gbaid.gba.interrupt;
 
 public import gbaid.gba.rtc : RTC_SIZE;
 
@@ -535,6 +536,12 @@ public struct GamePak {
             data.rtcEnabled = false;
         }
         return data;
+    }
+
+    @property public void interruptHandler(InterruptHandler interruptHandler) {
+        if (rtc !is null) {
+            rtc.interruptHandler = interruptHandler;
+        }
     }
 
     @property public void unusedMemory(int delegate(uint) unusedMemory) {

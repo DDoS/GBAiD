@@ -48,6 +48,7 @@ public class GameBoyAdvance {
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;
+        memory.gamePak.interruptHandler = interruptHandler;
     }
 
     @property public FrameSwapper frameSwapper() {

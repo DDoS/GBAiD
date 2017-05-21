@@ -1,6 +1,7 @@
 module gbaid.gba.rtc;
 
-import core.time : hnsecs;
+import core.thread : Thread;
+import core.time : Duration, hnsecs, minutes;
 
 import std.datetime : DateTime, Clock;
 import std.format : format;
@@ -8,6 +9,7 @@ import std.format : format;
 import gbaid.util;
 
 import gbaid.gba.gpio;
+import gbaid.gba.interrupt;
 
 private enum Register {
     NONE,
@@ -30,6 +32,8 @@ private enum State {
 public enum uint RTC_SIZE = RtcData.sizeof;
 
 public struct Rtc {
+    private InterruptHandler _interruptHandler = null;
+    private MinuteInterrupter minuteInterrupter = null;
     private bool selected = false;
     private bool clock = false;
     private bool io = false;
@@ -42,6 +46,10 @@ public struct Rtc {
 
     @disable public this();
 
+    public ~this() {
+        minuteInterrupter.stop();
+    }
+
     public this(void[] data) {
         if (data.length == 0) {
             // Simulate power-on for the first time
@@ -51,6 +59,19 @@ public struct Rtc {
         } else {
             throw new Exception("Expected 0 or 24 bytes");
         }
+    }
+
+    @property public void interruptHandler(InterruptHandler interruptHandler) {
+        _interruptHandler = interruptHandler;
+        minuteInterrupter = new MinuteInterrupter(interruptHandler);
+        minuteInterrupter.enabled = cast(bool) (data.controlRegister & 0b1000);
+    }
+
+    @property private InterruptHandler interruptHandler() {
+        if (_interruptHandler is null) {
+            throw new Exception("The RTC was to request an interrupt, but no handler was set");
+        }
+        return _interruptHandler;
     }
 
     @property public GpioChip chip() {
@@ -127,7 +148,7 @@ public struct Rtc {
                         data.forceReset();
                         break;
                     case FORCE_IRQ:
-                        // TODO: Trigger a GamePak interrupt
+                        interruptHandler.requestInterrupt(InterruptSource.GAMEPAK);
                         break;
                     default:
                         // Get ready for receiving parameters for the other commands
@@ -142,6 +163,8 @@ public struct Rtc {
                         if (parameterIndex < 1) {
                             // Clear the unused bits
                             data.controlRegister = input & 0b01101010;
+                            // Enable minute interrupter if required
+                            minuteInterrupter.enabled = cast(bool) (data.controlRegister & 0b1000);
                         }
                         break;
                     case DATETIME:
@@ -246,10 +269,59 @@ public struct Rtc {
     }
 }
 
-// In order: year, month, day, day of the week, hour, minutes and seconds
-private enum ubyte[] DATETIME_CLEARED_VALUES = [0, 1, 1, 0, 0, 0, 0];
+private class MinuteInterrupter {
+    private enum Duration ONE_MINUTE = minutes(1);
+    private InterruptHandler interruptHandler;
+    private Thread thread = null;
+    private bool running = false;
+    private bool _enabled = false;
+
+    private this(InterruptHandler interruptHandler) {
+        this.interruptHandler = interruptHandler;
+    }
+
+    private void enabled(bool enabled) {
+        _enabled = enabled;
+        if (_enabled) {
+            start();
+        }
+    }
+
+    private void start() {
+        if (running) {
+            return;
+        }
+        thread = new Thread(&run);
+        thread.isDaemon = true;
+        running = true;
+        thread.start();
+    }
+
+    private void stop() {
+        if (!running) {
+            return;
+        }
+        running = false;
+        thread = null;
+    }
+
+    private void run() {
+        auto timer = new Timer();
+        size_t nextMinute = 1;
+        timer.start();
+        while (running) {
+            timer.waitUntil(ONE_MINUTE * nextMinute);
+            nextMinute += 1;
+            if (running && _enabled) {
+                interruptHandler.requestInterrupt(InterruptSource.GAMEPAK);
+            }
+        }
+    }
+}
 
 private struct RtcData {
+    // Register order: year, month, day, day of the week, hour, minutes and seconds
+    private enum ubyte[] DATETIME_CLEARED_VALUES = [0, 1, 1, 0, 0, 0, 0];
     private long lastSetDatetimeTime;
     private ubyte controlRegister;
     private ubyte[7] datetimeRegisters;

@@ -1,6 +1,6 @@
 module gbaid.util;
 
-import core.time : Duration, TickDuration, hnsecs;
+import core.time : Duration, MonoTime, hnsecs;
 import core.thread : Thread;
 
 import std.path : expandTilde, absolutePath, buildNormalizedPath;
@@ -165,26 +165,26 @@ public class NullPathException : Exception {
 }
 
 public class Timer {
-    private static enum long YIELD_TIME = 1000;
-    private TickDuration startTime;
+    private static enum Duration YIELD_TIME = hnsecs(1000);
+    private MonoTime startTime;
 
     public void start() {
-        startTime = TickDuration.currSystemTick();
+        startTime = MonoTime.currTime();
     }
 
     public alias reset = start;
     public alias restart = start;
 
-    public TickDuration getTime() {
-        return TickDuration.currSystemTick() - startTime;
+    @property public Duration elapsed() {
+        return MonoTime.currTime() - startTime;
     }
 
-    public void waitUntil(TickDuration time) {
-        Duration duration = hnsecs(time.hnsecs() - getTime().hnsecs() - YIELD_TIME);
+    public void waitUntil(Duration time) {
+        Duration duration = time - elapsed - YIELD_TIME;
         if (!duration.isNegative()) {
             Thread.sleep(duration);
         }
-        while (getTime() < time) {
+        while (elapsed < time) {
             Thread.yield();
         }
     }
