@@ -6,12 +6,16 @@ This emulator is written mostly in pure D, with some inline x86 (32 and 64 bit) 
 
 ## Current state ##
 
+![Go dragons!](screenshot.png)
+
 All of the GameBoy's built-in hardware has been implemented, except for the serial communication port.
 
 I've tested 8 games so far:
 - Super Mario Advance
 - Mario kart
-- Pokemon Emerald
+- Pokemon Emerald (full play-through completed)
+- Pokemon Ruby/Sapphire
+- Pokemon Fire Red
 - Legend of Zelda: A Link To The Past
 - Legend of Zelda: Minish Cap
 - Doom
