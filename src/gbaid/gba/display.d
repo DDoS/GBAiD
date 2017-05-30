@@ -103,33 +103,15 @@ public class Display {
     }
 
     private void drawLine(int line) {
-        final switch (getMode()) with (Mode) {
-            case TILED_TEXT:
-                lineMode!"Text"(line);
-                return;
-            case TILED_MIXED:
-                lineMode!"Mixed"(line);
-                return;
-            case TILED_AFFINE:
-                lineMode!"Affine"(line);
-                return;
-            case BITMAP_16_SINGLE:
-                lineMode!"Bitmap16Single"(line);
-                return;
-            case BITMAP_8_DOUBLE:
-                lineMode!"Bitmap8Double"(line);
-                return;
-            case BITMAP_16_DOUBLE:
-                lineMode!"Bitmap16Double"(line);
-                return;
-            case BLANK:
-                lineBlank(line);
-                return;
-        }
-    }
-
-    private void lineMode(string type)(int line) {
         int displayControl = ioRegisters.getUnMonitored!short(0x0);
+
+        if (checkBit(displayControl, 7)) {
+            lineBlank(line);
+            return;
+        }
+
+        int displayMode = displayControl & 0b111;
+        int frameIndex = getBit(displayControl, 4);
         int tileMapping = getBit(displayControl, 6);
         int bgEnables = getBits(displayControl, 8, 12);
         int windowEnables = getBits(displayControl, 13, 15);
@@ -138,30 +120,48 @@ public class Display {
 
         short backColor = palette.get!short(0x0) & 0x7FFF;
 
-        static if (type == "Text") {
-            layerBackgroundText!0(line, bgEnables);
-            layerBackgroundText!1(line, bgEnables);
-            layerBackgroundText!2(line, bgEnables);
-            layerBackgroundText!3(line, bgEnables);
-        } else static if (type == "Mixed") {
-            layerBackgroundText!0(line, bgEnables);
-            layerBackgroundText!1(line, bgEnables);
-            layerBackgroundAffine!2(line, bgEnables);
-            layerTransparent!3();
-        } else static if (type == "Affine") {
-            layerTransparent!0();
-            layerTransparent!1();
-            layerBackgroundAffine!2(line, bgEnables);
-            layerBackgroundAffine!3(line, bgEnables);
-        } else {
-            int frameIndex = getBit(displayControl, 4);
-            layerTransparent!0();
-            layerTransparent!1();
-            mixin ("lineBackground" ~ type ~ "!2(line, bgEnables, frameIndex);");
-            layerTransparent!3();
+        switch (displayMode) {
+            case 0:
+                layerBackgroundText!0(line, bgEnables);
+                layerBackgroundText!1(line, bgEnables);
+                layerBackgroundText!2(line, bgEnables);
+                layerBackgroundText!3(line, bgEnables);
+                break;
+            case 1:
+                layerBackgroundText!0(line, bgEnables);
+                layerBackgroundText!1(line, bgEnables);
+                layerBackgroundAffine!2(line, bgEnables);
+                layerTransparent!3();
+                break;
+            case 2:
+                layerTransparent!0();
+                layerTransparent!1();
+                layerBackgroundAffine!2(line, bgEnables);
+                layerBackgroundAffine!3(line, bgEnables);
+                break;
+            case 3:
+                layerTransparent!0();
+                layerTransparent!1();
+                lineBackgroundBitmap16Single!2(line, bgEnables);
+                layerTransparent!3();
+                break;
+            case 4:
+                layerTransparent!0();
+                layerTransparent!1();
+                lineBackgroundBitmap8Double!2(line, bgEnables, frameIndex);
+                layerTransparent!3();
+                break;
+            case 5:
+                layerTransparent!0();
+                layerTransparent!1();
+                lineBackgroundBitmap16Double!2(line, bgEnables, frameIndex);
+                layerTransparent!3();
+                break;
+            default:
+                break;
         }
 
-        layerObjects(line, bgEnables, tileMapping);
+        layerObjects(line, bgEnables, displayMode, tileMapping);
         layerCompose(line, windowEnables, blendControl, backColor);
     }
 
@@ -390,7 +390,7 @@ public class Display {
         }
     }
 
-    private void lineBackgroundBitmap16Single(int layer)(int line, int bgEnables, int frameIndex) {
+    private void lineBackgroundBitmap16Single(int layer)(int line, int bgEnables) {
         if (!checkBit(bgEnables, 2)) {
             layerTransparent!layer();
 
@@ -551,7 +551,7 @@ public class Display {
         internalAffineReferenceY!0 += pd;
     }
 
-    private void layerObjects(int line, int bgEnables, int tileMapping) {
+    private void layerObjects(int line, int bgEnables, int displayMode, int tileMapping) {
         objectLinePixels[] = TRANSPARENT;
         infoLinePixels[] = 0b11;
 
@@ -560,7 +560,7 @@ public class Display {
         }
 
         int tileBase = 0x10000;
-        if (getMode() >= 3) {
+        if (displayMode >= 3) {
             tileBase += 0x4000;
         }
 
@@ -979,14 +979,6 @@ public class Display {
         return (blendBlue & 31) << 10 | (blendGreen & 31) << 5 | blendRed & 31;
     }
 
-    private Mode getMode() {
-        int displayControl = ioRegisters.getUnMonitored!short(0x0);
-        if (checkBit(displayControl, 7)) {
-            return Mode.BLANK;
-        }
-        return cast(Mode) (displayControl & 0b111);
-    }
-
     private void reloadInternalAffineReferencePoint(int layer)() {
         enum affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
@@ -1064,16 +1056,6 @@ public class Display {
         }
         // Write back the modified display status
         ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
-    }
-
-    private static enum Mode {
-        TILED_TEXT = 0,
-        TILED_MIXED = 1,
-        TILED_AFFINE = 2,
-        BITMAP_16_SINGLE = 3,
-        BITMAP_8_DOUBLE = 4,
-        BITMAP_16_DOUBLE = 5,
-        BLANK = 6
     }
 }
 
