@@ -3,6 +3,7 @@ module gbaid.gba.display;
 import core.sync.mutex : Mutex;
 import core.sync.condition : Condition;
 
+import std.meta : AliasSeq;
 import std.algorithm.comparison : min;
 import std.algorithm.mutation : swap;
 
@@ -21,7 +22,6 @@ public enum size_t CYCLES_PER_FRAME = (DISPLAY_WIDTH + Display.BLANK_LENGTH)
 public class Display {
     private enum uint BLANK_LENGTH = 68;
     public static enum uint CYCLES_PER_DOT = 4;
-    private static enum uint LAYER_COUNT = 6;
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
     private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
@@ -31,9 +31,11 @@ public class Display {
     private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
-    private short[DISPLAY_WIDTH][LAYER_COUNT] lines;
-    private int[2] internalAffineReferenceX;
-    private int[2] internalAffineReferenceY;
+    mixin declareFields!(short[DISPLAY_WIDTH], true, "linePixels", 0, 6);
+    private alias objectLinePixels = linePixels!4;
+    private alias infoLinePixels = linePixels!5;
+    mixin declareFields!(int, true, "internalAffineReferenceX", 0, 2);
+    mixin declareFields!(int, true, "internalAffineReferenceY", 0, 2);
     private int line = 0;
     private int dot = 0;
     private FrameSwapper _frameSwapper;
@@ -137,52 +139,45 @@ public class Display {
         short backColor = palette.get!short(0x0) & 0x7FFF;
 
         static if (type == "Text") {
-            lineBackgroundText(line, lines[0], 0, bgEnables);
-            lineBackgroundText(line, lines[1], 1, bgEnables);
-            lineBackgroundText(line, lines[2], 2, bgEnables);
-            lineBackgroundText(line, lines[3], 3, bgEnables);
+            layerBackgroundText!0(line, bgEnables);
+            layerBackgroundText!1(line, bgEnables);
+            layerBackgroundText!2(line, bgEnables);
+            layerBackgroundText!3(line, bgEnables);
         } else static if (type == "Mixed") {
-            lineBackgroundText(line, lines[0], 0, bgEnables);
-            lineBackgroundText(line, lines[1], 1, bgEnables);
-            lineBackgroundAffine(line, lines[2], 2, bgEnables);
-            lineTransparent(lines[3]);
+            layerBackgroundText!0(line, bgEnables);
+            layerBackgroundText!1(line, bgEnables);
+            layerBackgroundAffine!2(line, bgEnables);
+            layerTransparent!3();
         } else static if (type == "Affine") {
-            lineTransparent(lines[0]);
-            lineTransparent(lines[1]);
-            lineBackgroundAffine(line, lines[2], 2, bgEnables);
-            lineBackgroundAffine(line, lines[3], 3, bgEnables);
+            layerTransparent!0();
+            layerTransparent!1();
+            layerBackgroundAffine!2(line, bgEnables);
+            layerBackgroundAffine!3(line, bgEnables);
         } else {
-            int frame = getBit(displayControl, 4);
-
-            lineTransparent(lines[0]);
-            lineTransparent(lines[1]);
-            mixin ("lineBackground" ~ type ~ "(line, lines[2], bgEnables, frame);");
-            lineTransparent(lines[3]);
+            int frameIndex = getBit(displayControl, 4);
+            layerTransparent!0();
+            layerTransparent!1();
+            mixin ("lineBackground" ~ type ~ "!2(line, bgEnables, frameIndex);");
+            layerTransparent!3();
         }
 
-        lineObjects(line, lines[4], lines[5], bgEnables, tileMapping);
-        lineCompose(line, windowEnables, blendControl, backColor);
+        layerObjects(line, bgEnables, tileMapping);
+        layerCompose(line, windowEnables, blendControl, backColor);
     }
 
     private void lineBlank(int line) {
-        uint p = line * DISPLAY_WIDTH;
         auto frame = _frameSwapper.workFrame;
-        foreach (column; 0 .. DISPLAY_WIDTH) {
-            frame[p++] = cast(short) 0xFFFF;
-        }
+        auto p = line * DISPLAY_WIDTH;
+        frame[p .. p +  DISPLAY_WIDTH] = cast(short) 0xFFFF;
     }
 
-    private void lineTransparent(short[] buffer) {
-        foreach (column; 0 .. DISPLAY_WIDTH) {
-            buffer[column] = TRANSPARENT;
-        }
+    private void layerTransparent(int layer)() {
+        linePixels!layer[] = TRANSPARENT;
     }
 
-    private void lineBackgroundText(int line, short[] buffer, int layer, int bgEnables) {
+    private void layerBackgroundText(int layer)(int line, int bgEnables) {
         if (!checkBit(bgEnables, layer)) {
-            foreach (column; 0 .. DISPLAY_WIDTH) {
-                buffer[column] = TRANSPARENT;
-            }
+            layerTransparent!layer();
             return;
         }
 
@@ -226,7 +221,7 @@ public class Display {
         int lineMapOffset = mapLine << 5;
 
         static if (__traits(compiles, LINE_BACKGROUND_TEXT_ASM)) {
-            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t lineAddress = cast(size_t) linePixels!layer.ptr;
             size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
             size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
 
@@ -267,20 +262,21 @@ public class Display {
                     sampleLine = tileLine;
                 }
 
-                int tileAddress = tileBase + (tileNumber << tileSizeShift) + ((sampleLine << 3) + sampleColumn >> tile4Bit);
+                int tileAddress = tileBase + (tileNumber << tileSizeShift)
+                        + ((sampleLine << 3) + sampleColumn >> tile4Bit);
 
                 int paletteAddress = void;
                 if (singlePalette) {
                     int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
                     if (paletteIndex == 0) {
-                        buffer[column] = TRANSPARENT;
+                        linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
                     paletteAddress = paletteIndex << 1;
                 } else {
                     int paletteIndex = vram.get!byte(tileAddress) >> ((sampleColumn & 0b1) << 2) & 0xF;
                     if (paletteIndex == 0) {
-                        buffer[column] = TRANSPARENT;
+                        linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
                     paletteAddress = (tile >> 8 & 0xF0) + paletteIndex << 1;
@@ -288,24 +284,22 @@ public class Display {
 
                 short color = palette.get!short(paletteAddress) & 0x7FFF;
 
-                buffer[column] = color;
+                linePixels!layer[column] = color;
             }
         }
     }
 
-    private void lineBackgroundAffine(int line, short[] buffer, int layer, int bgEnables) {
-        if (!checkBit(bgEnables, layer)) {
-            foreach (column; 0 .. DISPLAY_WIDTH) {
-                buffer[column] = TRANSPARENT;
-            }
+    private void layerBackgroundAffine(int layer)(int line, int bgEnables) {
+        enum affineLayer = layer - 2;
+        enum layerAddressOffset = affineLayer << 4;
 
-            int affineLayer = layer - 2;
-            int layerAddressOffset = affineLayer << 4;
+        if (!checkBit(bgEnables, layer)) {
+            layerTransparent!layer();
+
             int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
             int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
-
-            internalAffineReferenceX[affineLayer] += pb;
-            internalAffineReferenceY[affineLayer] += pd;
+            internalAffineReferenceX!affineLayer += pb;
+            internalAffineReferenceY!affineLayer += pd;
             return;
         }
 
@@ -326,21 +320,19 @@ public class Display {
         int bgSizeInv = ~bgSize;
         int mapLineShift = screenSize + 4;
 
-        int affineLayer = layer - 2;
-        int layerAddressOffset = affineLayer << 4;
         int pa = ioRegisters.getUnMonitored!short(0x20 + layerAddressOffset);
         int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
         int pc = ioRegisters.getUnMonitored!short(0x24 + layerAddressOffset);
         int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
 
-        int dx = internalAffineReferenceX[affineLayer];
-        int dy = internalAffineReferenceY[affineLayer];
+        int dx = internalAffineReferenceX!affineLayer;
+        int dy = internalAffineReferenceY!affineLayer;
 
-        internalAffineReferenceX[affineLayer] += pb;
-        internalAffineReferenceY[affineLayer] += pd;
+        internalAffineReferenceX!affineLayer += pb;
+        internalAffineReferenceY!affineLayer += pd;
 
         static if (__traits(compiles, LINE_BACKGROUND_AFFINE_ASM)) {
-            size_t bufferAddress = cast(size_t) buffer.ptr;
+            size_t lineAddress = cast(size_t) linePixels!layer.ptr;
             size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
             size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
 
@@ -354,7 +346,7 @@ public class Display {
                     if (displayOverflow) {
                         x &= bgSize;
                     } else {
-                        buffer[column] = TRANSPARENT;
+                        linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
                 }
@@ -362,7 +354,7 @@ public class Display {
                     if (displayOverflow) {
                         y &= bgSize;
                     } else {
-                        buffer[column] = TRANSPARENT;
+                        linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
                 }
@@ -387,28 +379,25 @@ public class Display {
                 int paletteAddress = (vram.get!byte(tileAddress) & 0xFF) << 1;
 
                 if (paletteAddress == 0) {
-                    buffer[column] = TRANSPARENT;
+                    linePixels!layer[column] = TRANSPARENT;
                     continue;
                 }
 
                 short color = palette.get!short(paletteAddress) & 0x7FFF;
 
-                buffer[column] = color;
+                linePixels!layer[column] = color;
             }
         }
     }
 
-    private void lineBackgroundBitmap16Single(int line, short[] buffer, int bgEnables, lazy int frame) {
+    private void lineBackgroundBitmap16Single(int layer)(int line, int bgEnables, int frameIndex) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. DISPLAY_WIDTH) {
-                buffer[column] = TRANSPARENT;
-            }
+            layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
             int pd = ioRegisters.getUnMonitored!short(0x26);
-
-            internalAffineReferenceX[0] += pb;
-            internalAffineReferenceY[0] += pd;
+            internalAffineReferenceX!0 += pb;
+            internalAffineReferenceY!0 += pd;
             return;
         }
 
@@ -424,15 +413,15 @@ public class Display {
         int pc = ioRegisters.getUnMonitored!short(0x24);
         int pd = ioRegisters.getUnMonitored!short(0x26);
 
-        int dx = internalAffineReferenceX[0];
-        int dy = internalAffineReferenceY[0];
+        int dx = internalAffineReferenceX!0;
+        int dy = internalAffineReferenceY!0;
 
         for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
 
             if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
-                buffer[column] = TRANSPARENT;
+                linePixels!layer[column] = TRANSPARENT;
                 continue;
             }
 
@@ -444,24 +433,21 @@ public class Display {
             int address = x + y * DISPLAY_WIDTH << 1;
 
             short color = vram.get!short(address) & 0x7FFF;
-            buffer[column] = color;
+            linePixels!layer[column] = color;
         }
 
-        internalAffineReferenceX[0] += pb;
-        internalAffineReferenceY[0] += pd;
+        internalAffineReferenceX!0 += pb;
+        internalAffineReferenceY!0 += pd;
     }
 
-    private void lineBackgroundBitmap8Double(int line, short[] buffer, int bgEnables, int frame) {
+    private void lineBackgroundBitmap8Double(int layer)(int line, int bgEnables, int frameIndex) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. DISPLAY_WIDTH) {
-                buffer[column] = TRANSPARENT;
-            }
+            layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
             int pd = ioRegisters.getUnMonitored!short(0x26);
-
-            internalAffineReferenceX[0] += pb;
-            internalAffineReferenceY[0] += pd;
+            internalAffineReferenceX!0 += pb;
+            internalAffineReferenceY!0 += pd;
             return;
         }
 
@@ -477,17 +463,17 @@ public class Display {
         int pc = ioRegisters.getUnMonitored!short(0x24);
         int pd = ioRegisters.getUnMonitored!short(0x26);
 
-        int dx = internalAffineReferenceX[0];
-        int dy = internalAffineReferenceY[0];
+        int dx = internalAffineReferenceX!0;
+        int dy = internalAffineReferenceY!0;
 
-        int addressBase = frame ? 0xA000 : 0x0;
+        int addressBase = frameIndex ? 0xA000 : 0x0;
 
         for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
 
             if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
-                buffer[column] = TRANSPARENT;
+                linePixels!layer[column] = TRANSPARENT;
                 continue;
             }
 
@@ -500,30 +486,27 @@ public class Display {
 
             int paletteIndex = vram.get!byte(address) & 0xFF;
             if (paletteIndex == 0) {
-                buffer[column] = TRANSPARENT;
+                linePixels!layer[column] = TRANSPARENT;
                 continue;
             }
             int paletteAddress = paletteIndex << 1;
 
             short color = palette.get!short(paletteAddress) & 0x7FFF;
-            buffer[column] = color;
+            linePixels!layer[column] = color;
         }
 
-        internalAffineReferenceX[0] += pb;
-        internalAffineReferenceY[0] += pd;
+        internalAffineReferenceX!0 += pb;
+        internalAffineReferenceY!0 += pd;
     }
 
-    private void lineBackgroundBitmap16Double(int line, short[] buffer, int bgEnables, int frame) {
+    private void lineBackgroundBitmap16Double(int layer)(int line, int bgEnables, int frame) {
         if (!checkBit(bgEnables, 2)) {
-            foreach (column; 0 .. DISPLAY_WIDTH) {
-                buffer[column] = TRANSPARENT;
-            }
+            layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
             int pd = ioRegisters.getUnMonitored!short(0x26);
-
-            internalAffineReferenceX[0] += pb;
-            internalAffineReferenceY[0] += pd;
+            internalAffineReferenceX!0 += pb;
+            internalAffineReferenceY!0 += pd;
             return;
         }
 
@@ -539,8 +522,8 @@ public class Display {
         int pc = ioRegisters.getUnMonitored!short(0x24);
         int pd = ioRegisters.getUnMonitored!short(0x26);
 
-        int dx = internalAffineReferenceX[0];
-        int dy = internalAffineReferenceY[0];
+        int dx = internalAffineReferenceX!0;
+        int dy = internalAffineReferenceY!0;
 
         int addressBase = frame ? 0xA000 : 0x0;
 
@@ -549,7 +532,7 @@ public class Display {
             int y = dy >> 8;
 
             if (x < 0 || x >= 160 || y < 0 || y >= 128) {
-                buffer[column] = TRANSPARENT;
+                linePixels!layer[column] = TRANSPARENT;
                 continue;
             }
 
@@ -561,18 +544,16 @@ public class Display {
             int address = x + y * 160 << 1;
 
             short color = vram.get!short(address) & 0x7FFF;
-            buffer[column] = color;
+            linePixels!layer[column] = color;
         }
 
-        internalAffineReferenceX[0] += pb;
-        internalAffineReferenceY[0] += pd;
+        internalAffineReferenceX!0 += pb;
+        internalAffineReferenceY!0 += pd;
     }
 
-    private void lineObjects(int line, short[] colorBuffer, short[] infoBuffer, int bgEnables, int tileMapping) {
-        foreach (column; 0 .. DISPLAY_WIDTH) {
-            colorBuffer[column] = TRANSPARENT;
-            infoBuffer[column] = 3;
-        }
+    private void layerObjects(int line, int bgEnables, int tileMapping) {
+        objectLinePixels[] = TRANSPARENT;
+        infoLinePixels[] = 0b11;
 
         if (!checkBit(bgEnables, 4)) {
             return;
@@ -713,7 +694,7 @@ public class Display {
                     continue;
                 }
 
-                int previousInfo = infoBuffer[column];
+                int previousInfo = infoLinePixels[column];
 
                 int previousPriority = previousInfo & 0b11;
                 if (priority > previousPriority) {
@@ -787,16 +768,16 @@ public class Display {
 
                 int modeFlags = mode << 2 | previousInfo & 0b1000;
                 if (mode == 2) {
-                    infoBuffer[column] = cast(short) (modeFlags | previousPriority);
+                    infoLinePixels[column] = cast(short) (modeFlags | previousPriority);
                 } else {
-                    colorBuffer[column] = color;
-                    infoBuffer[column] = cast(short) (modeFlags | priority);
+                    objectLinePixels[column] = color;
+                    infoLinePixels[column] = cast(short) (modeFlags | priority);
                 }
             }
         }
     }
 
-    private void lineCompose(int line, int windowEnables, int blendControl, short backColor) {
+    private void layerCompose(int line, int windowEnables, int blendControl, short backColor) {
         int colorEffect = getBits(blendControl, 6, 7);
 
         int[5] priorities = [
@@ -807,12 +788,10 @@ public class Display {
             0
         ];
 
-        int[5] layerMap = [3, 2, 1, 0, 4];
-
         auto frame = _frameSwapper.workFrame;
         for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
 
-            int objInfo = lines[5][column];
+            int objInfo = infoLinePixels[column];
             int objPriority = objInfo & 0b11;
             int objMode = objInfo >> 2;
 
@@ -840,13 +819,13 @@ public class Display {
             int firstPriority = 3;
             int secondPriority = 3;
 
-            foreach (int layer; layerMap) {
+            foreach (layer; AliasSeq!(3, 2, 1, 0, 4)) {
 
                 if (!checkBit(layerEnables, layer)) {
                     continue;
                 }
 
-                short layerColor = lines[layer][column];
+                short layerColor = linePixels!layer[column];
 
                 if (layerColor & TRANSPARENT) {
                     continue;
@@ -1012,9 +991,9 @@ public class Display {
         enum affineLayer = layer - 2;
         int layerAddressOffset = affineLayer << 4;
         int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
-        internalAffineReferenceX[affineLayer] = dx >> 4;
+        internalAffineReferenceX!affineLayer = dx >> 4;
         int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
-        internalAffineReferenceY[affineLayer] = dy >> 4;
+        internalAffineReferenceY!affineLayer = dy >> 4;
     }
 
     private void onAffineReferencePointPostWrite(int layer, bool y)
@@ -1023,9 +1002,9 @@ public class Display {
         newValue <<= 4;
         newValue >>= 4;
         static if (y) {
-            internalAffineReferenceY[affineLayer] = newValue;
+            internalAffineReferenceY!affineLayer = newValue;
         } else {
-            internalAffineReferenceX[affineLayer] = newValue;
+            internalAffineReferenceX!affineLayer = newValue;
         }
     }
 

@@ -2,7 +2,7 @@
     push RAX
     mov EBX, dy
     push RBX
-    push bufferAddress
+    push lineAddress
     push 0
 loop:
     ; calculate x

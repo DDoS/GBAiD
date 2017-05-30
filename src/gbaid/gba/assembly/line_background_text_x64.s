@@ -1,4 +1,4 @@
-    push bufferAddress
+    push lineAddress
     mov EAX, 0
     push RAX
 loop:
