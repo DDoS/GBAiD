@@ -105,16 +105,16 @@ public class Display {
     private void drawLine(int line) {
         int displayControl = ioRegisters.getUnMonitored!short(0x0);
 
-        if (checkBit(displayControl, 7)) {
+        if (displayControl.checkBit(7)) {
             lineBlank(line);
             return;
         }
 
         int displayMode = displayControl & 0b111;
-        int frameIndex = getBit(displayControl, 4);
-        int tileMapping = getBit(displayControl, 6);
-        int bgEnables = getBits(displayControl, 8, 12);
-        int windowEnables = getBits(displayControl, 13, 15);
+        int frameIndex = displayControl.getBit(4);
+        int tileMapping = displayControl.getBit(6);
+        int bgEnables = displayControl.getBits(8, 12);
+        int windowEnables = displayControl.getBits(13, 15);
 
         int blendControl = ioRegisters.getUnMonitored!short(0x50);
 
@@ -176,7 +176,7 @@ public class Display {
     }
 
     private void layerBackgroundText(int layer)(int line, int bgEnables) {
-        if (!checkBit(bgEnables, layer)) {
+        if (!bgEnables.checkBit(layer)) {
             layerTransparent!layer();
             return;
         }
@@ -184,15 +184,15 @@ public class Display {
         int bgControlAddress = 0x8 + (layer << 1);
         int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
 
-        int tileBase = getBits(bgControl, 2, 3) << 14;
-        int mosaic = getBit(bgControl, 6);
-        int singlePalette = getBit(bgControl, 7);
-        int mapBase = getBits(bgControl, 8, 12) << 11;
-        int screenSize = getBits(bgControl, 14, 15);
+        int tileBase = bgControl.getBits(2, 3) << 14;
+        int mosaic = bgControl.getBit(6);
+        int singlePalette = bgControl.getBit(7);
+        int mapBase = bgControl.getBits(8, 12) << 11;
+        int screenSize = bgControl.getBits(14, 15);
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         int tile4Bit = singlePalette ? 0 : 1;
         int tileSizeShift = 6 - tile4Bit;
@@ -293,7 +293,7 @@ public class Display {
         enum affineLayer = layer - 2;
         enum layerAddressOffset = affineLayer << 4;
 
-        if (!checkBit(bgEnables, layer)) {
+        if (!bgEnables.checkBit(layer)) {
             layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
@@ -306,15 +306,15 @@ public class Display {
         int bgControlAddress = 0x8 + (layer << 1);
         int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
 
-        int tileBase = getBits(bgControl, 2, 3) << 14;
-        int mosaic = getBit(bgControl, 6);
-        int mapBase = getBits(bgControl, 8, 12) << 11;
-        int displayOverflow = getBit(bgControl, 13);
-        int screenSize = getBits(bgControl, 14, 15);
+        int tileBase = bgControl.getBits(2, 3) << 14;
+        int mosaic = bgControl.getBit(6);
+        int mapBase = bgControl.getBits(8, 12) << 11;
+        int displayOverflow = bgControl.getBit(13);
+        int screenSize = bgControl.getBits(14, 15);
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         int bgSize = (128 << screenSize) - 1;
         int bgSizeInv = ~bgSize;
@@ -391,7 +391,7 @@ public class Display {
     }
 
     private void lineBackgroundBitmap16Single(int layer)(int line, int bgEnables) {
-        if (!checkBit(bgEnables, 2)) {
+        if (!bgEnables.checkBit(2)) {
             layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -402,11 +402,11 @@ public class Display {
         }
 
         int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        int mosaic = getBit(bgControl, 6);
+        int mosaic = bgControl.getBit(6);
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         int pa = ioRegisters.getUnMonitored!short(0x20);
         int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -441,7 +441,7 @@ public class Display {
     }
 
     private void lineBackgroundBitmap8Double(int layer)(int line, int bgEnables, int frameIndex) {
-        if (!checkBit(bgEnables, 2)) {
+        if (!bgEnables.checkBit(2)) {
             layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -452,11 +452,11 @@ public class Display {
         }
 
         int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        int mosaic = getBit(bgControl, 6);
+        int mosaic = bgControl.getBit(6);
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         int pa = ioRegisters.getUnMonitored!short(0x20);
         int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -500,7 +500,7 @@ public class Display {
     }
 
     private void lineBackgroundBitmap16Double(int layer)(int line, int bgEnables, int frame) {
-        if (!checkBit(bgEnables, 2)) {
+        if (!bgEnables.checkBit(2)) {
             layerTransparent!layer();
 
             int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -511,11 +511,11 @@ public class Display {
         }
 
         int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        int mosaic = getBit(bgControl, 6);
+        int mosaic = bgControl.getBit(6);
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         int pa = ioRegisters.getUnMonitored!short(0x20);
         int pb = ioRegisters.getUnMonitored!short(0x22);
@@ -555,7 +555,7 @@ public class Display {
         objectLinePixels[] = TRANSPARENT;
         infoLinePixels[] = 0b11;
 
-        if (!checkBit(bgEnables, 4)) {
+        if (!bgEnables.checkBit(4)) {
             return;
         }
 
@@ -566,14 +566,14 @@ public class Display {
 
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = getBits(mosaicControl, 4, 7) + 1;
+        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
 
         foreach_reverse (i; 0 .. 128) {
             int attributeAddress = i << 3;
 
             int attribute0 = oam.get!short(attributeAddress);
-            int rotAndScale = getBit(attribute0, 8);
-            int doubleSize = getBit(attribute0, 9);
+            int rotAndScale = attribute0.getBit(8);
+            int doubleSize = attribute0.getBit(9);
 
             if (!rotAndScale) {
                 if (doubleSize) {
@@ -581,10 +581,10 @@ public class Display {
                 }
             }
 
-            int shape = getBits(attribute0, 14, 15);
+            int shape = attribute0.getBits(14, 15);
 
             int attribute1 = oam.get!short(attributeAddress + 2);
-            int size = getBits(attribute1, 14, 15);
+            int size = attribute1.getBits(14, 15);
 
             int y = attribute0 & 0xFF;
             if (y >= DISPLAY_HEIGHT) {
@@ -657,24 +657,24 @@ public class Display {
                 x -= 512;
             }
 
-            int mode = getBits(attribute0, 10, 11);
-            int mosaic = getBit(attribute0, 12);
-            int singlePalette = getBit(attribute0, 13);
+            int mode = attribute0.getBits(10, 11);
+            int mosaic = attribute0.getBit(12);
+            int singlePalette = attribute0.getBit(13);
 
             int horizontalFlip = void, verticalFlip = void;
             int pa = void, pb = void, pc = void, pd = void;
             if (rotAndScale) {
                 horizontalFlip = 0;
                 verticalFlip = 0;
-                int rotAndScaleParameters = getBits(attribute1, 9, 13);
+                int rotAndScaleParameters = attribute1.getBits(9, 13);
                 int parametersAddress = (rotAndScaleParameters << 5) + 0x6;
                 pa = oam.get!short(parametersAddress);
                 pb = oam.get!short(parametersAddress + 8);
                 pc = oam.get!short(parametersAddress + 16);
                 pd = oam.get!short(parametersAddress + 24);
             } else {
-                horizontalFlip = getBit(attribute1, 12);
-                verticalFlip = getBit(attribute1, 13);
+                horizontalFlip = attribute1.getBit(12);
+                verticalFlip = attribute1.getBit(13);
                 pa = 0;
                 pb = 0;
                 pc = 0;
@@ -683,8 +683,8 @@ public class Display {
 
             int attribute2 = oam.get!short(attributeAddress + 4);
             int tileNumber = attribute2 & 0x3FF;
-            int priority = getBits(attribute2, 10, 11);
-            int paletteNumber = getBits(attribute2, 12, 15);
+            int priority = attribute2.getBits(10, 11);
+            int paletteNumber = attribute2.getBits(12, 15);
 
             foreach (objectX; 0 .. horizontalSize) {
 
@@ -778,7 +778,7 @@ public class Display {
     }
 
     private void layerCompose(int line, int windowEnables, int blendControl, short backColor) {
-        int colorEffect = getBits(blendControl, 6, 7);
+        int colorEffect = blendControl.getBits(6, 7);
 
         int[5] priorities = [
             ioRegisters.getUnMonitored!short(0x8) & 0b11,
@@ -802,7 +802,7 @@ public class Display {
             if (window != 0) {
                 int windowControl = ioRegisters.getUnMonitored!byte(window);
                 layerEnables = windowControl & 0b11111;
-                specialEffectEnabled = checkBit(windowControl, 5);
+                specialEffectEnabled = windowControl.checkBit(5);
             } else {
                 layerEnables = 0b11111;
                 specialEffectEnabled = true;
@@ -821,7 +821,7 @@ public class Display {
 
             foreach (layer; AliasSeq!(3, 2, 1, 0, 4)) {
 
-                if (!checkBit(layerEnables, layer)) {
+                if (!layerEnables.checkBit(layer)) {
                     continue;
                 }
 
@@ -851,24 +851,24 @@ public class Display {
                 }
             }
 
-            if (firstLayer == 4 && (objMode & 0b1) && checkBit(blendControl, secondLayer + 8)) {
+            if (firstLayer == 4 && (objMode & 0b1) && blendControl.checkBit(secondLayer + 8)) {
                 firstColor = applyBlendEffect(firstColor, secondColor);
             } else if (specialEffectEnabled) {
                 final switch (colorEffect) {
                     case 0:
                         break;
                     case 1:
-                        if (checkBit(blendControl, firstLayer) && checkBit(blendControl, secondLayer + 8)) {
+                        if (blendControl.checkBit(firstLayer) && blendControl.checkBit(secondLayer + 8)) {
                             firstColor = applyBlendEffect(firstColor, secondColor);
                         }
                         break;
                     case 2:
-                        if (checkBit(blendControl, firstLayer)) {
+                        if (blendControl.checkBit(firstLayer)) {
                             applyBrightnessIncreaseEffect(firstColor);
                         }
                         break;
                     case 3:
-                        if (checkBit(blendControl, firstLayer)) {
+                        if (blendControl.checkBit(firstLayer)) {
                             applyBrightnessDecreaseEffect(firstColor);
                         }
                         break;
@@ -927,8 +927,8 @@ public class Display {
 
     private void applyBrightnessIncreaseEffect(ref short first) {
         int firstRed = first & 0b11111;
-        int firstGreen = getBits(first, 5, 9);
-        int firstBlue = getBits(first, 10, 14);
+        int firstGreen = first.getBits(5, 9);
+        int firstBlue = first.getBits(10, 14);
 
         int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
         firstRed += (31 - firstRed) * evy + 8 >> 4;
@@ -940,8 +940,8 @@ public class Display {
 
     private void applyBrightnessDecreaseEffect(ref short first) {
         int firstRed = first & 0b11111;
-        int firstGreen = getBits(first, 5, 9);
-        int firstBlue = getBits(first, 10, 14);
+        int firstGreen = first.getBits(5, 9);
+        int firstBlue = first.getBits(10, 14);
 
         int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
         firstRed -= firstRed * evy + 8 >> 4;
@@ -953,12 +953,12 @@ public class Display {
 
     private short applyBlendEffect(short first, short second) {
         int firstRed = first & 0b11111;
-        int firstGreen = getBits(first, 5, 9);
-        int firstBlue = getBits(first, 10, 14);
+        int firstGreen = first.getBits(5, 9);
+        int firstBlue = first.getBits(10, 14);
 
         int secondRed = second & 0b11111;
-        int secondGreen = getBits(second, 5, 9);
-        int secondBlue = getBits(second, 10, 14);
+        int secondGreen = second.getBits(5, 9);
+        int secondBlue = second.getBits(10, 14);
 
         int blendAlpha = ioRegisters.getUnMonitored!short(0x52);
 
@@ -967,7 +967,7 @@ public class Display {
         firstGreen = firstGreen * eva + 8 >> 4;
         firstBlue = firstBlue * eva + 8 >> 4;
 
-        int evb = min(getBits(blendAlpha, 8, 12), 16);
+        int evb = min(blendAlpha.getBits(8, 12), 16);
         secondRed = secondRed * evb + 8 >> 4;
         secondGreen = secondGreen * evb + 8 >> 4;
         secondBlue = secondBlue * evb + 8 >> 4;
