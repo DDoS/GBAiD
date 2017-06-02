@@ -104,22 +104,14 @@ public class Display {
 
     private void drawLine(int line) {
         int displayControl = ioRegisters.getUnMonitored!short(0x0);
-
+        // If the blanking bit is set then we only draw a white line
         if (displayControl.checkBit(7)) {
             lineBlank(line);
             return;
         }
-
+        // Otherwise we start by drawing the background layers, which depend on the mode
         int displayMode = displayControl & 0b111;
-        int frameIndex = displayControl.getBit(4);
-        int tileMapping = displayControl.getBit(6);
         int bgEnables = displayControl.getBits(8, 12);
-        int windowEnables = displayControl.getBits(13, 15);
-
-        int blendControl = ioRegisters.getUnMonitored!short(0x50);
-
-        short backColor = palette.get!short(0x0) & 0x7FFF;
-
         switch (displayMode) {
             case 0:
                 layerBackgroundText!0(line, bgEnables);
@@ -146,12 +138,14 @@ public class Display {
                 layerTransparent!3();
                 break;
             case 4:
+                int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
                 lineBackgroundBitmap8Double!2(line, bgEnables, frameIndex);
                 layerTransparent!3();
                 break;
             case 5:
+                int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
                 lineBackgroundBitmap16Double!2(line, bgEnables, frameIndex);
@@ -160,96 +154,108 @@ public class Display {
             default:
                 break;
         }
-
+        // We always draw the object layer
+        int tileMapping = displayControl.getBit(6);
         layerObjects(line, bgEnables, displayMode, tileMapping);
+        // Finally we compose all the layers into the drawn line
+        int windowEnables = displayControl.getBits(13, 15);
+        int blendControl = ioRegisters.getUnMonitored!short(0x50);
+        short backColor = palette.get!short(0x0) & 0x7FFF;
         layerCompose(line, windowEnables, blendControl, backColor);
     }
 
     private void lineBlank(int line) {
+        // When blanking we just fill the line with white
         auto frame = _frameSwapper.workFrame;
         auto p = line * DISPLAY_WIDTH;
         frame[p .. p +  DISPLAY_WIDTH] = cast(short) 0xFFFF;
     }
 
     private void layerTransparent(int layer)() {
+        // Bit 16 of a pixel's color data is unused in the GBA, but we'll use it for transparency
         linePixels!layer[] = TRANSPARENT;
     }
 
     private void layerBackgroundText(int layer)(int line, int bgEnables) {
+        // Draw a transparent line if the layer is not enabled
         if (!bgEnables.checkBit(layer)) {
             layerTransparent!layer();
             return;
         }
-
-        int bgControlAddress = 0x8 + (layer << 1);
+        // Otherwise we fetch the background control register for the layer
+        enum bgControlAddress = 0x8 + (layer << 1);
         int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
-
+        // From it we get the settings
         int tileBase = bgControl.getBits(2, 3) << 14;
         int mosaic = bgControl.getBit(6);
         int singlePalette = bgControl.getBit(7);
         int mapBase = bgControl.getBits(8, 12) << 11;
         int screenSize = bgControl.getBits(14, 15);
-
+        // We also need the mosaic control
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
+        // Tile palette data is 4 bit when using 16 palettes, or 8 bit when just using 1
+        // We also calculate a shift so that: 1 << tileSizeShift = sizeOfTile = (8 * 8 * paletteDataSize)
         int tile4Bit = singlePalette ? 0 : 1;
         int tileSizeShift = 6 - tile4Bit;
-
+        // In text mode, the screen size is 256 or 512 in each dimension (1 or 2 maps in each dimension)
+        // Here we get this size as a bit mask (writable as 2^n - 1)
         int totalWidth = (256 << (screenSize & 0b1)) - 1;
         int totalHeight = (256 << ((screenSize & 0b10) >> 1)) - 1;
-
-        int layerAddressOffset = layer << 2;
+        // Finally we need the offset values for scrolling the backgroung
+        enum layerAddressOffset = layer << 2;
         int xOffset = ioRegisters.getUnMonitored!short(0x10 + layerAddressOffset) & 0x1FF;
         int yOffset = ioRegisters.getUnMonitored!short(0x12 + layerAddressOffset) & 0x1FF;
-
+        // To get the tile y coordinate, we add the offet and apply the height mask (to wrap around)
         int y = (line + yOffset) & totalHeight;
-
+        // If y is outside the first vertical tile map, we address into the second one instead
         if (y & ~255) {
+            // Restrict y to the map size
             y &= 255;
+            // if the width is also of two maps, then we address past the second horizontal map too
             mapBase += BYTES_PER_KIB << (totalWidth & ~255 ? 2 : 1);
         }
-
+        // If the mosaic is enabled, then we round down to the next mosaic multiple
         if (mosaic) {
             y -= y % mosaicSizeY;
         }
-
+        // Now we calculate the map line (row of tiles in a map), and the tile line (row of pixels in a tile)
         int mapLine = y >> 3;
         int tileLine = y & 7;
-
+        // Every row of tiles in a map has 32 of them, so we get the linear offset into the map by doing mapLine * 32
         int lineMapOffset = mapLine << 5;
-
+        // Use the optimized ASM implementation of the line drawing code if available
         static if (__traits(compiles, LINE_BACKGROUND_TEXT_ASM)) {
             size_t lineAddress = cast(size_t) linePixels!layer.ptr;
             size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
             size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
-
             mixin (LINE_BACKGROUND_TEXT_ASM);
         } else {
             foreach (column; 0 .. DISPLAY_WIDTH) {
-
+                // For every column, we get the base x coordinate like we did for the y
                 int x = (column + xOffset) & totalWidth;
-
+                // Again, we address into the second horizontal map the if x is outside the first
                 int map = mapBase;
                 if (x & ~255) {
                     x &= 255;
                     map += BYTES_PER_KIB << 1;
                 }
-
+                // If the mosaic is enabled, then we round down to the next mosaic multiple
                 if (mosaic) {
                     x -= x % mosaicSizeX;
                 }
-
+                // We calculate the map and tile columns just like we did for the y
                 int mapColumn = x >> 3;
                 int tileColumn = x & 7;
-
+                // Now we can calculate address into the map: we add the line offset to the column,
+                // multiply them by two because each tile is 2 bytes, then add the map base address
                 int mapAddress = map + (lineMapOffset + mapColumn << 1);
-
+                // Then we fetch the tile data from the map
                 int tile = vram.get!short(mapAddress);
-
+                // The tile number is taken from the lower bits
                 int tileNumber = tile & 0x3FF;
-
+                // The two middle bits are used to flip horizontally and vertically, respectively
                 int sampleColumn = void, sampleLine = void;
                 if (tile & 0x400) {
                     sampleColumn = ~tileColumn & 7;
@@ -261,29 +267,36 @@ public class Display {
                 } else {
                     sampleLine = tileLine;
                 }
-
+                // Now we calculate the address into the tile: we add the base tile address, tile number * tile size,
+                // line into the tile * 8 pixels, and the column into the tile (both divided by 2 if 4 bits per pixel)
                 int tileAddress = tileBase + (tileNumber << tileSizeShift)
                         + ((sampleLine << 3) + sampleColumn >> tile4Bit);
-
+                // By addressing into the tile, we get the palette index, but this depends on the palette mode: 1 or 16
                 int paletteAddress = void;
                 if (singlePalette) {
+                    // For a single palette we address directly
                     int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
+                    // The first color of the palette is transparent
                     if (paletteIndex == 0) {
                         linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
+                    // Every color is 2 bytes, so me multiply the index by 2
                     paletteAddress = paletteIndex << 1;
                 } else {
+                    // For multiple palettes we address the byte, then address the low or high nibble (4 bit index)
                     int paletteIndex = vram.get!byte(tileAddress) >> ((sampleColumn & 0b1) << 2) & 0xF;
+                    // The first color of the palette is also transparent
                     if (paletteIndex == 0) {
                         linePixels!layer[column] = TRANSPARENT;
                         continue;
                     }
+                    // The tile upper bits are the palette number. We multiply by 16 (colors per palette),
+                    // then add the index into the palette, and also multiply by 2 because each color takes 2 bytes
                     paletteAddress = (tile >> 8 & 0xF0) + paletteIndex << 1;
                 }
-
+                // Finally we have the address into the palette, which yields the color for the layer dot
                 short color = palette.get!short(paletteAddress) & 0x7FFF;
-
                 linePixels!layer[column] = color;
             }
         }
