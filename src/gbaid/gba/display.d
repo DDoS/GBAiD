@@ -267,7 +267,7 @@ public class Display {
                 } else {
                     sampleLine = tileLine;
                 }
-                // Now we calculate the address into the tile: we add the base tile address, tile number * tile size,
+                // Now we calculate the address into the tile data: we add the base tile address, tile number * tile size,
                 // line into the tile * 8 pixels, and the column into the tile (both divided by 2 if 4 bits per pixel)
                 int tileAddress = tileBase + (tileNumber << tileSizeShift)
                         + ((sampleLine << 3) + sampleColumn >> tile4Bit);
@@ -303,59 +303,64 @@ public class Display {
     }
 
     private void layerBackgroundAffine(int layer)(int line, int bgEnables) {
+        // There are two affine layers, with indexes 2 or 3. The address offset is for accessing the transform registers
         enum affineLayer = layer - 2;
         enum layerAddressOffset = affineLayer << 4;
-
+        // If the layer isn't enabled, we make it transparent
         if (!bgEnables.checkBit(layer)) {
             layerTransparent!layer();
-
+            // We also need to increment the transform coordinates by the coefficients (for the next line)
             int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
             int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
             internalAffineReferenceX!affineLayer += pb;
             internalAffineReferenceY!affineLayer += pd;
             return;
         }
-
-        int bgControlAddress = 0x8 + (layer << 1);
+        // Otherwise we fetch the background control register for the layer
+        enum bgControlAddress = 0x8 + (layer << 1);
         int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
-
+        // From it we get the settings
         int tileBase = bgControl.getBits(2, 3) << 14;
         int mosaic = bgControl.getBit(6);
         int mapBase = bgControl.getBits(8, 12) << 11;
         int displayOverflow = bgControl.getBit(13);
         int screenSize = bgControl.getBits(14, 15);
-
+        // We also need the mosaic control
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
+        // We calculate the size of the layer (square) and represent it as a bit mask (2^n -1)
         int bgSize = (128 << screenSize) - 1;
         int bgSizeInv = ~bgSize;
+        // This shift is an equivalent multiplier for the tile map size (1 << n = tilesPerLine)
         int mapLineShift = screenSize + 4;
-
+        // These are the coefficients of a 2x2 matrix. Incrementing the coordinates at each dot and line by
+        // the corresponding coefficients is the equivalent of multiplying the original coordinates by the matrix
         int pa = ioRegisters.getUnMonitored!short(0x20 + layerAddressOffset);
         int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
         int pc = ioRegisters.getUnMonitored!short(0x24 + layerAddressOffset);
         int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
-
+        // These are the current coordinates of the pixel to be sampled in the layer, in fixed 20.8 format
         int dx = internalAffineReferenceX!affineLayer;
         int dy = internalAffineReferenceY!affineLayer;
-
+        // We increment the stored values by the coefficients for the next line
         internalAffineReferenceX!affineLayer += pb;
         internalAffineReferenceY!affineLayer += pd;
-
+        // Use the optimized ASM implementation of the line drawing code if available
         static if (__traits(compiles, LINE_BACKGROUND_AFFINE_ASM)) {
             size_t lineAddress = cast(size_t) linePixels!layer.ptr;
             size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
             size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
-
             mixin (LINE_BACKGROUND_AFFINE_ASM);
         } else {
+            // On every iteration we also increment the coordinates by the transform coefficients
             for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
+                // The coordinates have 8 fractional bits, so we get the integer part by shifting
                 int x = dx >> 8;
                 int y = dy >> 8;
-
+                // Now we check if the coordinates are outside the layer by using the inverse mask
                 if (x & bgSizeInv) {
+                    // There are two modes for overflow: wrap around (apply mask) or make it transparent
                     if (displayOverflow) {
                         x &= bgSize;
                     } else {
@@ -371,33 +376,34 @@ public class Display {
                         continue;
                     }
                 }
-
+                // If the mosaic mode is enabled, we round the coordinates down to the nearest multiple
                 if (mosaic) {
                     x -= x % mosaicSizeX;
                     y -= y % mosaicSizeY;
                 }
-
+                // Tiles are 8x8, so dividing the x and y pixel coordinates by 8 gives us their coordinates in the map
                 int mapColumn = x >> 3;
                 int mapLine = y >> 3;
-
+                // Similar idea here, but we use the modulo operation instead to get the coordinates in the tile
                 int tileColumn = x & 7;
                 int tileLine = y & 7;
-
+                // To calculate the address in the map, we add the base address to line and column offsets
+                // The line offset is multiplied by the number of tiles in a map line
                 int mapAddress = mapBase + (mapLine << mapLineShift) + mapColumn;
-
+                // Now we can fetch the tile number
                 int tileNumber = vram.get!byte(mapAddress) & 0xFF;
-
+                // To calculate the address in the tile data, we add the tile base to the number, line and column offsets
+                // The tile number is multiplied by the tile size (64), and the line offset by the tile line size (8)
                 int tileAddress = tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
-
+                // By addressing into the tile, we get the palette index, which we multiply by 2 to get the address
                 int paletteAddress = (vram.get!byte(tileAddress) & 0xFF) << 1;
-
+                // The first color of the palette is transparent
                 if (paletteAddress == 0) {
                     linePixels!layer[column] = TRANSPARENT;
                     continue;
                 }
-
+                // Finally we can fetch the dot color from the palette
                 short color = palette.get!short(paletteAddress) & 0x7FFF;
-
                 linePixels!layer[column] = color;
             }
         }
