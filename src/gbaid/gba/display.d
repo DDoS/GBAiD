@@ -134,21 +134,21 @@ public class Display {
             case 3:
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap16Single!2(line, bgEnables);
+                lineBackgroundBitmap!("16Single", 2)(line, bgEnables, 0);
                 layerTransparent!3();
                 break;
             case 4:
                 int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap8Double!2(line, bgEnables, frameIndex);
+                lineBackgroundBitmap!("8Double", 2)(line, bgEnables, frameIndex);
                 layerTransparent!3();
                 break;
             case 5:
                 int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap16Double!2(line, bgEnables, frameIndex);
+                lineBackgroundBitmap!("16Double", 2)(line, bgEnables, frameIndex);
                 layerTransparent!3();
                 break;
             default:
@@ -409,165 +409,82 @@ public class Display {
         }
     }
 
-    private void lineBackgroundBitmap16Single(int layer)(int line, int bgEnables) {
+    private void lineBackgroundBitmap(string mode, int layer)(int line, int bgEnables, int frameIndex)
+                if (mode == "16Single" || mode == "8Double" || mode == "16Double") {
+        // If the layer isn't enabled, we make it transparent
         if (!bgEnables.checkBit(2)) {
             layerTransparent!layer();
-
+            // We also need to increment the transform coordinates by the coefficients (for the next line)
             int pb = ioRegisters.getUnMonitored!short(0x22);
             int pd = ioRegisters.getUnMonitored!short(0x26);
             internalAffineReferenceX!0 += pb;
             internalAffineReferenceY!0 += pd;
             return;
         }
-
+        // Otherwise we fetch the background control register for the layer
         int bgControl = ioRegisters.getUnMonitored!short(0xC);
+        // From it we get the settings
         int mosaic = bgControl.getBit(6);
-
+        // We also need the mosaic control
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
+        // These are the coefficients of a 2x2 matrix. Incrementing the coordinates at each dot and line by
+        // the corresponding coefficients is the equivalent of multiplying the original coordinates by the matrix
         int pa = ioRegisters.getUnMonitored!short(0x20);
         int pb = ioRegisters.getUnMonitored!short(0x22);
         int pc = ioRegisters.getUnMonitored!short(0x24);
         int pd = ioRegisters.getUnMonitored!short(0x26);
-
+        // These are the current coordinates of the pixel to be sampled in the layer, in fixed 20.8 format
         int dx = internalAffineReferenceX!0;
         int dy = internalAffineReferenceY!0;
-
-        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
-            int x = dx >> 8;
-            int y = dy >> 8;
-
-            if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
-                linePixels!layer[column] = TRANSPARENT;
-                continue;
-            }
-
-            if (mosaic) {
-                x -= x % mosaicSizeX;
-                y -= y % mosaicSizeY;
-            }
-
-            int address = x + y * DISPLAY_WIDTH << 1;
-
-            short color = vram.get!short(address) & 0x7FFF;
-            linePixels!layer[column] = color;
-        }
-
+        // We increment the stored values by the coefficients for the next line
         internalAffineReferenceX!0 += pb;
         internalAffineReferenceY!0 += pd;
-    }
-
-    private void lineBackgroundBitmap8Double(int layer)(int line, int bgEnables, int frameIndex) {
-        if (!bgEnables.checkBit(2)) {
-            layerTransparent!layer();
-
-            int pb = ioRegisters.getUnMonitored!short(0x22);
-            int pd = ioRegisters.getUnMonitored!short(0x26);
-            internalAffineReferenceX!0 += pb;
-            internalAffineReferenceY!0 += pd;
-            return;
-        }
-
-        int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        int mosaic = bgControl.getBit(6);
-
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
-        int pa = ioRegisters.getUnMonitored!short(0x20);
-        int pb = ioRegisters.getUnMonitored!short(0x22);
-        int pc = ioRegisters.getUnMonitored!short(0x24);
-        int pd = ioRegisters.getUnMonitored!short(0x26);
-
-        int dx = internalAffineReferenceX!0;
-        int dy = internalAffineReferenceY!0;
-
+        // Calculate the frame base address from the index (not used for 16Single mode)
         int addressBase = frameIndex ? 0xA000 : 0x0;
-
+        // On every iteration we also increment the coordinates by the transform coefficients
         for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
             int x = dx >> 8;
             int y = dy >> 8;
-
-            if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) {
+            // The 16Double mode has a smaller layer, others use the display size
+            static if (mode == "16Double") {
+                enum layerWidth = 160;
+                enum layerHeight = 128;
+            } else {
+                enum layerWidth = DISPLAY_WIDTH;
+                enum layerHeight = DISPLAY_HEIGHT;
+            }
+            // Use transparent on overflow
+            if (x < 0 || x >= layerWidth || y < 0 || y >= layerHeight) {
                 linePixels!layer[column] = TRANSPARENT;
                 continue;
             }
-
+            // If the mosaic mode is enabled, we round the coordinates down to the nearest multiple
             if (mosaic) {
                 x -= x % mosaicSizeX;
                 y -= y % mosaicSizeY;
             }
-
-            int address = x + y * DISPLAY_WIDTH + addressBase;
-
-            int paletteIndex = vram.get!byte(address) & 0xFF;
-            if (paletteIndex == 0) {
-                linePixels!layer[column] = TRANSPARENT;
-                continue;
+            // The dot offet is just the x offset added to y multiplied by the number of dots in a layer line
+            int dotOffset = x + y * layerWidth;
+            // Both 16 bits modes are direct, but the 8 bit mode indexes the palette
+            static if (mode == "16Single" || mode == "16Double") {
+                // The dots are 2 bytes wide, so we multiply by 2 to get the color address, then add the frame base
+                short color = vram.get!short((dotOffset << 1) + addressBase);
+            } else {
+                // The dots are only 1 byte wide, so we get the palette index directly
+                int paletteIndex = vram.get!byte(dotOffset + addressBase) & 0xFF;
+                // The first color of the palette is transparent
+                if (paletteIndex == 0) {
+                    linePixels!layer[column] = TRANSPARENT;
+                    continue;
+                }
+                // The colors take 2 bytes, so we multiply by 2 to get the palette address
+                short color = palette.get!short(paletteIndex << 1);
             }
-            int paletteAddress = paletteIndex << 1;
-
-            short color = palette.get!short(paletteAddress) & 0x7FFF;
-            linePixels!layer[column] = color;
+            // Finally we set the color bits in the layer
+            linePixels!layer[column] = color & 0x7FFF;
         }
-
-        internalAffineReferenceX!0 += pb;
-        internalAffineReferenceY!0 += pd;
-    }
-
-    private void lineBackgroundBitmap16Double(int layer)(int line, int bgEnables, int frame) {
-        if (!bgEnables.checkBit(2)) {
-            layerTransparent!layer();
-
-            int pb = ioRegisters.getUnMonitored!short(0x22);
-            int pd = ioRegisters.getUnMonitored!short(0x26);
-            internalAffineReferenceX!0 += pb;
-            internalAffineReferenceY!0 += pd;
-            return;
-        }
-
-        int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        int mosaic = bgControl.getBit(6);
-
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
-        int pa = ioRegisters.getUnMonitored!short(0x20);
-        int pb = ioRegisters.getUnMonitored!short(0x22);
-        int pc = ioRegisters.getUnMonitored!short(0x24);
-        int pd = ioRegisters.getUnMonitored!short(0x26);
-
-        int dx = internalAffineReferenceX!0;
-        int dy = internalAffineReferenceY!0;
-
-        int addressBase = frame ? 0xA000 : 0x0;
-
-        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
-            int x = dx >> 8;
-            int y = dy >> 8;
-
-            if (x < 0 || x >= 160 || y < 0 || y >= 128) {
-                linePixels!layer[column] = TRANSPARENT;
-                continue;
-            }
-
-            if (mosaic) {
-                x -= x % mosaicSizeX;
-                y -= y % mosaicSizeY;
-            }
-
-            int address = x + y * 160 << 1;
-
-            short color = vram.get!short(address) & 0x7FFF;
-            linePixels!layer[column] = color;
-        }
-
-        internalAffineReferenceX!0 += pb;
-        internalAffineReferenceY!0 += pd;
     }
 
     private void layerObjects(int line, int bgEnables, int displayMode, int tileMapping) {
