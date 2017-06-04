@@ -172,7 +172,7 @@ public class Display {
     }
 
     private void layerTransparent(int layer)() {
-        // Bit 16 of a pixel's color data is unused in the GBA, but we'll use it for transparency
+        // Bit 16 of a dots's color data is unused in the GBA, but we'll use it for transparency
         linePixels!layer[] = TRANSPARENT;
     }
 
@@ -220,7 +220,7 @@ public class Display {
         if (mosaic) {
             y -= y % mosaicSizeY;
         }
-        // Now we calculate the map line (row of tiles in a map), and the tile line (row of pixels in a tile)
+        // Now we calculate the map line (row of tiles in a map), and the tile line (row of dotss in a tile)
         int mapLine = y >> 3;
         int tileLine = y & 7;
         // Every row of tiles in a map has 32 of them, so we get the linear offset into the map by doing mapLine * 32
@@ -268,7 +268,7 @@ public class Display {
                     sampleLine = tileLine;
                 }
                 // Now we calculate the address into the tile data: we add the base tile address, tile number * tile size,
-                // line into the tile * 8 pixels, and the column into the tile (both divided by 2 if 4 bits per pixel)
+                // line into the tile * 8 dotss, and the column into the tile (both divided by 2 if 4 bits per dots)
                 int tileAddress = tileBase + (tileNumber << tileSizeShift)
                         + ((sampleLine << 3) + sampleColumn >> tile4Bit);
                 // By addressing into the tile, we get the palette index, but this depends on the palette mode: 1 or 16
@@ -340,7 +340,7 @@ public class Display {
         int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
         int pc = ioRegisters.getUnMonitored!short(0x24 + layerAddressOffset);
         int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
-        // These are the current coordinates of the pixel to be sampled in the layer, in fixed 20.8 format
+        // These are the current coordinates of the dots to be sampled in the layer, in fixed 20.8 format
         int dx = internalAffineReferenceX!affineLayer;
         int dy = internalAffineReferenceY!affineLayer;
         // We increment the stored values by the coefficients for the next line
@@ -381,7 +381,7 @@ public class Display {
                     x -= x % mosaicSizeX;
                     y -= y % mosaicSizeY;
                 }
-                // Tiles are 8x8, so dividing the x and y pixel coordinates by 8 gives us their coordinates in the map
+                // Tiles are 8x8, so dividing the x and y dots coordinates by 8 gives us their coordinates in the map
                 int mapColumn = x >> 3;
                 int mapLine = y >> 3;
                 // Similar idea here, but we use the modulo operation instead to get the coordinates in the tile
@@ -435,7 +435,7 @@ public class Display {
         int pb = ioRegisters.getUnMonitored!short(0x22);
         int pc = ioRegisters.getUnMonitored!short(0x24);
         int pd = ioRegisters.getUnMonitored!short(0x26);
-        // These are the current coordinates of the pixel to be sampled in the layer, in fixed 20.8 format
+        // These are the current coordinates of the dots to be sampled in the layer, in fixed 20.8 format
         int dx = internalAffineReferenceX!0;
         int dy = internalAffineReferenceY!0;
         // We increment the stored values by the coefficients for the next line
@@ -488,51 +488,52 @@ public class Display {
     }
 
     private void layerObjects(int line, int bgEnables, int displayMode, int tileMapping) {
+        // Sprites only covert part of the line, so we start by clearing the layer with transparency
         objectLinePixels[] = TRANSPARENT;
+        // The info line is the top object priority (0 and 1) and mode bits (2 and 3). Fill with the lowest priority
         infoLinePixels[] = 0b11;
-
+        // Skip if objects aren't enabled
         if (!bgEnables.checkBit(4)) {
             return;
         }
-
+        // Objects start a higher address with bitmaped display modes
         int tileBase = 0x10000;
         if (displayMode >= 3) {
             tileBase += 0x4000;
         }
-
+        // Get the mosaic control data
         int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
         int mosaicSizeX = (mosaicControl & 0b1111) + 1;
         int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-
+        // Higher index objects have lower priority, and we traverse in increasing priority
         foreach_reverse (i; 0 .. 128) {
+            // Attributes are 8 bytes long (6 used, 2 for padding), and consecutive in memory
             int attributeAddress = i << 3;
-
             int attribute0 = oam.get!short(attributeAddress);
+            // Get the flag that controls if rotation and scale is enabled
             int rotAndScale = attribute0.getBit(8);
+            // The function of this bit depends on the previous one
             int doubleSize = attribute0.getBit(9);
-
+            // If rotation and scale is not enabled, it is used to disable the object
             if (!rotAndScale) {
                 if (doubleSize) {
                     continue;
                 }
             }
-
+            // The shape bits decide if the object is square or rectangular (vertical or horizontal)
             int shape = attribute0.getBits(14, 15);
-
+            // Next we get the second attribute and the size parameter
             int attribute1 = oam.get!short(attributeAddress + 2);
             int size = attribute1.getBits(14, 15);
-
-            int y = attribute0 & 0xFF;
-            if (y >= DISPLAY_HEIGHT) {
-                y -= 256;
-            }
-
+            // We'll calculate the final dimensions, and a multiplier shift: horizontalSize = 2 ^^ (mapYShift + 3)
             int horizontalSize = void, verticalSize = void, mapYShift = void;
             if (shape == 0) {
+                // For a square it simple: sizes grow by a factor of 2 on all dimensions
                 horizontalSize = 8 << size;
                 verticalSize = horizontalSize;
                 mapYShift = size;
             } else {
+                // For a rectangle, we assume it is a horizontal one
                 int mapXShift = void;
                 final switch (size) {
                     case 0:
@@ -560,43 +561,50 @@ public class Display {
                         mapYShift = 3;
                         break;
                 }
+                // If it is actually vertical, we just have to swap the dimensions
                 if (shape == 2) {
                     swap!int(horizontalSize, verticalSize);
                     swap!int(mapXShift, mapYShift);
                 }
             }
-
+            // We have two different sizes: the size of the original object, and the one after transformation
+            // The sample one is the original size (in memory), the other is the area in which we draw the object
             int sampleHorizontalSize = horizontalSize;
             int sampleVerticalSize = verticalSize;
+            // If double size is enabled, we must double the drawn area
             if (doubleSize) {
                 horizontalSize <<= 1;
                 verticalSize <<= 1;
             }
-
+            // Now we fetch the y coordinate. If it is too large, we subtract the arbitrary 256 value
+            int y = attribute0 & 0xFF;
+            if (y >= DISPLAY_HEIGHT) {
+                y -= 256;
+            }
+            // We subtract the y coordinate from the line to get the y relative to the object
             int objectY = line - y;
+            // If we are outside the area to draw, then the object isn't in this line (skip it)
             if (objectY < 0 || objectY >= verticalSize) {
                 continue;
             }
-
+            // Now we calculate masks for the size, which depends on the kind of drawing
             int horizontalSizeMask = void;
             int verticalSizeMask = void;
             if (rotAndScale) {
+                // When transformation is enabled, we calculate inverse masks for the original object
                 horizontalSizeMask = ~(sampleHorizontalSize - 1);
                 verticalSizeMask = ~(sampleVerticalSize - 1);
             } else {
+                // When transformation is disabled, we calculate ordinary masks
                 horizontalSizeMask = horizontalSize - 1;
                 verticalSizeMask = verticalSize - 1;
             }
-
+            // Now we fetch the x coordinate. If it is too large, we subtract the arbitrary 512 value
             int x = attribute1 & 0x1FF;
             if (x >= DISPLAY_WIDTH) {
                 x -= 512;
             }
-
-            int mode = attribute0.getBits(10, 11);
-            int mosaic = attribute0.getBit(12);
-            int singlePalette = attribute0.getBit(13);
-
+            // If the object is has rotation and scale we fetch the matrix, otherwise it's just a few flip parameters
             int horizontalFlip = void, verticalFlip = void;
             int pa = void, pb = void, pc = void, pd = void;
             if (rotAndScale) {
@@ -616,41 +624,44 @@ public class Display {
                 pc = 0;
                 pd = 0;
             }
-
+            // Finally we get the rest of the attribute data
+            int mode = attribute0.getBits(10, 11);
+            int mosaic = attribute0.getBit(12);
+            int singlePalette = attribute0.getBit(13);
             int attribute2 = oam.get!short(attributeAddress + 4);
             int tileNumber = attribute2 & 0x3FF;
             int priority = attribute2.getBits(10, 11);
             int paletteNumber = attribute2.getBits(12, 15);
-
+            // We're ready to draw the object, one dot at a time
             foreach (objectX; 0 .. horizontalSize) {
-
+                // We calculate the column in the line from the x cooordinate, and skip if outside the line
                 int column = objectX + x;
-
                 if (column >= DISPLAY_WIDTH) {
                     continue;
                 }
-
+                // We fetch the priority of the previous object, and skip if the current one is lower
                 int previousInfo = infoLinePixels[column];
-
                 int previousPriority = previousInfo & 0b11;
+                // Lower priority numbers are actually higher priority
                 if (priority > previousPriority) {
                     continue;
                 }
-
+                // Next we transform the draw coordinates into the sampling coordinates
                 int sampleX = objectX, sampleY = objectY;
-
                 if (rotAndScale) {
+                    // We offset the draw area to center it, apply the transformation, then offset back
                     int tmpX = sampleX - (horizontalSize >> 1);
                     int tmpY = sampleY - (verticalSize >> 1);
                     sampleX = pa * tmpX + pb * tmpY >> 8;
                     sampleY = pc * tmpX + pd * tmpY >> 8;
                     sampleX += sampleHorizontalSize >> 1;
                     sampleY += sampleVerticalSize >> 1;
-                    // this mask is inverted
+                    // We check against the inverted mask for out-of-bounds (skip in that case)
                     if ((sampleX & horizontalSizeMask) || (sampleY & verticalSizeMask)) {
                         continue;
                     }
                 } else {
+                    // When not using rotation and scale, we only apply flips
                     if (horizontalFlip) {
                         sampleX = ~sampleX & horizontalSizeMask;
                     }
@@ -658,54 +669,66 @@ public class Display {
                         sampleY = ~sampleY & verticalSizeMask;
                     }
                 }
-
+                // Now that we have the coordinates to sample in memory, we can apply the mosaic effect
                 if (mosaic) {
                     sampleX -= sampleX % mosaicSizeX;
                     sampleY -= sampleY % mosaicSizeY;
                 }
-
+                // We divide the coordinates by 8 to get coordinates of the tile to draw
                 int mapX = sampleX >> 3;
                 int mapY = sampleY >> 3;
-
+                // We get the divide by 8 remainder to get coordinates of the dots in the tile to draw
                 int tileX = sampleX & 7;
                 int tileY = sampleY & 7;
-
+                // Now we calculate the tile address, which starts with the number
                 int tileAddress = tileNumber;
-
+                // To which we add the tile coordinate offsets, depending on the layout
                 if (tileMapping) {
-                    // 1D
+                    // For a 1D layout we add: the y offset * the number of tiles in an object line, and the x offset
+                    // We then multiply by 2 if we're using a single palette, since that means the tile are 2x size
                     tileAddress += mapX + (mapY << mapYShift) << singlePalette;
                 } else {
-                    // 2D
+                    // A 2D layout is similar, but we always have 32 tiles horizontally, regardless of the tile size
                     tileAddress += (mapX << singlePalette) + (mapY << 5);
                 }
+                // Tiles are at least 32B, so that the base multiplier. For 64B, we multiplied by two earlier
                 tileAddress <<= 5;
-
-                tileAddress += tileX + (tileY << 3) >> (1 - singlePalette);
-
+                // Now we add the offsets into the tile, starting with the base address
                 tileAddress += tileBase;
-
+                // Tiles are always 8 dots wide, so that's the y offet multiplier
+                // Since multiple palettes use half a byte per dot, we must divide by 2 when in that mode
+                tileAddress += tileX + (tileY << 3) >> (1 - singlePalette);
+                // Now we can calculate the palette address to get the final dot color
                 int paletteAddress = void;
                 if (singlePalette) {
+                    // For a single palette, we address directly to get the palette index
                     int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
+                    // The first palette color is transparent
                     if (paletteIndex == 0) {
                         continue;
                     }
+                    // Colors are 2 bytes wide, so we multiply the index by 2
                     paletteAddress = paletteIndex << 1;
                 } else {
+                    // For multiple palettes we address the byte, then address the low or high nibble (4 bit index)
                     int paletteIndex = vram.get!byte(tileAddress) >> ((tileX & 1) << 2) & 0xF;
+                    // The first palette color is transparent
                     if (paletteIndex == 0) {
                         continue;
                     }
+                    // We multiply the palette number by 16 (colors per palette), then add the index into the palette,
+                    // and also multiply by 2 because each color takes 2 bytes
                     paletteAddress = (paletteNumber << 4) + paletteIndex << 1;
                 }
-
+                // We get the color from the palette, which is a different one to the backgrounds, hence the offset
                 short color = palette.get!short(0x200 + paletteAddress) & 0x7FFF;
-
+                // The mode for the info flags is the current mode, but we keep the window flag from the object bellow
                 int modeFlags = mode << 2 | previousInfo & 0b1000;
                 if (mode == 2) {
+                    // In windows mode nothing is drawn, but we must keep the window flag since that will be used later
                     infoLinePixels[column] = cast(short) (modeFlags | previousPriority);
                 } else {
+                    // Othwerise we update the color, and write the current priority as the top one
                     objectLinePixels[column] = color;
                     infoLinePixels[column] = cast(short) (modeFlags | priority);
                 }
