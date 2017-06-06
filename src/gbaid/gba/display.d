@@ -722,13 +722,13 @@ public class Display {
                 }
                 // We get the color from the palette, which is a different one to the backgrounds, hence the offset
                 short color = palette.get!short(0x200 + paletteAddress) & 0x7FFF;
-                // The mode for the info flags is the current mode, but we keep the window flag from the object bellow
+                // The mode for the info flags is the current mode, but we keep the window flag from the object below
                 int modeFlags = mode << 2 | previousInfo & 0b1000;
                 if (mode == 2) {
                     // In windows mode nothing is drawn, but we must keep the window flag since that will be used later
                     infoLinePixels[column] = cast(short) (modeFlags | previousPriority);
                 } else {
-                    // Othwerise we update the color, and write the current priority as the top one
+                    // Otherwise we update the color, and write the current priority as the top one
                     objectLinePixels[column] = color;
                     infoLinePixels[column] = cast(short) (modeFlags | priority);
                 }
@@ -737,103 +737,111 @@ public class Display {
     }
 
     private void layerCompose(int line, int windowEnables, int blendControl, short backColor) {
+        // Layers are composed into the final line by resolving priorities and applying special effects
         int colorEffect = blendControl.getBits(6, 7);
-
+        // Evey layer has an assigned priority. Ties for backgrounds are broken by the layer number
+        // (lower is higher priority). A tied object layer is higher priority then all backgrounds
         int[5] priorities = [
+            // Background priorities affect the entire line
             ioRegisters.getUnMonitored!short(0x8) & 0b11,
             ioRegisters.getUnMonitored!short(0xA) & 0b11,
             ioRegisters.getUnMonitored!short(0xC) & 0b11,
             ioRegisters.getUnMonitored!short(0xE) & 0b11,
+            // This is a place holder for the object priority, which varies for each dot
             0
         ];
-
+        // We fill the line in the frame with the composed layer
         auto frame = _frameSwapper.workFrame;
         for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
-
+            // From the object info line, we get the object priority and mode
             int objInfo = infoLinePixels[column];
-            int objPriority = objInfo & 0b11;
+            priorities[4] = objInfo & 0b11;
             int objMode = objInfo >> 2;
-
+            // Now we find in which window we are (if any; they could be disabled)
             bool specialEffectEnabled = void;
             int layerEnables = void;
-
             int window = getWindow(windowEnables, objMode, line, column);
             if (window != 0) {
+                // If in a window, then it controls layers and special effects
                 int windowControl = ioRegisters.getUnMonitored!byte(window);
                 layerEnables = windowControl & 0b11111;
                 specialEffectEnabled = windowControl.checkBit(5);
             } else {
+                // Otherwise we enable everything
                 layerEnables = 0b11111;
                 specialEffectEnabled = true;
             }
-
-            priorities[4] = objPriority;
-
+            // Now we do the actual composition: we find the top most dot color, and the one just below
+            // We also need save the dots' layers and priorities to apply special effects later
+            // We start on the backdrop: layer 5, with priority 3, and a constant color
             short firstColor = backColor;
             short secondColor = backColor;
-
             int firstLayer = 5;
             int secondLayer = 5;
-
             int firstPriority = 3;
             int secondPriority = 3;
-
+            // Now we traverse the layers in the natural order of priorities (the tie breaking order)
             foreach (layer; AliasSeq!(3, 2, 1, 0, 4)) {
-
+                // We skip disabled layers
                 if (!layerEnables.checkBit(layer)) {
                     continue;
                 }
-
+                // We skip transparent colors
                 short layerColor = linePixels!layer[column];
-
                 if (layerColor & TRANSPARENT) {
                     continue;
                 }
-
+                // We check if this layer has a higher priority (smaller value) than the current one
+                // We use <= so that ties will result in the naturally higher priority layer being used
                 int layerPriority = priorities[layer];
-
                 if (layerPriority <= firstPriority) {
-
+                    // The first layer is now the second
                     secondColor = firstColor;
                     secondLayer = firstLayer;
                     secondPriority = firstPriority;
-
+                    // Update the first layer data
                     firstColor = layerColor;
                     firstLayer = layer;
                     firstPriority = layerPriority;
-
                 } else if (layerPriority <= secondPriority) {
-
+                    // If it's not higher than the first, we check the second, and update it in the same way
                     secondColor = layerColor;
                     secondLayer = layer;
                     secondPriority = layerPriority;
                 }
             }
-
-            if (firstLayer == 4 && (objMode & 0b1) && blendControl.checkBit(secondLayer + 8)) {
+            // Now that we have the data for the top two layers, we combine them in to the final dot
+            if ((objMode & 0b1) && firstLayer == 4 && blendControl.checkBit(secondLayer + 8)) {
+                // If the object is in alpha-blend mode and on the top layer, and blending is enabled
+                // for the second layer, then we must blend the two, regardless of the special effects mode
                 firstColor = applyBlendEffect(firstColor, secondColor);
             } else if (specialEffectEnabled) {
+                // Othwerwise we might apply a special effect
                 final switch (colorEffect) {
                     case 0:
+                        // No effect, just use the top color as is
                         break;
                     case 1:
+                        // If both layers have blending enabled, then we blend the two
                         if (blendControl.checkBit(firstLayer) && blendControl.checkBit(secondLayer + 8)) {
                             firstColor = applyBlendEffect(firstColor, secondColor);
                         }
                         break;
                     case 2:
+                        // If the first layer has blending enabled, then we increase its brightness
                         if (blendControl.checkBit(firstLayer)) {
                             applyBrightnessIncreaseEffect(firstColor);
                         }
                         break;
                     case 3:
+                        // If the second layer has blending enabled, then we decrease its brightness
                         if (blendControl.checkBit(firstLayer)) {
                             applyBrightnessDecreaseEffect(firstColor);
                         }
                         break;
                 }
             }
-
+            // The final color is that of the first layer
             frame[p] = firstColor;
         }
     }
