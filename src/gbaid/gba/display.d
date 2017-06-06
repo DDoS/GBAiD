@@ -3,7 +3,8 @@ module gbaid.gba.display;
 import core.sync.mutex : Mutex;
 import core.sync.condition : Condition;
 
-import std.meta : AliasSeq;
+import std.meta : Alias, AliasSeq;
+import std.conv : to;
 import std.algorithm.comparison : min;
 import std.algorithm.mutation : swap;
 
@@ -739,23 +740,18 @@ public class Display {
     private void layerCompose(int line, int windowEnables, int blendControl, short backColor) {
         // Layers are composed into the final line by resolving priorities and applying special effects
         int colorEffect = blendControl.getBits(6, 7);
-        // Evey layer has an assigned priority. Ties for backgrounds are broken by the layer number
+        // Every layer has an assigned priority. Ties for backgrounds are broken by the layer number
         // (lower is higher priority). A tied object layer is higher priority then all backgrounds
-        int[5] priorities = [
-            // Background priorities affect the entire line
-            ioRegisters.getUnMonitored!short(0x8) & 0b11,
-            ioRegisters.getUnMonitored!short(0xA) & 0b11,
-            ioRegisters.getUnMonitored!short(0xC) & 0b11,
-            ioRegisters.getUnMonitored!short(0xE) & 0b11,
-            // This is a place holder for the object priority, which varies for each dot
-            0
-        ];
+        int priority0 = ioRegisters.getUnMonitored!short(0x8) & 0b11;
+        int priority1 = ioRegisters.getUnMonitored!short(0xA) & 0b11;
+        int priority2 = ioRegisters.getUnMonitored!short(0xC) & 0b11;
+        int priority3 = ioRegisters.getUnMonitored!short(0xE) & 0b11;
         // We fill the line in the frame with the composed layer
         auto frame = _frameSwapper.workFrame;
         for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
             // From the object info line, we get the object priority and mode
             int objInfo = infoLinePixels[column];
-            priorities[4] = objInfo & 0b11;
+            int priority4 = objInfo & 0b11;
             int objMode = objInfo >> 2;
             // Now we find in which window we are (if any; they could be disabled)
             bool specialEffectEnabled = void;
@@ -793,7 +789,7 @@ public class Display {
                 }
                 // We check if this layer has a higher priority (smaller value) than the current one
                 // We use <= so that ties will result in the naturally higher priority layer being used
-                int layerPriority = priorities[layer];
+                alias layerPriority = Alias!(mixin("priority" ~ layer.to!string()));
                 if (layerPriority <= firstPriority) {
                     // The first layer is now the second
                     secondColor = firstColor;
