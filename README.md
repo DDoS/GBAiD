@@ -166,7 +166,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 - Implement SIO
 - Implement emulator networking for SIO
 - Remove module cycle in cpu.d, arm.d and thumb.d
-- Cleanup and comment display.d
 - Rewrite IoRegisters to remove the intermediate MonitoredMemory
 - Emulator pause feature
 - Save states with quick saves

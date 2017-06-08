@@ -826,13 +826,13 @@ public class Display {
                     case 2:
                         // If the first layer has blending enabled, then we increase its brightness
                         if (blendControl.checkBit(firstLayer)) {
-                            applyBrightnessIncreaseEffect(firstColor);
+                            firstColor = applyBrightnessEffect!false(firstColor);
                         }
                         break;
                     case 3:
                         // If the second layer has blending enabled, then we decrease its brightness
                         if (blendControl.checkBit(firstLayer)) {
-                            applyBrightnessDecreaseEffect(firstColor);
+                            firstColor = applyBrightnessEffect!true(firstColor);
                         }
                         break;
                 }
@@ -843,6 +843,7 @@ public class Display {
     }
 
     private int getWindow(int windowEnables, int objectMode, int line, int column) {
+        // Return null when no window is enabled
         if (windowEnables == 0) {
             return 0;
         }
@@ -861,6 +862,7 @@ public class Display {
 
     private bool insideWindow(int index)(int line, int column) {
         // When the bounds are max < min, the window is in [0, max) and [min, size)
+        // Start by checking the horizontal bounds
         int horizontalDimensions = ioRegisters.getUnMonitored!short(0x40 + index * 2);
         int x1 = horizontalDimensions.getBits(8, 15);
         int x2 = horizontalDimensions & 0xFF;
@@ -873,6 +875,7 @@ public class Display {
                 return false;
             }
         }
+        // Then check the vertical bounds
         int verticalDimensions = ioRegisters.getUnMonitored!short(0x44 + index * 2);
         int y1 = verticalDimensions.getBits(8, 15);
         int y2 = verticalDimensions & 0xFF;
@@ -888,63 +891,59 @@ public class Display {
         return true;
     }
 
-    private void applyBrightnessIncreaseEffect(ref short first) {
-        int firstRed = first & 0b11111;
-        int firstGreen = first.getBits(5, 9);
-        int firstBlue = first.getBits(10, 14);
-
+    private short applyBrightnessEffect(bool decrease)(short color) {
+        // Get the individual colour components
+        int red = color & 0b11111;
+        int green = color.getBits(5, 9);
+        int blue = color.getBits(10, 14);
+        // Get the scaling factor, which is in 0.4 fixed format
         int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
-        firstRed += (31 - firstRed) * evy + 8 >> 4;
-        firstGreen += (31 - firstGreen) * evy + 8 >> 4;
-        firstBlue += (31 - firstBlue) * evy + 8 >> 4;
-
-        first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
-    }
-
-    private void applyBrightnessDecreaseEffect(ref short first) {
-        int firstRed = first & 0b11111;
-        int firstGreen = first.getBits(5, 9);
-        int firstBlue = first.getBits(10, 14);
-
-        int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
-        firstRed -= firstRed * evy + 8 >> 4;
-        firstGreen -= firstGreen * evy + 8 >> 4;
-        firstBlue -= firstBlue * evy + 8 >> 4;
-
-        first = (firstBlue & 31) << 10 | (firstGreen & 31) << 5 | firstRed & 31;
+        // Apply the effect
+        static if (decrease) {
+            // For decrease, we subtract the rounded percentage from each component
+            red -= red * evy + 8 >> 4;
+            green -= green * evy + 8 >> 4;
+            blue -= blue * evy + 8 >> 4;
+        } else {
+            // For increase, we add the rounded percentage from the inverse of each component
+            red += (31 - red) * evy + 8 >> 4;
+            green += (31 - green) * evy + 8 >> 4;
+            blue += (31 - blue) * evy + 8 >> 4;
+        }
+        // Recombine the components into the colour data
+        return (blue & 0x1F) << 10 | (green & 0x1F) << 5 | red & 0x1F;
     }
 
     private short applyBlendEffect(short first, short second) {
+        // Get the individual colour components of both colors
         int firstRed = first & 0b11111;
         int firstGreen = first.getBits(5, 9);
         int firstBlue = first.getBits(10, 14);
-
         int secondRed = second & 0b11111;
         int secondGreen = second.getBits(5, 9);
         int secondBlue = second.getBits(10, 14);
-
+        // Get the blending coefficients for both colors, which are in 0.4 fixed format
         int blendAlpha = ioRegisters.getUnMonitored!short(0x52);
-
         int eva = min(blendAlpha & 0b11111, 16);
+        int evb = min(blendAlpha.getBits(8, 12), 16);
+        // Get the fraction from each component of each colour
         firstRed = firstRed * eva + 8 >> 4;
         firstGreen = firstGreen * eva + 8 >> 4;
         firstBlue = firstBlue * eva + 8 >> 4;
-
-        int evb = min(blendAlpha.getBits(8, 12), 16);
         secondRed = secondRed * evb + 8 >> 4;
         secondGreen = secondGreen * evb + 8 >> 4;
         secondBlue = secondBlue * evb + 8 >> 4;
-
+        // Add the fractions and clamp to 31 (max component value)
         int blendRed = min(31, firstRed + secondRed);
         int blendGreen = min(31, firstGreen + secondGreen);
         int blendBlue = min(31, firstBlue + secondBlue);
-
-        return (blendBlue & 31) << 10 | (blendGreen & 31) << 5 | blendRed & 31;
+        // Recombine the components into the colour data
+        return (blendBlue & 0x1F) << 10 | (blendGreen & 0x1F) << 5 | blendRed & 0x1F;
     }
 
     private void reloadInternalAffineReferencePoint(int layer)() {
         enum affineLayer = layer - 2;
-        int layerAddressOffset = affineLayer << 4;
+        enum layerAddressOffset = affineLayer << 4;
         int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
         internalAffineReferenceX!affineLayer = dx >> 4;
         int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
