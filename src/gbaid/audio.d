@@ -64,6 +64,9 @@ public class AudioQueue(uint channelCount) {
     }
 
     public void queueAudio(short[] newSamples) {
+        if (newSamples.length <= 0) {
+            return;
+        }
         synchronized (sampleSignal.mutex) {
             // Limit the length to copy to the free space
             auto length = min(SAMPLE_BUFFER_LENGTH - sampleCount, newSamples.length);

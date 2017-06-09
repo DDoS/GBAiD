@@ -25,6 +25,8 @@ public class SoundChip {
     private NoiseGenerator noise;
     private DirectSound!'A' directA;
     private DirectSound!'B' directB;
+    private LowPassFilter directAFilter;
+    private LowPassFilter directBFilter;
     private int psgRightVolumeMultiplier = 0;
     private int psgLeftVolumeMultiplier = 0;
     private int psgRightEnableFlags = 0;
@@ -132,14 +134,14 @@ public class SoundChip {
                 auto outputRight = psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 auto outputLeft = psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 // Now get the samples for the direct sound
-                auto directASample = directA.nextSample() / directAVolumeDivider;
+                auto directASample = directAFilter.filter(directA.nextSample()) / directAVolumeDivider;
                 if (directAEnableFlags & 0b1) {
                     outputRight += directASample;
                 }
                 if (directAEnableFlags & 0b10) {
                     outputLeft += directASample;
                 }
-                auto directBSample = directB.nextSample() / directBVolumeDivider;
+                auto directBSample = directBFilter.filter(directB.nextSample()) / directBVolumeDivider;
                 if (directBEnableFlags & 0b1) {
                     outputRight += directBSample;
                 }
@@ -692,5 +694,23 @@ private struct DirectSound(char channel) {
             reSampleCount = 0;
         }
         return sample;
+    }
+}
+
+private struct LowPassFilter {
+    private static enum GAIN = 1.327714585e1f;
+    private float x0 = 0, x1 = 0, x2 = 0;
+    private float y0 = 0, y1 = 0, y2 = 0;
+
+    private short filter(short sample) {
+        // Low-pass second-order Butterworth filter with a 7.5kHz cutoff
+        // Generated with: http://www-users.cs.york.ac.uk/~fisher/mkfilter/trad.html
+        x0 = x1;
+        x1 = x2;
+        x2 = sample / GAIN;
+        y0 = y1;
+        y1 = y2;
+        y2 = x0 + x2 + 2 * x1 - 0.3891570769 * y0 + 1.0878875085 * y1;
+        return cast(short) (y2 + 0.5f);
     }
 }
