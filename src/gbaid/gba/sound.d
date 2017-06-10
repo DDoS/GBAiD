@@ -698,19 +698,18 @@ private struct DirectSound(char channel) {
 }
 
 private struct LowPassFilter {
-    private static enum GAIN = 1.327714585e1f;
-    private float x0 = 0, x1 = 0, x2 = 0;
-    private float y0 = 0, y1 = 0, y2 = 0;
+    private static enum GAIN = 2.131619135e2f;
+    private float x0 = 0, x1 = 0, x2 = 0, x3 = 0, x4 = 0;
+    private float y0 = 0, y1 = 0, y2 = 0, y3 = 0, y4 = 0;
 
     private short filter(short sample) {
-        // Low-pass second-order Butterworth filter with a 7.5kHz cutoff
+        // Low-pass second-order Butterworth filter with a 6.5kHz cutoff
         // Generated with: http://www-users.cs.york.ac.uk/~fisher/mkfilter/trad.html
-        x0 = x1;
-        x1 = x2;
-        x2 = sample / GAIN;
-        y0 = y1;
-        y1 = y2;
-        y2 = x0 + x2 + 2 * x1 - 0.3891570769 * y0 + 1.0878875085 * y1;
-        return cast(short) (y2 + 0.5f);
+        x0 = x1; x1 = x2; x2 = x3; x3 = x4;
+        x4 = sample / GAIN;
+        y0 = y1; y1 = y2; y2 = y3; y3 = y4;
+        y4 = x0 + x4 + 4 * (x1 + x3) + 6 * x2 - 0.1900667337f * y0 + 1.0673121590f * y1
+                - 2.3349929845f * y2 + 2.3826872459f * y3;
+        return cast(short) (y4 + 0.5f);
     }
 }
