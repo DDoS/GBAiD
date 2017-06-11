@@ -109,19 +109,19 @@ public class AudioQueue(uint channelCount) {
 }
 
 private struct LowPassFilter {
-    private static enum GAIN = 2.131619135e2f;
-    private float x0 = 0, x1 = 0, x2 = 0, x3 = 0, x4 = 0;
-    private float y0 = 0, y1 = 0, y2 = 0, y3 = 0, y4 = 0;
+    private static enum GAIN = 4.675473023e1f;
+    private float x0 = 0, x1 = 0, x2 = 0, x3 = 0;
+    private float y0 = 0, y1 = 0, y2 = 0, y3 = 0;
 
     private short next(short sample) {
-        // Low-pass fourth-order Butterworth filter with a 6.5kHz cutoff
+        // Low-pass third-order Butterworth filter with a 7kHz cutoff
         // Generated with: http://www-users.cs.york.ac.uk/~fisher/mkfilter/trad.html
-        x0 = x1; x1 = x2; x2 = x3; x3 = x4;
-        x4 = sample / GAIN;
-        y0 = y1; y1 = y2; y2 = y3; y3 = y4;
-        y4 = x0 + x4 + 4 * (x1 + x3) + 6 * x2 - 0.1900667337f * y0 + 1.0673121590f * y1
-                - 2.3349929845f * y2 + 2.3826872459f * y3;
-        return cast(short) (y4 + 0.5f);
+        x0 = x1; x1 = x2; x2 = x3;
+        x3 = sample / GAIN;
+        y0 = y1; y1 = y2; y2 = y3;
+        y3 = x0 + x3 + 3 * (x1 + x2) + 0.2538063624f * y0
+                - 1.1025360056f * y1 + 1.6776239613f * y2;
+        return cast(short) (y3 + 0.5f);
     }
 }
 
