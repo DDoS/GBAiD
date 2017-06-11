@@ -3,6 +3,8 @@ module gbaid.audio;
 import core.sync.mutex : Mutex;
 import core.sync.condition : Condition;
 
+import std.meta : aliasSeqOf;
+import std.range : iota;
 import std.algorithm.comparison : min;
 
 import derelict.sdl2.sdl;
@@ -16,6 +18,7 @@ public class AudioQueue(uint channelCount) {
     private short[SAMPLE_BUFFER_LENGTH] samples;
     private size_t sampleIndex = 0;
     private size_t sampleCount = 0;
+    mixin declareFields!(LowPassFilter, true, "filter", LowPassFilter.init, channelCount);
     private uint frequency;
     private Condition sampleSignal;
 
@@ -73,6 +76,13 @@ public class AudioQueue(uint channelCount) {
             if (length <= 0) {
                 return;
             }
+            // Filter the samples
+            for (size_t i = 0; i < length; i += channelCount) {
+                // Each channel has its own filter
+                foreach (j; aliasSeqOf!(iota(0, channelCount))) {
+                    newSamples[i + j] = filter!j.next(newSamples[i + j]);
+                 }
+            }
             // Copy the first part to the circular buffer
             auto start = (sampleIndex + sampleCount) % SAMPLE_BUFFER_LENGTH;
             auto end = min(start + length, SAMPLE_BUFFER_LENGTH);
@@ -95,6 +105,23 @@ public class AudioQueue(uint channelCount) {
             }
             return requiredSamples / channelCount;
         }
+    }
+}
+
+private struct LowPassFilter {
+    private static enum GAIN = 2.131619135e2f;
+    private float x0 = 0, x1 = 0, x2 = 0, x3 = 0, x4 = 0;
+    private float y0 = 0, y1 = 0, y2 = 0, y3 = 0, y4 = 0;
+
+    private short next(short sample) {
+        // Low-pass fourth-order Butterworth filter with a 6.5kHz cutoff
+        // Generated with: http://www-users.cs.york.ac.uk/~fisher/mkfilter/trad.html
+        x0 = x1; x1 = x2; x2 = x3; x3 = x4;
+        x4 = sample / GAIN;
+        y0 = y1; y1 = y2; y2 = y3; y3 = y4;
+        y4 = x0 + x4 + 4 * (x1 + x3) + 6 * x2 - 0.1900667337f * y0 + 1.0673121590f * y1
+                - 2.3349929845f * y2 + 2.3826872459f * y3;
+        return cast(short) (y4 + 0.5f);
     }
 }
 
