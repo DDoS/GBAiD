@@ -20,10 +20,12 @@ public class AudioQueue(uint channelCount) {
     private size_t sampleCount = 0;
     mixin declareFields!(LowPassFilter, true, "filter", LowPassFilter.init, channelCount);
     private uint frequency;
+    private bool filterEnabled;
     private Condition sampleSignal;
 
-    public this(uint frequency) {
+    public this(uint frequency, bool filterEnabled = false) {
         this.frequency = frequency;
+        this.filterEnabled = filterEnabled;
         sampleSignal = new Condition(new Mutex());
     }
 
@@ -77,11 +79,13 @@ public class AudioQueue(uint channelCount) {
                 return;
             }
             // Filter the samples
-            for (size_t i = 0; i < length; i += channelCount) {
-                // Each channel has its own filter
-                foreach (j; aliasSeqOf!(iota(0, channelCount))) {
-                    newSamples[i + j] = filter!j.next(newSamples[i + j]);
-                 }
+            if (filterEnabled) {
+                for (size_t i = 0; i < length; i += channelCount) {
+                    // Each channel has its own filter
+                    foreach (j; aliasSeqOf!(iota(0, channelCount))) {
+                        newSamples[i + j] = filter!j.next(newSamples[i + j]);
+                     }
+                }
             }
             // Copy the first part to the circular buffer
             auto start = (sampleIndex + sampleCount) % SAMPLE_BUFFER_LENGTH;

@@ -29,6 +29,7 @@ public int main(string[] args) {
     EepromConfig eepromConfig = EepromConfig.AUTO;
     RtcConfig rtcConfig = RtcConfig.AUTO;
     bool controller = false;
+    bool rawAudio = false;
     getopt(args,
         config.caseSensitive,
         "bios|b", &biosFile,
@@ -44,7 +45,8 @@ public int main(string[] args) {
         "save-memory", &mainSaveConfig,
         "eeprom", &eepromConfig,
         "rtc", &rtcConfig,
-        "controller|c", &controller
+        "controller|c", &controller,
+        "raw-audio", &rawAudio
     );
 
     // Resolve BIOS
@@ -128,7 +130,7 @@ public int main(string[] args) {
     renderer.setFilteringMode(filtering);
     renderer.setUpscalingMode(upscaling);
 
-    auto audio = new AudioQueue!2(SOUND_OUTPUT_FREQUENCY);
+    auto audio = new AudioQueue!2(SOUND_OUTPUT_FREQUENCY, !rawAudio);
     gba.audioReceiver = &audio.queueAudio;
 
     auto keyboardInput = new Keyboard();

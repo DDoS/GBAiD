@@ -78,6 +78,7 @@ The following arguments are also recognized:
 | --filtering  | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
 | --upscaling  | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
 | --controller | -c         | None                     | Enable the controller as an input method                                    |
+| --raw-audio  | N/A        | None                     | Don't filter the audio output of the emulator; will generally be noisier    |
 | --save-memory| N/A        | See saves section        | What memory configuration to use for the main save                          |
 | --eeprom     | N/A        | See saves section        | What memory configuration to use for the EEPROM                             |
 | --rtc        | N/A        | See saves section        | What memory configuration to use for the RTC                                |
