@@ -6,8 +6,7 @@ import std.string : format;
 
 import gbaid.util;
 
-import gbaid.gba.memory;
-import gbaid.gba.cpu;
+import gbaid.gba.instable;
 
 private enum ARM_OPCODE_BIT_COUNT = 12;
 // Using enum leads to a severe performance penalty for some reason...

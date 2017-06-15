@@ -803,6 +803,18 @@ public struct MemoryBus {
     }
 }
 
+public int rotateRead(int address, int value) {
+    return value.rotateRight((address & 3) << 3);
+}
+
+public int rotateRead(int address, short value) {
+    return rotateRight(value & 0xFFFF, (address & 1) << 3);
+}
+
+public int rotateReadSigned(int address, short value) {
+    return value >> ((address & 1) << 3);
+}
+
 unittest {
     auto ram = Ram!1024();
 
