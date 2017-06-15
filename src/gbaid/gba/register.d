@@ -1,9 +1,5 @@
 module gbaid.gba.register;
 
-import std.array : array;
-import std.algorithm.iteration : splitter;
-import std.string : format;
-
 import gbaid.util;
 
 public enum Set {
@@ -131,9 +127,23 @@ public struct Registers {
         cpsrRegister.setBit(flag, b);
     }
 
-    public template setApsrFlags(string bits) {
-        enum args = array(bits.splitter(","));
-        mixin(genApsrSetterSignature(args.length) ~ genApsrSetterImpl(args));
+    public void setApsrFlags(int n, int z) {
+        auto newFlags = (n << 3) & 0b1000 | (z << 2) & 0b0100;
+        cpsrRegister = cpsrRegister & 0x3FFFFFFF | (newFlags << 28);
+    }
+
+    public void setApsrFlags(int n, int z, int c) {
+        auto newFlags = (n << 3) & 0b1000 | (z << 2) & 0b0100 | (c << 1) & 0b0010;
+        cpsrRegister = cpsrRegister & 0x1FFFFFFF | (newFlags << 28);
+    }
+
+    public void setApsrFlags(int n, int z, int c, int v) {
+        auto newFlags = (n << 3) & 0b1000 | (z << 2) & 0b0100 | (c << 1) & 0b0010 | v & 0b0001;
+        cpsrRegister = cpsrRegister & 0x0FFFFFFF | (newFlags << 28);
+    }
+
+    public void setApsrFlagsPacked(int nzcv) {
+        cpsrRegister = cpsrRegister & 0x0FFFFFFF | (nzcv << 28);
     }
 
     public void setMode(Mode mode) {
@@ -451,98 +461,4 @@ private size_t[] createRegisterLookupTable() {
     setIndex(Mode.UNDEFINED, 13, i++);
     setIndex(Mode.UNDEFINED, 14, i++);
     return table;
-}
-
-private string genApsrSetterSignature(size_t argCount) {
-    auto signature = "public void setApsrFlags(";
-    foreach (i; 0 .. argCount) {
-        signature ~= format("int i%d", i);
-        if (i + 1 < argCount) {
-            signature ~= ", ";
-        }
-    }
-    return signature ~ ") ";
-}
-
-private string genApsrSetterImpl(string[] flagSets) {
-    int mask = 0;
-    foreach (flagSet; flagSets) {
-        foreach (flag; flagSet) {
-            int bitMask = getApsrFlagMask(flag);
-            if (mask & bitMask) {
-                throw new Exception("Duplicate flag: " ~ flag);
-            }
-            mask |= bitMask;
-        }
-    }
-
-    auto code = "auto newFlags = ";
-    foreach (int i, flagSet; flagSets) {
-        code ~= genApsrSetterImplExtractBits(i, flagSet);
-        if (i + 1 < flagSets.length) {
-            code ~= " | ";
-        }
-    }
-    code ~= ";\n";
-    code ~= format("    cpsrRegister = cpsrRegister & 0x%08X | (newFlags << 28);\n",
-            ~(mask << 28));
-    return format("{\n    %s}", code);
-}
-
-private string genApsrSetterImplExtractBits(int argIndex, string flagSet) {
-    int[] shifts;
-    int[] masks;
-    foreach (i, flag; flagSet) {
-        auto flagIndex = getApsrFlagIndex(flag);
-        if (flagIndex < 0) {
-            continue;
-        }
-        auto shift = cast(int) (flagSet.length - 1 - i) - flagIndex;
-        auto mask = 1 << flagIndex;
-        if (shifts.length > 0 && shifts[$ - 1] == shift) {
-            masks[$ - 1] |= mask;
-        } else {
-            shifts ~= shift;
-            masks ~= mask;
-        }
-    }
-
-    auto code = "";
-    foreach (i, shift; shifts) {
-        string shiftOp = void;
-        if (shift > 0) {
-            shiftOp = format(" >>> %d", shift);
-        } else if (shift < 0) {
-            shiftOp = format(" << %d", -shift);
-        } else {
-            shiftOp = "";
-        }
-        code ~= format("(i%d%s) & 0b%04b", argIndex, shiftOp, masks[i]);
-        if (i < shifts.length - 1) {
-            code ~= " | ";
-        }
-    }
-    return code;
-}
-
-private int getApsrFlagMask(char flag) {
-    auto bitIndex = getApsrFlagIndex(flag);
-    return bitIndex < 0 ? 0 : (1 << bitIndex);
-}
-
-private int getApsrFlagIndex(char flag) {
-    switch (flag) {
-        case 'N':
-            return 3;
-        case 'Z':
-            return 2;
-        case 'C':
-            return 1;
-        case 'V':
-            return 0;
-        case '0':
-            return -1;
-        default:
-            throw new Exception("Unknown flag: " ~ flag);
-    }
 }
