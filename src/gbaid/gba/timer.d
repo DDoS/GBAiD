@@ -1,8 +1,10 @@
 module gbaid.gba.timer;
 
+import std.meta : AliasSeq;
+
 import gbaid.util;
 
-import gbaid.gba.memory;
+import gbaid.gba.io;
 import gbaid.gba.interrupt;
 import gbaid.gba.sound;
 
@@ -10,25 +12,21 @@ public class Timers {
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private SoundChip soundChip;
-    mixin declareFields!(ushort, true, "reloadValue", 0, 4);
+    mixin declareFields!(int, true, "reloadValue", 0, 4);
     mixin declareFields!(int, true, "control", 0, 4);
     mixin declareFields!(int, true, "subTicks", 0, 4);
-    mixin declareFields!(ushort, true, "ticks", 0, 4);
+    mixin declareFields!(int, true, "ticks", 0, 4);
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler, SoundChip soundChip) {
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
         this.soundChip = soundChip;
 
-        ioRegisters.setReadMonitor!0x100(&onRead!0);
-        ioRegisters.setReadMonitor!0x104(&onRead!1);
-        ioRegisters.setReadMonitor!0x108(&onRead!2);
-        ioRegisters.setReadMonitor!0x10C(&onRead!3);
-
-        ioRegisters.setPostWriteMonitor!0x100(&onPostWrite!0);
-        ioRegisters.setPostWriteMonitor!0x104(&onPostWrite!1);
-        ioRegisters.setPostWriteMonitor!0x108(&onPostWrite!2);
-        ioRegisters.setPostWriteMonitor!0x10C(&onPostWrite!3);
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            enum address = 0x100 + i * 4;
+            ioRegisters.mapAddress(address, &ticks!i, 0xFFFF, 0).preWriteMonitor(&onCountPreWrite!i);
+            ioRegisters.mapAddress(address, &control!i, 0xC7, 16).postWriteMonitor(&onControlPostWrite!i);
+        }
     }
 
     public size_t emulate(size_t cycles) {
@@ -73,7 +71,7 @@ public class Timers {
         newTicks -= ticksUntilOverflow;
         // Reload the value and add any extra ticks past the overflows
         ticksUntilOverflow = (ushort.max + 1) - reloadValue!timer;
-        ticks!timer = cast(ushort) (reloadValue!timer + newTicks % ticksUntilOverflow);
+        ticks!timer = reloadValue!timer + newTicks % ticksUntilOverflow;
         // Trigger an IRQ on overflow if requested
         if (control!timer.checkBit(6)) {
             interruptHandler.requestInterrupt(InterruptSource.TIMER_0_OVERFLOW + timer);
@@ -87,23 +85,15 @@ public class Timers {
         return overflowCount;
     }
 
-    private void onRead(int timer)(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
-        // Ignore reads that aren't on the counter
-        if (!(mask & 0xFFFF)) {
-            return;
-        }
-        // Write the tick count to the value
-        mask &= 0xFFFF;
-        value = value & ~mask | ticks!timer & mask;
+    private bool onCountPreWrite(int timer)(int mask, ref int reload) {
+        // Update the reload value and cancel the write
+        reloadValue!timer = reloadValue!timer & ~mask | reload & mask;
+        return false;
     }
 
-    private void onPostWrite(int timer)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldTimer, int newTimer) {
-        // Update the control and reload value
-        reloadValue!timer = cast(ushort) newTimer;
-        control!timer = newTimer >>> 16;
+    private void onControlPostWrite(int timer)(int mask, int oldControl, int newControl) {
         // Reset the timer if the enable bit goes from 0 to 1
-        if (!oldTimer.checkBit(23) && newTimer.checkBit(23)) {
+        if (mask.checkBit(7) && !oldControl.checkBit(7) && newControl.checkBit(7)) {
             subTicks!timer = 0;
             ticks!timer = reloadValue!timer;
         }

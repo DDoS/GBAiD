@@ -1,5 +1,8 @@
 module gbaid.gba.instable;
 
+import std.range : iota;
+import std.traits : hasUDA;
+import std.meta : aliasSeqOf;
 import std.algorithm.searching : count;
 import std.string : format;
 
@@ -93,10 +96,6 @@ public void addSubTable(string bits, alias instructionFamily, alias nullInstruct
 }
 
 private Executor[] createTable(alias instructionFamily, int bitCount, alias unsupported)() {
-    import std.range : iota;
-    import std.traits : hasUDA;
-    import std.meta : aliasSeqOf;
-
     static if (bitCount == 0) {
         Executor[] table = [&instructionFamily!()];
     } else {

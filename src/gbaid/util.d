@@ -3,11 +3,31 @@ module gbaid.util;
 import core.time : Duration, MonoTime, hnsecs;
 import core.thread : Thread;
 
+import std.meta : Alias, AliasSeq, staticIndexOf;
 import std.path : expandTilde, absolutePath, buildNormalizedPath;
 import std.conv : to;
 
 public enum uint BYTES_PER_KIB = 1024;
 public enum uint BYTES_PER_MIB = BYTES_PER_KIB * BYTES_PER_KIB;
+
+public alias Int8to32Types = AliasSeq!(byte, ubyte, short, ushort, int, uint);
+public alias IsInt8to32Type(T) = Alias!(staticIndexOf!(T, Int8to32Types) >= 0);
+
+public template IntSizeLog2(T) {
+    static if (is(T == byte) || is(T == ubyte)) {
+        private alias IntSizeLog2 = Alias!0;
+    } else static if (is(T == short) || is(T == ushort)) {
+        private alias IntSizeLog2 = Alias!1;
+    } else static if (is(T == int) || is(T == uint)) {
+        private alias IntSizeLog2 = Alias!2;
+    } else static if (is(T == long) || is(T == ulong)) {
+        private alias IntSizeLog2 = Alias!3;
+    } else {
+        static assert (0, "Not an integer type");
+    }
+}
+
+public alias IntAlignMask(T) = Alias!(~((1 << IntSizeLog2!T) - 1));
 
 public uint ucast(byte v) {
     return cast(uint) v & 0xFF;

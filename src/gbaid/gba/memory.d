@@ -2,8 +2,8 @@ module gbaid.gba.memory;
 
 import core.time : TickDuration;
 
+import std.meta : Alias;
 import std.traits : MutableOf, ImmutableOf;
-import std.meta : Alias, AliasSeq, staticIndexOf;
 import std.format : format;
 
 import gbaid.util;
@@ -28,26 +28,9 @@ public alias Sram = Ram!SRAM_SIZE;
 public alias Flash512K = Flash!FLASH_512K_SIZE;
 public alias Flash1M = Flash!FLASH_1M_SIZE;
 
-private alias ValidSizes = AliasSeq!(byte, ubyte, short, ushort, int, uint);
-private alias IsValidSize(T) = Alias!(staticIndexOf!(T, ValidSizes) >= 0);
-
 public enum MainSaveKind {
     SRAM, FLASH_512K, FLASH_1M, NONE
 }
-
-private template SizeBase2Power(T) {
-    static if (is(T == byte) || is(T == ubyte)) {
-        private alias SizeBase2Power = Alias!0;
-    } else static if (is(T == short) || is(T == ushort)) {
-        private alias SizeBase2Power = Alias!1;
-    } else static if (is(T == int) || is(T == uint)) {
-        private alias SizeBase2Power = Alias!2;
-    } else {
-        static assert (0);
-    }
-}
-
-private alias AlignmentMask(T) = Alias!(~((1 << SizeBase2Power!T) - 1));
 
 public enum uint BIOS_SIZE = 16 * BYTES_PER_KIB;
 public enum uint BOARD_WRAM_SIZE = 256 * BYTES_PER_KIB;
@@ -94,23 +77,23 @@ public struct Memory(uint byteSize, bool readOnly) {
         this.memory[0 .. memory.length] = memory[];
     }
 
-    public Mod!T get(T)(uint address) if (IsValidSize!T) {
-        return *cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T));
+    public Mod!T get(T)(uint address) if (IsInt8to32Type!T) {
+        return *cast(Mod!T*) (memory.ptr + (address & IntAlignMask!T));
     }
 
     static if (!readOnly) {
-        public void set(T)(uint address, T v) if (IsValidSize!T) {
-            *cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T)) = v;
+        public void set(T)(uint address, T v) if (IsInt8to32Type!T) {
+            *cast(Mod!T*) (memory.ptr + (address & IntAlignMask!T)) = v;
         }
     }
 
-    public Mod!(T[]) getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
-        address &= AlignmentMask!T;
+    public Mod!(T[]) getArray(T)(uint address = 0x0, uint size = byteSize) if (IsInt8to32Type!T) {
+        address &= IntAlignMask!T;
         return cast(Mod!(T[])) (memory[address .. address + size]);
     }
 
-    public Mod!(T*) getPointer(T)(uint address) if (IsValidSize!T) {
-        return cast(Mod!T*) (memory.ptr + (address & AlignmentMask!T));
+    public Mod!(T*) getPointer(T)(uint address) if (IsInt8to32Type!T) {
+        return cast(Mod!T*) (memory.ptr + (address & IntAlignMask!T));
     }
 
     private template Mod(T) {
@@ -142,8 +125,8 @@ public struct IoRegisters {
 
     public alias getUnMonitored(T) = get!(T, false);
 
-    public T get(T, bool monitored = true)(uint address) if (IsValidSize!T) {
-        alias lsb = Alias!(((1 << SizeBase2Power!T) - 1) ^ 3);
+    public T get(T, bool monitored = true)(uint address) if (IsInt8to32Type!T) {
+        alias lsb = Alias!(((1 << IntSizeLog2!T) - 1) ^ 3);
         auto shift = (address & lsb) << 3;
         alias bits = Alias!(cast(uint) ((1L << T.sizeof * 8) - 1));
         auto mask = bits << shift;
@@ -160,8 +143,8 @@ public struct IoRegisters {
 
     public alias setUnMonitored(T) = set!(T, false);
 
-    public void set(T, bool monitored = true)(uint address, T value) if (IsValidSize!T) {
-        alias lsb = Alias!(((1 << SizeBase2Power!T) - 1) ^ 3);
+    public void set(T, bool monitored = true)(uint address, T value) if (IsInt8to32Type!T) {
+        alias lsb = Alias!(((1 << IntSizeLog2!T) - 1) ^ 3);
         auto shift = (address & lsb) << 3;
         alias bits = Alias!(cast(uint) ((1L << T.sizeof * 8) - 1));
         auto mask = bits << shift;
@@ -307,7 +290,7 @@ public struct Flash(uint byteSize) if (byteSize == 64 * BYTES_PER_KIB || byteSiz
         }
     }
 
-    public T[] getArray(T)(uint address = 0x0, uint size = byteSize) if (IsValidSize!T) {
+    public T[] getArray(T)(uint address = 0x0, uint size = byteSize) if (IsInt8to32Type!T) {
         return cast(T[]) (memory[address .. address + size]);
     }
 
@@ -436,7 +419,7 @@ public struct Eeprom {
         }
     }
 
-    public T[] getArray(T)(uint address = 0x0, uint size = EEPROM_SIZE) if (IsValidSize!T) {
+    public T[] getArray(T)(uint address = 0x0, uint size = EEPROM_SIZE) if (IsInt8to32Type!T) {
         return cast(T[]) (memory[address .. address + size]);
     }
 
@@ -549,7 +532,7 @@ public struct GamePak {
         _unusedMemory = unusedMemory;
     }
 
-    public T get(T)(uint address) if (IsValidSize!T) {
+    public T get(T)(uint address) if (IsInt8to32Type!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x0: .. case 0x4:
@@ -595,7 +578,7 @@ public struct GamePak {
         }
     }
 
-    public void set(T)(uint address, T value) if (IsValidSize!T) {
+    public void set(T)(uint address, T value) if (IsInt8to32Type!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x0: .. case 0x4:
@@ -639,11 +622,14 @@ public struct GamePak {
     }
 }
 
+import gbaid.gba.io : NewIoRegisters = IoRegisters;
+
 public struct MemoryBus {
     private Bios _bios;
     private BoardWram _boardWRAM;
     private ChipWram _chipWRAM;
     private IoRegisters _ioRegisters;
+    private NewIoRegisters _newIoRegisters;
     private Palette _palette;
     private Vram _vram;
     private Oam _oam;
@@ -675,6 +661,10 @@ public struct MemoryBus {
 
     @property public IoRegisters* ioRegisters() {
         return &_ioRegisters;
+    }
+
+    @property public NewIoRegisters* newIoRegisters() {
+        return &_newIoRegisters;
     }
 
     @property public Palette* palette() {
@@ -715,7 +705,7 @@ public struct MemoryBus {
         return true;
     }
 
-    public T get(T)(uint address) if (IsValidSize!T) {
+    public T get(T)(uint address) if (IsInt8to32Type!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x0:
@@ -737,7 +727,8 @@ public struct MemoryBus {
                 if (address > IO_REGISTERS_END) {
                     return cast(T) _unusedMemory(address);
                 }
-                return _ioRegisters.get!T(address & IO_REGISTERS_MASK);
+                return _ioRegisters.get!T(address & IO_REGISTERS_MASK)
+                        | _newIoRegisters.get!T(address & IO_REGISTERS_MASK);
             case 0x5:
                 return _palette.get!T(address & PALETTE_MASK);
             case 0x6:
@@ -755,7 +746,7 @@ public struct MemoryBus {
         }
     }
 
-    public void set(T)(uint address, T value) if (IsValidSize!T) {
+    public void set(T)(uint address, T value) if (IsInt8to32Type!T) {
         auto highAddress = address >>> 24;
         switch (highAddress) {
             case 0x2:
@@ -767,6 +758,7 @@ public struct MemoryBus {
             case 0x4:
                 if (address <= IO_REGISTERS_END) {
                     _ioRegisters.set!T(address & IO_REGISTERS_MASK, value);
+                    _newIoRegisters.set!T(address & IO_REGISTERS_MASK, value);
                 }
                 return;
             case 0x5:
