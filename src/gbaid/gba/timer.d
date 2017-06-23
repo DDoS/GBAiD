@@ -22,10 +22,10 @@ public class Timers {
         this.interruptHandler = interruptHandler;
         this.soundChip = soundChip;
 
-        foreach (i; AliasSeq!(0, 1, 2, 3)) {
-            enum address = 0x100 + i * 4;
-            ioRegisters.mapAddress(address, &ticks!i, 0xFFFF, 0).preWriteMonitor(&onCountPreWrite!i);
-            ioRegisters.mapAddress(address, &control!i, 0xC7, 16).postWriteMonitor(&onControlPostWrite!i);
+        foreach (timer; AliasSeq!(0, 1, 2, 3)) {
+            enum address = 0x100 + timer * 4;
+            ioRegisters.mapAddress(address, &ticks!timer, 0xFFFF, 0).preWriteMonitor(&onCountPreWrite!timer);
+            ioRegisters.mapAddress(address, &control!timer, 0xC7, 16).postWriteMonitor(&onControlPostWrite!timer);
         }
     }
 
