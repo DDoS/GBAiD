@@ -39,8 +39,8 @@ public class GameBoyAdvance {
         auto ioRegisters = memory.ioRegisters;
 
         processor = new ARM7TDMI(&memory, BIOS_START);
-        haltHandler = new HaltHandler(processor);
-        interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
+        haltHandler = new HaltHandler(memory.newIoRegisters, processor);
+        interruptHandler = new InterruptHandler(memory.newIoRegisters, processor, haltHandler);
         keypad = new Keypad(ioRegisters, interruptHandler);
         dmas = new DMAs(&memory, memory.newIoRegisters, interruptHandler, haltHandler);
         soundChip = new SoundChip(ioRegisters, dmas);

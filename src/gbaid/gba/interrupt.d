@@ -2,7 +2,7 @@ module gbaid.gba.interrupt;
 
 import gbaid.util;
 
-import gbaid.gba.memory;
+import gbaid.gba.io;
 import gbaid.gba.cpu;
 import gbaid.gba.halt;
 
@@ -10,54 +10,43 @@ public class InterruptHandler {
     private IoRegisters* ioRegisters;
     private ARM7TDMI processor;
     private HaltHandler haltHandler;
+    private bool masterEnable = false;
+    private int enable = 0;
+    private int request = 0;
 
     public this(IoRegisters* ioRegisters, ARM7TDMI processor, HaltHandler haltHandler) {
         this.ioRegisters = ioRegisters;
         this.processor = processor;
         this.haltHandler = haltHandler;
-        ioRegisters.setPreWriteMonitor!0x200(&onInterruptAcknowledgePreWrite);
-        ioRegisters.setPostWriteMonitor!0x300(&onHaltRequestPostWrite);
+
+        ioRegisters.mapAddress(0x208, &masterEnable, 0b1, 0);
+        ioRegisters.mapAddress(0x200, &enable, 0x3FFF, 0);
+        ioRegisters.mapAddress(0x200, &request, 0x3FFF, 16)
+                .preWriteMonitor(&onInterruptAcknowledgePreWrite)
+                .postWriteMonitor(&onInterruptAcknowledgePostWrite);
     }
 
     public void requestInterrupt(int source) {
-        int irqControl = ioRegisters.getUnMonitored!int(0x200);
-        irqControl.setBit(source + 16, 1);
-        ioRegisters.setUnMonitored!int(0x200, irqControl);
-        checkForIrq(irqControl);
+        request.setBit(source, 1);
+        checkForIrq();
     }
 
-    private bool onInterruptAcknowledgePreWrite(IoRegisters* ioRegisters, int address, int shift, int mask,
-            ref int irqControl) {
-        enum int acknowledgeMask = 0x3FFF0000;
-        // Ignore a write outside the acknowledge mask
-        if (!(mask & acknowledgeMask)) {
-            return true;
-        }
-        // Mask out all but the bits of the interrupt acknowledge register
-        int acknowledgeValue = irqControl & acknowledgeMask;
-        // Invert the mask to clear the bits of the interrupts being acknowledged, and merge with the lower half
-        irqControl = ioRegisters.getUnMonitored!int(0x200) & acknowledgeMask & ~acknowledgeValue | irqControl & 0xFFFF;
-        // Trigger another IRQ if any is still not acknowledged
-        checkForIrq(irqControl);
+    private bool onInterruptAcknowledgePreWrite(int mask, ref int acknowledged) {
+        // Clear the acknowledged interrupts and replace the value by the updated request bits
+        acknowledged = request & ~acknowledged;
         return true;
     }
 
-    private void checkForIrq(int irqControl) {
-        auto irq = ioRegisters.getUnMonitored!int(0x208) & 0b1 && irqControl >>> 16 & (irqControl & 0xFFFF);
-        processor.irq(irq);
-        if (irq) {
-            haltHandler.softwareHalt(false);
-        }
+    private void onInterruptAcknowledgePostWrite(int mask, int oldRequest, int newRequest) {
+        // Trigger another IRQ if any is still not acknowledged
+        checkForIrq();
     }
 
-    private void onHaltRequestPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
-        if (checkBit(mask, 15)) {
-            if (checkBit(newValue, 15)) {
-                // TODO: implement stop
-                throw new Error("Stop unimplemented");
-            } else {
-                haltHandler.softwareHalt(true);
-            }
+    private void checkForIrq() {
+        auto irq = masterEnable && (request & enable);
+        processor.irq(irq);
+        if (irq) {
+            haltHandler.irqTriggered();
         }
     }
 }

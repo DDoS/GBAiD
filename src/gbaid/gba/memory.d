@@ -728,7 +728,9 @@ public struct MemoryBus {
                     return cast(T) _unusedMemory(address);
                 }
                 if (address >= 0x4000100 && address <= 0x400010E
-                        || address >= 0x40000B0 && address <= 0x40000DE) {
+                        || address >= 0x40000B0 && address <= 0x40000DE
+                        || address >= 0x4000200 && address <= 0x4000208
+                        || address >= 0x4000300 && address <= 0x4000301) {
                     return _newIoRegisters.get!T(address & IO_REGISTERS_MASK);
                 }
                 return _ioRegisters.get!T(address & IO_REGISTERS_MASK);
@@ -761,7 +763,9 @@ public struct MemoryBus {
             case 0x4:
                 if (address <= IO_REGISTERS_END) {
                     if (address >= 0x4000100 && address <= 0x400010E
-                            || address >= 0x40000B0 && address <= 0x40000DE) {
+                            || address >= 0x40000B0 && address <= 0x40000DE
+                            || address >= 0x4000200 && address <= 0x4000208
+                            || address >= 0x4000300 && address <= 0x4000301) {
                         _newIoRegisters.set!T(address & IO_REGISTERS_MASK, value);
                     } else {
                         _ioRegisters.set!T(address & IO_REGISTERS_MASK, value);
