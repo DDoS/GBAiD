@@ -2,7 +2,7 @@ module gbaid.gba.keypad;
 
 import gbaid.util;
 
-import gbaid.gba.memory;
+import gbaid.gba.io;
 import gbaid.gba.interrupt;
 import gbaid.gba.display : CYCLES_PER_FRAME;
 
@@ -19,12 +19,13 @@ public enum Button {
     L = 9
 }
 
+private enum STATE_BITS_CLEARED = 0b1111111111;
+
 public struct KeypadState {
-    private enum short CLEARED = 0b1111111111;
-    private short bits = CLEARED;
+    private int bits = STATE_BITS_CLEARED;
 
     public void clear() {
-        bits = CLEARED;
+        bits = STATE_BITS_CLEARED;
     }
 
     public bool isPressed(Button button) {
@@ -32,11 +33,7 @@ public struct KeypadState {
     }
 
     public void setPressed(Button button, bool pressed = true) {
-        if (pressed) {
-            bits &= ~(1 << button);
-        } else {
-            bits |= 1 << button;
-        }
+        bits.setBit(button, !pressed);
     }
 
     public KeypadState opBinary(string op)(KeypadState that) if (op == "|") {
@@ -54,34 +51,37 @@ public struct KeypadState {
 public class Keypad {
     private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
-    private KeypadState state;
     private ptrdiff_t cyclesUntilNextUpdate = 0;
+    private int stateBits = STATE_BITS_CLEARED;
+    private int control = 0;
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
+
+        ioRegisters.mapAddress(0x130, &stateBits, 0x3FF, 0, true, false);
+        ioRegisters.mapAddress(0x130, &control, 0xC3FF, 16);
     }
 
     public void setState(KeypadState state) {
-        this.state = state;
+        stateBits = state.bits;
     }
 
     public size_t emulate(size_t cycles) {
         cyclesUntilNextUpdate -= cycles;
-        if (cyclesUntilNextUpdate <= 0) {
-            cyclesUntilNextUpdate += CYCLES_PER_FRAME;
-            ioRegisters.setUnMonitored!short(0x130, state.bits);
-            int control = ioRegisters.getUnMonitored!short(0x132);
-            if (control.checkBit(14)) {
-                int state = ~state.bits & 0x3FF;
-                int requested = control & 0x3FF;
-                if (control.checkBit(15)) {
-                    if ((state & requested) == requested) {
-                        interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
-                    }
-                } else if (state & requested) {
+        if (cyclesUntilNextUpdate > 0) {
+            return 0;
+        }
+        cyclesUntilNextUpdate += CYCLES_PER_FRAME;
+        if (control.checkBit(14)) {
+            auto pressedBits = ~stateBits & 0x3FF;
+            auto requested = control & 0x3FF;
+            if (control.checkBit(15)) {
+                if ((pressedBits & requested) == requested) {
                     interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
                 }
+            } else if (pressedBits & requested) {
+                interruptHandler.requestInterrupt(InterruptSource.KEYPAD);
             }
         }
         return 0;
