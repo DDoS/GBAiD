@@ -728,6 +728,8 @@ public struct MemoryBus {
                     return cast(T) _unusedMemory(address);
                 }
                 if (address >= 0x4000100 && address < 0x4000110
+                        || address >= 0x4000060 && address < 0x4000088
+                        || address >= 0x4000090 && address < 0x40000A8
                         || address >= 0x40000B0 && address < 0x40000E0
                         || address >= 0x4000200 && address < 0x4000210
                         || address >= 0x4000300 && address < 0x4000302
@@ -764,6 +766,8 @@ public struct MemoryBus {
             case 0x4:
                 if (address <= IO_REGISTERS_END) {
                     if (address >= 0x4000100 && address < 0x4000110
+                            || address >= 0x4000060 && address < 0x4000088
+                            || address >= 0x4000090 && address < 0x40000A8
                             || address >= 0x40000B0 && address < 0x40000E0
                             || address >= 0x4000200 && address < 0x4000210
                             || address >= 0x4000300 && address < 0x4000302

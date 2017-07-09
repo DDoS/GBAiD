@@ -1,6 +1,8 @@
 module gbaid.gba.sound;
 
-import gbaid.gba.memory;
+import std.meta : AliasSeq;
+
+import gbaid.gba.io;
 import gbaid.gba.dma;
 
 import gbaid.util;
@@ -25,13 +27,14 @@ public class SoundChip {
     private NoiseGenerator noise;
     private DirectSound!'A' directA;
     private DirectSound!'B' directB;
-    private int psgRightVolumeMultiplier = 0;
-    private int psgLeftVolumeMultiplier = 0;
+    private bool masterEnable = false;
+    private int psgRightVolume = 0;
+    private int psgLeftVolume = 0;
     private int psgRightEnableFlags = 0;
     private int psgLeftEnableFlags = 0;
-    private int psgGlobalVolumeDivider = 4;
-    private int directAVolumeDivider = 2;
-    private int directBVolumeDivider = 2;
+    private int psgGlobalVolume = 0;
+    private int directAVolume = 0;
+    private int directBVolume = 0;
     private int directAEnableFlags = 0;
     private int directBEnableFlags = 0;
     private int psgRightReSample = 0;
@@ -45,23 +48,75 @@ public class SoundChip {
         directA = DirectSound!'A'(dmas);
         directB = DirectSound!'B'(dmas);
 
-        ioRegisters.setPostWriteMonitor!0x60(&onToneLowPostWrite!1);
-        ioRegisters.setPostWriteMonitor!0x64(&onToneHighPostWrite!1);
-        ioRegisters.setPostWriteMonitor!0x68(&onToneLowPostWrite!2);
-        ioRegisters.setPostWriteMonitor!0x6C(&onToneHighPostWrite!2);
-        ioRegisters.setPostWriteMonitor!0x70(&onWaveLowPostWrite);
-        ioRegisters.setPostWriteMonitor!0x74(&onWaveHighPostWrite);
-        ioRegisters.setPostWriteMonitor!0x90(&onWavePatternPostWrite!0);
-        ioRegisters.setPostWriteMonitor!0x94(&onWavePatternPostWrite!1);
-        ioRegisters.setPostWriteMonitor!0x98(&onWavePatternPostWrite!2);
-        ioRegisters.setPostWriteMonitor!0x9C(&onWavePatternPostWrite!3);
-        ioRegisters.setPostWriteMonitor!0x78(&onNoiseLowPostWrite);
-        ioRegisters.setPostWriteMonitor!0x7C(&onNoiseHighPostWrite);
-        ioRegisters.setPreWriteMonitor!0xA0(&onDirectSoundQueuePreWrite!'A');
-        ioRegisters.setPreWriteMonitor!0xA4(&onDirectSoundQueuePreWrite!'B');
-        ioRegisters.setPostWriteMonitor!0x80(&onSoundControlPostWrite);
-        ioRegisters.setReadMonitor!0x84(&onSoundStatusRead);
-        ioRegisters.setPostWriteMonitor!0x84(&onSoundStatusPostWrite);
+        ioRegisters.mapAddress(0x60, &tone1.sweepShift, 0b111, 0);
+        ioRegisters.mapAddress(0x60, &tone1.decreasingShift, 0b1, 3);
+        ioRegisters.mapAddress(0x60, &tone1.sweepStep, 0b111, 4);
+        ioRegisters.mapAddress(0x60, &tone1.duration, 0x3F, 16, false, true);
+        ioRegisters.mapAddress(0x60, &tone1.duty, 0b11, 22);
+        ioRegisters.mapAddress(0x60, &tone1.envelopeStep, 0b111, 24);
+        ioRegisters.mapAddress(0x60, &tone1.increasingEnvelope, 0b1, 27);
+        ioRegisters.mapAddress(0x60, &tone1.initialVolume, 0b1111, 28);
+        ioRegisters.mapAddress(0x64, &tone1.rate, 0x7FF, 0, false, true);
+        ioRegisters.mapAddress(0x64, &tone1.useDuration, 0b1, 14);
+        ioRegisters.mapAddress(0x64, null, 0b1, 15, false, true).preWriteMonitor(&onToneEnablePreWrite!1);
+
+        ioRegisters.mapAddress(0x68, &tone2.duration, 0x3F, 0, false, true);
+        ioRegisters.mapAddress(0x68, &tone2.duty, 0b11, 6);
+        ioRegisters.mapAddress(0x68, &tone2.envelopeStep, 0b111, 8);
+        ioRegisters.mapAddress(0x68, &tone2.increasingEnvelope, 0b1, 11);
+        ioRegisters.mapAddress(0x68, &tone2.initialVolume, 0b1111, 12);
+        ioRegisters.mapAddress(0x6C, &tone2.rate, 0x7FF, 0, false, true);
+        ioRegisters.mapAddress(0x6C, &tone2.useDuration, 0b1, 14);
+        ioRegisters.mapAddress(0x6C, null, 0b1, 15, false, true).preWriteMonitor(&onToneEnablePreWrite!2);
+
+        ioRegisters.mapAddress(0x70, &wave.combineBanks, 0b1, 5);
+        ioRegisters.mapAddress(0x70, &wave.selectedBank, 0b1, 6);
+        ioRegisters.mapAddress(0x70, &wave.enabled, 0b1, 7);
+        ioRegisters.mapAddress(0x70, &wave.duration, 0xFF, 16, false, true);
+        ioRegisters.mapAddress(0x70, &wave.volume, 0b111, 29);
+        ioRegisters.mapAddress(0x74, &wave.rate, 0x7FF, 0, false, true);
+        ioRegisters.mapAddress(0x74, &wave.useDuration, 0b1, 14);
+        ioRegisters.mapAddress(0x74, null, 0b1, 15, false, true).preWriteMonitor(&onWaveEnablePreWrite);
+
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            ioRegisters.mapAddress(0x90 + i * 4, null, 0xFFFFFFFF, 0)
+                    .readMonitor(&onWavePatternRead!i)
+                    .preWriteMonitor(&onWavePatternPreWrite!i);
+        }
+
+        ioRegisters.mapAddress(0x78, &noise.duration, 0x3F, 0, false, true);
+        ioRegisters.mapAddress(0x78, &noise.envelopeStep, 0b111, 8);
+        ioRegisters.mapAddress(0x78, &noise.increasingEnvelope, 0b1, 11);
+        ioRegisters.mapAddress(0x78, &noise.initialVolume, 0b1111, 12);
+        ioRegisters.mapAddress(0x7C, &noise.divider, 0b111, 0);
+        ioRegisters.mapAddress(0x7C, &noise.use7Bits, 0b1, 3);
+        ioRegisters.mapAddress(0x7C, &noise.preScaler, 0b1111, 4);
+        ioRegisters.mapAddress(0x7C, &noise.useDuration, 0b1, 14);
+        ioRegisters.mapAddress(0x7C, null, 0b1, 15, false, true).preWriteMonitor(&onNoiseEnablePreWrite);
+
+        ioRegisters.mapAddress(0xA0, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'A');
+        ioRegisters.mapAddress(0xA4, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'B');
+
+        ioRegisters.mapAddress(0x80, &psgRightVolume, 0b111, 0);
+        ioRegisters.mapAddress(0x80, &psgLeftVolume, 0b111, 4);
+        ioRegisters.mapAddress(0x80, &psgRightEnableFlags, 0b1111, 8);
+        ioRegisters.mapAddress(0x80, &psgLeftEnableFlags, 0b1111, 12);
+        ioRegisters.mapAddress(0x80, &psgGlobalVolume, 0b11, 16);
+        ioRegisters.mapAddress(0x80, &directAVolume, 0b1, 18);
+        ioRegisters.mapAddress(0x80, &directBVolume, 0b1, 19);
+        ioRegisters.mapAddress(0x80, &directAEnableFlags, 0b11, 24);
+        ioRegisters.mapAddress(0x80, &directA.timerIndex, 0b1, 26);
+        ioRegisters.mapAddress(0x80, null, 0b1, 27, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'A');
+        ioRegisters.mapAddress(0x80, &directBEnableFlags, 0b11, 28);
+        ioRegisters.mapAddress(0x80, &directB.timerIndex, 0b1, 30);
+        ioRegisters.mapAddress(0x80, null, 0b1, 31, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'B');
+
+        ioRegisters.mapAddress(0x84, &tone1.enabled, 0b1, 0, true, false);
+        ioRegisters.mapAddress(0x84, &tone2.enabled, 0b1, 1, true, false);
+        ioRegisters.mapAddress(0x84, &wave.enabled, 0b1, 2, true, false);
+        ioRegisters.mapAddress(0x84, &noise.enabled, 0b1, 3, true, false);
+        ioRegisters.mapAddress(0x84, &masterEnable, 0b1, 7).preWriteMonitor(&onMasterEnablePreWrite);
+        // TODO: unmap all the addresses when the masterEnable is 0, and remap when 1
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -122,9 +177,9 @@ public class SoundChip {
             if (psgLeftEnableFlags & 0b1000) {
                 leftPsgSample += noiseSample;
             }
-            // Apply the final volume adjustement
-            psgRightReSample += (rightPsgSample * psgRightVolumeMultiplier) / psgGlobalVolumeDivider;
-            psgLeftReSample += (leftPsgSample * psgLeftVolumeMultiplier) / psgGlobalVolumeDivider;
+            // Apply the final volume adjustements and accumulate the samples
+            psgRightReSample += rightPsgSample * psgRightVolume >> 2 - psgGlobalVolume;
+            psgLeftReSample += leftPsgSample * psgLeftVolume >> 2 - psgGlobalVolume;
             psgCount += 1;
             // Check if we have accumulated all the PSG samples for a single output sample
             if (psgCount == PSG_PER_AUDIO_SAMPLE) {
@@ -132,14 +187,14 @@ public class SoundChip {
                 auto outputRight = psgRightReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 auto outputLeft = psgLeftReSample / cast(int) PSG_PER_AUDIO_SAMPLE;
                 // Now get the samples for the direct sound
-                auto directASample = directA.nextSample() / directAVolumeDivider;
+                auto directASample = directA.nextSample() >> 1 - directAVolume;
                 if (directAEnableFlags & 0b1) {
                     outputRight += directASample;
                 }
                 if (directAEnableFlags & 0b10) {
                     outputLeft += directASample;
                 }
-                auto directBSample = directB.nextSample() / directBVolumeDivider;
+                auto directBSample = directB.nextSample() >> 1 - directBVolume;
                 if (directBEnableFlags & 0b1) {
                     outputRight += directBSample;
                 }
@@ -163,89 +218,46 @@ public class SoundChip {
         return cycles;
     }
 
-    private void onToneLowPostWrite(int channel)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings, int newSettings) {
-        static if (channel == 1) {
-            alias tone = tone1;
-            tone.sweepShift = newSettings & 0b111;
-            tone.decreasingShift = newSettings.checkBit(3);
-            tone.sweepStep = newSettings.getBits(4, 6);
-        } else {
-            alias tone = tone2;
-            newSettings <<= 16;
+    private bool onToneEnablePreWrite(int channel)(int mask, ref int enable) {
+        if (enable) {
+            static if (channel == 1) {
+                tone1.restart();
+            } else {
+                tone2.restart();
+            }
         }
-        tone.duration = newSettings.getBits(16, 21);
-        tone.duty = newSettings.getBits(22, 23);
-        tone.envelopeStep = newSettings.getBits(24, 26);
-        tone.increasingEnvelope = newSettings.checkBit(27);
-        tone.initialVolume = newSettings.getBits(28, 31);
+        return false;
     }
 
-    private void onToneHighPostWrite(int channel)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings, int newSettings) {
-        static if (channel == 1) {
-            alias tone = tone1;
-        } else {
-            alias tone = tone2;
-        }
-        tone.rate = newSettings & 0x7FF;
-        tone.useDuration = newSettings.checkBit(14);
-        if (mask.checkBit(15) && newSettings.checkBit(15)) {
-            tone.restart();
-        }
-    }
-
-    private void onWaveLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        wave.combineBanks = newSettings.checkBit(5);
-        wave.selectedBank = newSettings.getBit(6);
-        wave.enabled = newSettings.checkBit(7);
-        wave.duration = newSettings.getBits(16, 23);
-        wave.volume = newSettings.getBits(29, 31);
-    }
-
-    private void onWaveHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        wave.rate = newSettings & 0x7FF;
-        wave.useDuration = newSettings.checkBit(14);
-        if (mask.checkBit(15) && newSettings.checkBit(15)) {
+    private bool onWaveEnablePreWrite(int mask, ref int enable) {
+        if (enable) {
             wave.restart();
         }
+        return false;
     }
 
-    private void onWavePatternPostWrite(int index)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldPattern, int newPattern) {
-        wave.pattern!index = newPattern;
+    private void onWavePatternRead(int index)(int mask, ref int pattern) {
+        pattern = *wave.patternData!index;
     }
 
-    private void onNoiseLowPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        noise.duration = newSettings & 0x3F;
-        noise.envelopeStep = newSettings.getBits(8, 10);
-        noise.increasingEnvelope = newSettings.checkBit(11);
-        noise.initialVolume = newSettings.getBits(12, 15);
+    private bool onWavePatternPreWrite(int index)(int mask, ref int pattern) {
+        *wave.patternData!index = *wave.patternData!index & ~mask | pattern;
+        return false;
     }
 
-    private void onNoiseHighPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        noise.divider = newSettings & 0x7;
-        noise.use7Bits = newSettings.checkBit(3);
-        noise.preScaler = newSettings.getBits(4, 7);
-        noise.useDuration = newSettings.checkBit(14);
-        if (mask.checkBit(15) && newSettings.checkBit(15)) {
+    private bool onNoiseEnablePreWrite(int mask, ref int enable) {
+        if (enable) {
             noise.restart();
         }
+        return false;
     }
 
-    private bool onDirectSoundQueuePreWrite(char channel)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, ref int newData) {
+    private bool onDirectSoundQueuePreWrite(char channel)(int mask, ref int newData) {
         alias Direct = DirectSound!channel;
         static if (channel == 'A') {
             alias direct = directA;
         } else static if (channel == 'B') {
             alias direct = directB;
-        } else {
-            static assert (0);
         }
         // Write the bytes to the sound queue
         foreach (i; 0 .. int.sizeof) {
@@ -264,74 +276,36 @@ public class SoundChip {
             mask >>>= 8;
             newData >>>= 8;
         }
-        return true;
+        return false;
     }
 
-    private void onSoundControlPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        psgRightVolumeMultiplier = newSettings & 0b111;
-        psgLeftVolumeMultiplier = newSettings.getBits(4, 6);
-        psgRightEnableFlags = newSettings.getBits(8, 11);
-        psgLeftEnableFlags = newSettings.getBits(12, 15);
-        switch (newSettings.getBits(16, 17)) {
-            case 0:
-                psgGlobalVolumeDivider = 4;
-                break;
-            case 1:
-                psgGlobalVolumeDivider = 2;
-                break;
-            case 2:
-                psgGlobalVolumeDivider = 1;
-                break;
-            default:
+    private bool onDirectSoundClearPreWrite(char channel)(int mask, ref int clear) {
+        if (clear) {
+            static if (channel == 'A') {
+                directA.clearQueue();
+            } else {
+                directB.clearQueue();
+            }
         }
-        directAVolumeDivider = 2 - newSettings.getBit(18);
-        directBVolumeDivider = 2 - newSettings.getBit(19);
-        directAEnableFlags = newSettings.getBits(24, 25);
-        directA.timerIndex = newSettings.getBit(26);
-        if (mask.checkBit(27) && newSettings.checkBit(27)) {
-            directA.clearQueue();
-        }
-        directBEnableFlags = newSettings.getBits(28, 29);
-        directB.timerIndex = newSettings.getBit(30);
-        if (mask.checkBit(31) && newSettings.checkBit(31)) {
-            directB.clearQueue();
-        }
+        return false;
     }
 
-    private void onSoundStatusRead(IoRegisters* ioRegisters, int address, int shift, int mask, ref int value) {
-        // Ignore reads that aren't on the status flags
-        if (!(mask & 0b1111)) {
-            return;
-        }
-        // Write the enable flags to the value
-        value.setBit(0, tone1.enabled);
-        value.setBit(1, tone2.enabled);
-        value.setBit(2, wave.enabled);
-        value.setBit(3, noise.enabled);
-    }
-
-    private void onSoundStatusPostWrite(IoRegisters* ioRegisters, int address, int shift, int mask, int oldSettings,
-            int newSettings) {
-        auto masterEnable = newSettings.checkBit(7);
-        tone1.enabled = masterEnable;
-        tone2.enabled = masterEnable;
-        wave.enabled = masterEnable;
-        noise.enabled = masterEnable;
-        directA.enabled = masterEnable;
-        directB.enabled = masterEnable;
+    private bool onMasterEnablePreWrite(int mask, ref int masterEnable) {
+        directA.enabled = cast(bool) masterEnable;
+        directB.enabled = cast(bool) masterEnable;
         // Clear the PSG sound channels on disable
-        if (oldSettings.checkBit(7) && !masterEnable) {
-            tone1 = SquareWaveGenerator!true();
-            tone2 = SquareWaveGenerator!false();
-            wave = PatternWaveGenerator();
-            noise = NoiseGenerator();
+        if (!masterEnable) {
+            tone1 = SquareWaveGenerator!true.init;
+            tone2 = SquareWaveGenerator!false.init;
+            wave = PatternWaveGenerator.init;
+            noise = NoiseGenerator.init;
             // Also reset PSG output control
-            psgRightVolumeMultiplier = 0;
-            psgLeftVolumeMultiplier = 0;
+            psgRightVolume = 0;
+            psgLeftVolume = 0;
             psgRightEnableFlags = 0;
             psgLeftEnableFlags = 0;
         }
+        return false;
     }
 }
 
@@ -339,54 +313,20 @@ private struct SquareWaveGenerator(bool sweep) {
     private static enum size_t SQUARE_WAVE_FREQUENCY = 2 ^^ 17;
     private bool enabled = false;
     private int rate = 0;
-    private size_t _duty = 125;
-    private size_t _envelopeStep = 0;
+    private int duty = 0;
+    private int envelopeStep = 0;
     private bool increasingEnvelope = false;
     private int initialVolume = 0;
     static if (sweep) {
         private int sweepShift = 0;
         private bool decreasingShift = false;
-        private size_t _sweepStep = 0;
+        private int sweepStep = 0;
     }
-    private size_t _duration = 0;
+    private int duration = 0;
     private bool useDuration = false;
     private size_t tDuration = 0;
     private size_t tPeriod = 0;
     private int envelope = 0;
-
-    @property private void duty(int duty) {
-        // Convert the setting to fixed point at 1024
-        final switch (duty) {
-            case 0:
-                _duty = 128;
-                break;
-            case 1:
-                _duty = 256;
-                break;
-            case 2:
-                _duty = 512;
-                break;
-            case 3:
-                _duty = 768;
-                break;
-        }
-    }
-
-    @property private void envelopeStep(int step) {
-        // Convert the setting to the step as the number of samples
-        _envelopeStep = step * (PSG_FREQUENCY / 64);
-    }
-
-    static if (sweep) {
-        @property private void sweepStep(int step) {
-            _sweepStep = step * (PSG_FREQUENCY / 128);
-        }
-    }
-
-    @property private void duration(int duration) {
-        // Convert the setting to the duration as the number of samples
-        _duration = (64 - duration) * (PSG_FREQUENCY / 256);
-    }
 
     private void restart() {
         enabled = true;
@@ -395,14 +335,30 @@ private struct SquareWaveGenerator(bool sweep) {
         envelope = initialVolume;
     }
 
-    private short nextSample() {
+    private int nextSample() {
         // Don't play if disabled
         if (!enabled) {
             return 0;
         }
-        // Generate the sample
+        // Find the period and the edge (in ticks)
         auto period = (2048 - rate) * (PSG_FREQUENCY / SQUARE_WAVE_FREQUENCY);
-        auto sample = cast(short) (tPeriod >= (period * _duty) / 1024 ? -envelope : envelope);
+        size_t edge = void;
+        final switch (duty) {
+            case 0:
+                edge = period / 8;
+                break;
+            case 1:
+                edge = period / 4;
+                break;
+            case 2:
+                edge = period / 2;
+                break;
+            case 3:
+                edge = 3 * (period / 4);
+                break;
+        }
+        // Generate the sample
+        auto sample = tPeriod >= edge ? -envelope : envelope;
         // Increment the period time value
         tPeriod += 1;
         if (tPeriod >= period) {
@@ -410,11 +366,11 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Disable for the next sample if the duration expired
         tDuration += 1;
-        if (useDuration && tDuration >= _duration) {
+        if (useDuration && tDuration >= (64 - duration) * (PSG_FREQUENCY / 256)) {
             enabled = false;
         }
         // Update the envelope if enabled
-        if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
+        if (envelopeStep > 0 && tDuration % (envelopeStep * (PSG_FREQUENCY / 64)) == 0) {
             if (increasingEnvelope) {
                 if (envelope < 15) {
                     envelope += 1;
@@ -427,7 +383,7 @@ private struct SquareWaveGenerator(bool sweep) {
         }
         // Update the frequency sweep if enabled
         static if (sweep) {
-            if (_sweepStep > 0 && tDuration % _sweepStep == 0) {
+            if (sweepStep > 0 && tDuration % (sweepStep * (PSG_FREQUENCY / 128)) == 0) {
                 if (decreasingShift) {
                     rate -= rate >> sweepShift;
                 } else {
@@ -442,6 +398,7 @@ private struct SquareWaveGenerator(bool sweep) {
     }
 }
 
+// TODO: use a shift register
 private struct PatternWaveGenerator {
     private static enum size_t PATTERN_FREQUENCY = 2 ^^ 21;
     private static enum size_t BYTES_PER_PATTERN = 4 * int.sizeof;
@@ -450,42 +407,33 @@ private struct PatternWaveGenerator {
     private bool combineBanks = false;
     private int selectedBank = 0;
     private int volume = 0;
-    private size_t _duration = 0;
+    private int duration = 0;
     private bool useDuration = false;
     private int rate = 0;
     private size_t tDuration = 0;
     private size_t tPeriod = 0;
     private size_t pointer = 0;
     private size_t pointerEnd = 0;
-    private short sample = 0;
+    private int sample = 0;
 
-    @property private void duration(int duration) {
-        // Convert the setting to the duration as the number of samples
-        _duration = (256 - duration) * (PSG_FREQUENCY / 256);
-    }
-
-    @property private void pattern(int index)(int pattern) {
-        (cast(int*) patterns.ptr)[(1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index] = pattern;
-    }
-
-    private int calculatePeriod() {
-        return 2048 - rate;
+    @property private int* patternData(int index)() {
+        return cast(int*) patterns.ptr + ((1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index);
     }
 
     private void restart() {
         tDuration = 0;
-        tPeriod = calculatePeriod();
+        tPeriod = 0;
         pointer = selectedBank * 2 * BYTES_PER_PATTERN;
         pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
     }
 
-    private short nextSample() {
+    private int nextSample() {
         // Don't play if disabled
         if (!enabled) {
             return 0;
         }
         // Check if we should generate a new sample
-        auto period = calculatePeriod();
+        auto period = 2048 - rate;
         int newSampleCount = cast(int) tPeriod / period;
         if (newSampleCount > 0) {
             // Accumulate samples
@@ -526,7 +474,7 @@ private struct PatternWaveGenerator {
                 }
             }
             // Set the new sample as the average of the accumulated ones
-            sample = cast(short) (newSample / newSampleCount);
+            sample = newSample / newSampleCount;
             // Leave the time period remainder
             tPeriod %= period;
         }
@@ -534,7 +482,7 @@ private struct PatternWaveGenerator {
         tPeriod += PATTERN_FREQUENCY / PSG_FREQUENCY;
         // Disable for the next sample if the duration expired
         tDuration += 1;
-        if (useDuration && tDuration >= _duration) {
+        if (useDuration && tDuration >= (256 - duration) * (PSG_FREQUENCY / 256)) {
             enabled = false;
         }
         return sample;
@@ -547,51 +495,38 @@ private struct NoiseGenerator {
     private bool use7Bits = false;
     private int divider = 0;
     private int preScaler = 0;
-    private size_t _envelopeStep = 0;
+    private int envelopeStep = 0;
     private bool increasingEnvelope = false;
     private int initialVolume = 0;
-    private size_t _duration = 0;
+    private int duration = 0;
     private bool useDuration = false;
     private size_t tDuration = 0;
     private size_t tPeriod = 0;
     private int shifter = 0x4000;
     private int envelope = 0;
-    private short sample = 0;
-
-    @property private void envelopeStep(int step) {
-        // Convert the setting to the step as the number of samples
-        _envelopeStep = step * (PSG_FREQUENCY / 64);
-    }
-
-    @property private void duration(int duration) {
-        // Convert the setting to the duration as the number of samples
-        _duration = (64 - duration) * (PSG_FREQUENCY / 256);
-    }
-
-    private int calculatePeriod() {
-        // Calculate the period by applying the inverse of the divider and pre-scaler
-        auto period = 1 << preScaler + 1;
-        if (divider == 0) {
-            return period / 2;
-        }
-        return period * divider;
-    }
+    private int sample = 0;
 
     private void restart() {
         enabled = true;
         tDuration = 0;
-        tPeriod = calculatePeriod();
+        tPeriod = 0;
         envelope = initialVolume;
         shifter = use7Bits ? 0x40 : 0x4000;
     }
 
-    private short nextSample() {
+    private int nextSample() {
         // Don't play if disabled
         if (!enabled) {
             return 0;
         }
+        // Calculate the period by applying the inverse of the divider and pre-scaler
+        auto period = 1 << preScaler + 1;
+        if (divider == 0) {
+            period /= 2;
+        } else {
+            period *= divider;
+        }
         // Check if we should generate a new sample
-        auto period = calculatePeriod();
         int newSampleCount = cast(int) tPeriod / period;
         if (newSampleCount > 0) {
             // Accumulate samples
@@ -608,7 +543,7 @@ private struct NoiseGenerator {
                 }
             }
             // Set the new sample as the average of the accumulated ones
-            sample = cast(short) (newSample / newSampleCount);
+            sample = newSample / newSampleCount;
             // Leave the time period remainder
             tPeriod %= period;
         }
@@ -616,11 +551,11 @@ private struct NoiseGenerator {
         tPeriod += NOISE_FREQUENCY / PSG_FREQUENCY;
         // Disable for the next sample if the duration expired
         tDuration += 1;
-        if (useDuration && tDuration >= _duration) {
+        if (useDuration && tDuration >= (64 - duration) * (PSG_FREQUENCY / 256)) {
             enabled = false;
         }
         // Update the envelope if enabled (using the duration before it was incremented)
-        if (_envelopeStep > 0 && tDuration % _envelopeStep == 0) {
+        if (envelopeStep > 0 && tDuration % (envelopeStep * (PSG_FREQUENCY / 64)) == 0) {
             if (increasingEnvelope) {
                 if (envelope < 15) {
                     envelope += 1;
