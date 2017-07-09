@@ -10,7 +10,7 @@ public enum uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
 public struct IoRegisters {
     private Register[][IO_REGISTERS_SIZE / int.sizeof] registerSets;
 
-    public auto mapAddress(T)(uint address, T* valuePtr, int mask, int shift,
+    public auto mapAddress(T)(uint address, T valuePtr, int mask, int shift,
             bool readable = true, bool writable = true) {
         if ((address & 0b11) != 0) {
             throw new Exception(format("Address %08x is not 4 byte aligned", address));
@@ -130,7 +130,7 @@ private union ValuePtr {
 }
 
 private enum ValueSize {
-    BOOL, BYTE, SHORT, INT
+    NULL, BOOL, BYTE, SHORT, INT
 }
 
 private struct Register {
@@ -144,22 +144,24 @@ private struct Register {
     private bool readable;
     private bool writable;
 
-    private this(T)(T* valuePtr, int mask, int shift, bool readable, bool writable) {
+    private this(T)(T valuePtr, int mask, int shift, bool readable, bool writable) {
         this.mask = mask;
         this.shift = shift;
         this.readable = readable;
         this.writable = writable;
 
-        static if (is(T == bool)) {
+        static if (is(T == typeof(null))) {
+            valueSize = ValueSize.NULL;
+        } else static if (is(T == bool*)) {
             this.valuePtr.valueBool = valuePtr;
             valueSize = ValueSize.BOOL;
-        } else static if (is(T == byte)) {
+        } else static if (is(T == byte*)) {
             this.valuePtr.valueByte = valuePtr;
             valueSize = ValueSize.BYTE;
-        } else static if (is(T == short)) {
+        } else static if (is(T == short*)) {
             this.valuePtr.valueShort = valuePtr;
             valueSize = ValueSize.SHORT;
-        } else static if (is(T == int)) {
+        } else static if (is(T == int*)) {
             this.valuePtr.valueInt = valuePtr;
             valueSize = ValueSize.INT;
         } else {
@@ -170,6 +172,8 @@ private struct Register {
     @property
     private int value() {
         final switch (valueSize) with (ValueSize) {
+            case NULL:
+                return 0;
             case BOOL:
                 return *valuePtr.valueBool & 0b1;
             case BYTE:
@@ -184,6 +188,8 @@ private struct Register {
     @property
     private void value(int value) {
         final switch (valueSize) with (ValueSize) {
+            case NULL:
+                break;
             case BOOL:
                 *valuePtr.valueBool = cast(bool) value;
                 break;

@@ -6,14 +6,13 @@ import gbaid.gba.cpu;
 public class HaltHandler {
     private IoRegisters* ioRegisters;
     private ARM7TDMI processor;
-    private bool haltMode = false;
     private bool softwareHalted = false, dmaHalted = false;
 
     public this(IoRegisters* ioRegisters, ARM7TDMI processor) {
         this.ioRegisters = ioRegisters;
         this.processor = processor;
 
-        ioRegisters.mapAddress(0x300, &haltMode, 0b1, 15).postWriteMonitor(&onHaltRequestPostWrite);
+        ioRegisters.mapAddress(0x300, null, 0b1, 15).postWriteMonitor(&onHaltRequestPostWrite);
     }
 
     public void irqTriggered() {
@@ -30,8 +29,8 @@ public class HaltHandler {
         processor.halt(softwareHalted || dmaHalted);
     }
 
-    private void onHaltRequestPostWrite(int mask, int oldValue, int newValue) {
-        if (haltMode) {
+    private void onHaltRequestPostWrite(int mask, int oldHaltMode, int newHaltMode) {
+        if (newHaltMode) {
             // TODO: implement stop
             throw new Error("Stop unimplemented");
         } else {
