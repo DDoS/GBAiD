@@ -1,6 +1,6 @@
-    mov EAX, dx
+    mov EAX, cx
     push RAX
-    mov EBX, dy
+    mov EBX, cy
     push RBX
     push lineAddress
     push 0
@@ -14,7 +14,7 @@ loop:
     mov ECX, bgSizeInv
     test EAX, ECX
     jz skip_x_overflow
-    test displayOverflow, 1
+    test overflowWrapAround, 1
     jnz skip_transparent1
     mov CX, TRANSPARENT
     jmp end_color
@@ -23,7 +23,7 @@ skip_transparent1:
 skip_x_overflow:
     test EBX, ECX
     jz skip_y_overflow
-    test displayOverflow, 1
+    test overflowWrapAround, 1
     jnz skip_transparent2
     mov CX, TRANSPARENT
     jmp end_color
@@ -31,12 +31,13 @@ skip_transparent2:
     and EBX, bgSize
 skip_y_overflow:
     ; check and apply mosaic
-    test mosaic, 1
+    test mosaicEnabled, 1
     jz skip_mosaic
     push RBX
     mov EBX, EAX
     xor EDX, EDX
     mov ECX, mosaicSizeX
+    add ECX, 1
     div ECX
     sub EBX, EDX
     pop RAX
@@ -44,6 +45,7 @@ skip_y_overflow:
     mov EBX, EAX
     xor EDX, EDX
     mov ECX, mosaicSizeY
+    add ECX, 1
     div ECX
     sub EBX, EDX
     pop RAX
@@ -95,11 +97,11 @@ end_color:
     mov [RBX], CX
     pop RDX
     pop RCX
-    ; ECX = dx, EDX = dy
+    ; ECX = cx, EDX = cy
     ; check loop condition
     cmp EAX, 239
     jge end
-    ; increment dx and dy
+    ; increment cx and cy
     add ECX, pa
     push RCX
     add EDX, pc

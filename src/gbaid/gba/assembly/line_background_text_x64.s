@@ -13,13 +13,14 @@ loop:
     and EAX, 255
     add EDX, 2048
 skip_overflow:
-    test mosaic, 1
+    test mosaicEnabled, 1
     jz skip_mosaic
     ; apply horizontal mosaic
     push RDX
     xor EDX, EDX
     mov EBX, EAX
     mov ECX, mosaicSizeX
+    add ECX, 1
     div ECX
     sub EBX, EDX
     mov EAX, EBX

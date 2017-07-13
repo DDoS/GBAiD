@@ -361,16 +361,24 @@ public class Display {
         if (bgControl!layer.mosaicEnabled) {
             y -= y % (bgMosaicSize.y + 1);
         }
-        // Now we calculate the map line (row of tiles in a map), and the tile line (row of dotss in a tile)
+        // Now we calculate the map line (row of tiles in a map), and the tile line (row of dots in a tile)
         int mapLine = y >> 3;
         int tileLine = y & 7;
         // Every row of tiles in a map has 32 of them, so we get the linear offset into the map by doing mapLine * 32
         int lineMapOffset = mapLine << 5;
+        // The tile base is the start address for the tile data, it's in increments of 16KB
+        int tileBase = bgControl!layer.tileBase << 14;
         // Use the optimized ASM implementation of the line drawing code if available
         static if (__traits(compiles, LINE_BACKGROUND_TEXT_ASM)) {
-            size_t lineAddress = cast(size_t) linePixels!layer.ptr;
-            size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
-            size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
+            // Place data used by the ASM on the stack
+            int xOffset = bgOffset!layer.x;
+            int singlePalette = bgControl!layer.singlePalette;
+            int mosaicEnabled = bgControl!layer.mosaicEnabled;
+            int mosaicSizeX = bgMosaicSize.x;
+            // Also place the addresses for the memory
+            auto lineAddress = cast(size_t) linePixels!layer.ptr;
+            auto vramAddress = cast(size_t) vram.getPointer!byte(0x0);
+            auto paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
             mixin (LINE_BACKGROUND_TEXT_ASM);
         } else {
             foreach (column; 0 .. DISPLAY_WIDTH) {
@@ -409,9 +417,8 @@ public class Display {
                     sampleLine = tileLine;
                 }
                 // Now we calculate the address into the tile data: we add the base tile address, tile number * tile size,
-                // line into the tile * 8 dotss, and the column into the tile (both divided by 2 if 4 bits per dots)
-                int tileAddress = (bgControl!layer.tileBase << 14) + (tileNumber << tileSizeShift)
-                        + ((sampleLine << 3) + sampleColumn >> tile4Bit);
+                // line into the tile * 8 dots, and the column into the tile (both divided by 2 if 4 bits per dots)
+                int tileAddress = tileBase + (tileNumber << tileSizeShift) + ((sampleLine << 3) + sampleColumn >> tile4Bit);
                 // By addressing into the tile, we get the palette index, but this depends on the palette mode: 1 or 16
                 int paletteAddress = void;
                 if (bgControl!layer.singlePalette) {
@@ -468,11 +475,21 @@ public class Display {
         // These are the horizontal transformation coefficients
         int pa = bgTransform!affineLayer.a;
         int pc = bgTransform!affineLayer.c;
+        // The tile base is the start address for the background tile map, it's in increments of 2KB
+        int mapBase = bgControl!layer.mapBase << 11;
+        // The tile base is the start address for the tile data, it's in increments of 16KB
+        int tileBase = bgControl!layer.tileBase << 14;
         // Use the optimized ASM implementation of the line drawing code if available
         static if (__traits(compiles, LINE_BACKGROUND_AFFINE_ASM)) {
-            size_t lineAddress = cast(size_t) linePixels!layer.ptr;
-            size_t vramAddress = cast(size_t) vram.getPointer!byte(0x0);
-            size_t paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
+            // Place data used by the ASM on the stack
+            int overflowWrapAround = bgControl!layer.overflowWrapAround;
+            int mosaicEnabled = bgControl!layer.mosaicEnabled;
+            int mosaicSizeX = bgMosaicSize.x;
+            int mosaicSizeY = bgMosaicSize.y;
+            // Also place the addresses for the memory
+            auto lineAddress = cast(size_t) linePixels!layer.ptr;
+            auto vramAddress = cast(size_t) vram.getPointer!byte(0x0);
+            auto paletteAddress = cast(size_t) palette.getPointer!byte(0x0);
             mixin (LINE_BACKGROUND_AFFINE_ASM);
         } else {
             // On every iteration we also increment the coordinates by the transform coefficients
@@ -511,12 +528,12 @@ public class Display {
                 int tileLine = y & 7;
                 // To calculate the address in the map, we add the base address to line and column offsets
                 // The line offset is multiplied by the number of tiles in a map line
-                int mapAddress = (bgControl!layer.mapBase << 11) + (mapLine << mapLineShift) + mapColumn;
+                int mapAddress = mapBase + (mapLine << mapLineShift) + mapColumn;
                 // Now we can fetch the tile number
                 int tileNumber = vram.get!byte(mapAddress) & 0xFF;
                 // To calculate the address in the tile data, we add the tile base to the number, line and column offsets
                 // The tile number is multiplied by the tile size (64), and the line offset by the tile line size (8)
-                int tileAddress = (bgControl!layer.tileBase << 14) + (tileNumber << 6) + (tileLine << 3) + tileColumn;
+                int tileAddress = tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
                 // By addressing into the tile, we get the palette index, which we multiply by 2 to get the address
                 int paletteAddress = (vram.get!byte(tileAddress) & 0xFF) << 1;
                 // The first color of the palette is transparent
