@@ -4,12 +4,12 @@ import std.algorithm.searching : find;
 import std.exception : assumeUnique;
 
 version (D_InlineAsm_X86_64) {
-    public enum string LINE_BACKGROUND_TEXT_ASM = "asm {"
+    /*public enum string LINE_BACKGROUND_TEXT_ASM = "asm {"
         ~ import("line_background_text_x64.s").convertToDASM() ~
     "}";
     public enum string LINE_BACKGROUND_AFFINE_ASM = "asm {"
         ~ import("line_background_affine_x64.s").convertToDASM() ~
-    "}";
+    "}";*/
     public enum string ADD_WITH_FLAGS_ASM = "asm {"
         ~ import("add_with_flags_x64.s").convertToDASM() ~
     "}";

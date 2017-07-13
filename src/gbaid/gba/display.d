@@ -10,6 +10,7 @@ import std.algorithm.mutation : swap;
 
 import gbaid.util;
 
+import gbaid.gba.io : NewIoRegisters = IoRegisters;
 import gbaid.gba.memory;
 import gbaid.gba.dma;
 import gbaid.gba.interrupt;
@@ -20,28 +21,114 @@ public enum uint DISPLAY_HEIGHT = 160;
 public enum size_t CYCLES_PER_FRAME = (DISPLAY_WIDTH + Display.BLANK_LENGTH)
         * (DISPLAY_HEIGHT + Display.BLANK_LENGTH) * Display.CYCLES_PER_DOT;
 
+private struct DisplayControl {
+    private byte bgMode = 0;
+    private bool frameIndex = 0;
+    private bool objMap1D = false;
+    private bool forceBlank = false;
+    private byte layerEnableFlags = 0;
+    private byte windowEnableFlags = 0;
+}
+
+private struct DisplayStatus {
+    private bool inVBlank = false;
+    private bool inHBlank = false;
+    private bool vCountMatch = false;
+    private bool intVBlankEnabled = false;
+    private bool intHBlankEnabled = false;
+    private bool intVCounterEnabled = false;
+    private ubyte vCountTarget = 0;
+    private ubyte vCounter = 0;
+}
+
+private struct BackgroundControl  {
+    private byte priority = 0;
+    private byte tileBase = 0;
+    private bool mosaicEnabled = false;
+    private bool singlePalette = false;
+    private byte mapBase = 0;
+    private bool overflowWrapAround = false;
+    private byte size = 0;
+}
+
+private struct BackgroundOffset {
+    private short x = 0;
+    private short y = 0;
+}
+
+private struct BackgroundTransform {
+    private short a = 0;
+    private short b = 0;
+    private short c = 0;
+    private short d = 0;
+    private int x = 0;
+    private int y = 0;
+    private int cx = 0;
+    private int cy = 0;
+}
+
+private struct WindowSize {
+    private ubyte endX = 0;
+    private ubyte startX = 0;
+    private ubyte endY = 0;
+    private ubyte startY = 0;
+}
+
+private struct WindowControl {
+    private byte layerEnableFlags = 0;
+    private bool specialEffectEnabled = false;
+}
+
+private struct MosaicSize {
+    private byte x = 0;
+    private byte y = 0;
+}
+
+private struct SpecialEffect {
+    private byte firstTargetFlags = 0;
+    private byte effectType = 0;
+    private byte secondTargetFlags = 0;
+}
+
+private struct BlendCoefficients  {
+    private byte eva = 0;
+    private byte evb = 0;
+    private byte evy = 0;
+}
+
 public class Display {
     private enum uint BLANK_LENGTH = 68;
     public static enum uint CYCLES_PER_DOT = 4;
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
     private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
-    private IoRegisters* ioRegisters;
+    private NewIoRegisters* ioRegisters;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;
     private InterruptHandler interruptHandler;
     private DMAs dmas;
+    private FrameSwapper _frameSwapper;
     mixin declareFields!(short[DISPLAY_WIDTH], true, "linePixels", 0, 6);
     private alias objectLinePixels = linePixels!4;
     private alias infoLinePixels = linePixels!5;
-    mixin declareFields!(int, true, "internalAffineReferenceX", 0, 2);
-    mixin declareFields!(int, true, "internalAffineReferenceY", 0, 2);
+    private DisplayControl control;
+    private DisplayStatus status;
+    mixin declareFields!(BackgroundControl, true, "bgControl", BackgroundControl.init, 4);
+    mixin declareFields!(BackgroundOffset, true, "bgOffset", BackgroundOffset.init, 4);
+    mixin declareFields!(BackgroundTransform, true, "bgTransform", BackgroundTransform.init, 2);
+    mixin declareFields!(WindowSize, true, "windowSize", WindowSize.init, 2);
+    mixin declareFields!(WindowControl, true, "windowControl", WindowControl.init, 4);
+    private alias outWindowCtrl = windowControl!2;
+    private alias objWindowCtrl = windowControl!3;
+    private MosaicSize bgMosaicSize;
+    private MosaicSize objMosaicSize;
+    private SpecialEffect specialEffect;
+    private BlendCoefficients blendCoefficients;
     private int line = 0;
     private int dot = 0;
-    private FrameSwapper _frameSwapper;
 
-    public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
+    public this(NewIoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
         this.ioRegisters = ioRegisters;
         this.palette = palette;
@@ -52,10 +139,88 @@ public class Display {
 
         _frameSwapper = new FrameSwapper();
 
-        ioRegisters.setPostWriteMonitor!0x28(&onAffineReferencePointPostWrite!(2, false));
-        ioRegisters.setPostWriteMonitor!0x2C(&onAffineReferencePointPostWrite!(2, true));
-        ioRegisters.setPostWriteMonitor!0x38(&onAffineReferencePointPostWrite!(3, false));
-        ioRegisters.setPostWriteMonitor!0x3C(&onAffineReferencePointPostWrite!(3, true));
+        ioRegisters.mapAddress(0x0, &control.bgMode, 0b111, 0);
+        ioRegisters.mapAddress(0x0, &control.frameIndex, 0b1, 4);
+        ioRegisters.mapAddress(0x0, &control.objMap1D, 0b1, 6);
+        ioRegisters.mapAddress(0x0, &control.forceBlank, 0b1, 7);
+        ioRegisters.mapAddress(0x0, &control.layerEnableFlags, 0x1F, 8);
+        ioRegisters.mapAddress(0x0, &control.windowEnableFlags, 0b111, 13);
+
+        ioRegisters.mapAddress(0x4, &status.inVBlank, 0b1, 0, true, false);
+        ioRegisters.mapAddress(0x4, &status.inHBlank, 0b1, 1, true, false);
+        ioRegisters.mapAddress(0x4, &status.vCountMatch, 0b1, 2, true, false);
+        ioRegisters.mapAddress(0x4, &status.intVBlankEnabled, 0b1, 3);
+        ioRegisters.mapAddress(0x4, &status.intHBlankEnabled, 0b1, 4);
+        ioRegisters.mapAddress(0x4, &status.intVCounterEnabled, 0b1, 5);
+        ioRegisters.mapAddress(0x4, &status.vCountTarget, 0xFF, 8);
+        ioRegisters.mapAddress(0x4, &status.vCounter, 0xFF, 16, true, false);
+
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            enum address = (i / 2) * 4 + 0x8;
+            enum shift = (i % 2) * 16;
+            ioRegisters.mapAddress(address, &bgControl!i.priority, 0b11, shift);
+            ioRegisters.mapAddress(address, &bgControl!i.tileBase, 0b11, shift + 2);
+            ioRegisters.mapAddress(address, &bgControl!i.mosaicEnabled, 0b1, shift + 6);
+            ioRegisters.mapAddress(address, &bgControl!i.singlePalette, 0b1, shift + 7);
+            ioRegisters.mapAddress(address, &bgControl!i.mapBase, 0x1F, shift + 8);
+            ioRegisters.mapAddress(address, &bgControl!i.overflowWrapAround, 0b1, shift + 13);
+            ioRegisters.mapAddress(address, &bgControl!i.size, 0b11, shift + 14);
+        }
+
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            enum address = i * 4 + 0x10;
+            ioRegisters.mapAddress(address, &bgOffset!i.x, 0x1FF, 0, false, true);
+            ioRegisters.mapAddress(address, &bgOffset!i.y, 0x1FF, 16, false, true);
+        }
+
+        foreach (i; AliasSeq!(0, 1)) {
+            enum address = i * 16 + 0x20;
+            ioRegisters.mapAddress(address, &bgTransform!i.a, 0xFFFF, 0, false, true);
+            ioRegisters.mapAddress(address, &bgTransform!i.b, 0xFFFF, 16, false, true);
+            ioRegisters.mapAddress(address + 0x4, &bgTransform!i.c, 0xFFFF, 0, false, true);
+            ioRegisters.mapAddress(address + 0x4, &bgTransform!i.d, 0xFFFF, 16, false, true);
+            ioRegisters.mapAddress(address + 0x8, &bgTransform!i.x, 0xFFFFFFF, 0, false, true)
+                    .preWriteMonitor(&onAffineReferencePointPreWrite!(i, false));
+            ioRegisters.mapAddress(address + 0xC, &bgTransform!i.y, 0xFFFFFFF, 0, false, true)
+                    .preWriteMonitor(&onAffineReferencePointPreWrite!(i, true));
+        }
+
+        ioRegisters.mapAddress(0x40, &windowSize!0.endX, 0xFF, 0, false, true);
+        ioRegisters.mapAddress(0x40, &windowSize!0.startX, 0xFF, 8, false, true);
+        ioRegisters.mapAddress(0x40, &windowSize!1.endX, 0xFF, 16, false, true);
+        ioRegisters.mapAddress(0x40, &windowSize!1.startX, 0xFF, 24, false, true);
+        ioRegisters.mapAddress(0x44, &windowSize!0.endY, 0xFF, 0, false, true);
+        ioRegisters.mapAddress(0x44, &windowSize!0.startY, 0xFF, 8, false, true);
+        ioRegisters.mapAddress(0x44, &windowSize!1.endY, 0xFF, 16, false, true);
+        ioRegisters.mapAddress(0x44, &windowSize!1.startY, 0xFF, 24, false, true);
+
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            enum shift = i * 8;
+            ioRegisters.mapAddress(0x48, &windowControl!i.layerEnableFlags, 0x1F, shift);
+            ioRegisters.mapAddress(0x48, &windowControl!i.specialEffectEnabled, 0b1, shift + 5);
+        }
+
+        ioRegisters.mapAddress(0x4C, &bgMosaicSize.x, 0xF, 0, false, true);
+        ioRegisters.mapAddress(0x4C, &bgMosaicSize.y, 0xF, 4, false, true);
+        ioRegisters.mapAddress(0x4C, &objMosaicSize.x, 0xF, 8, false, true);
+        ioRegisters.mapAddress(0x4C, &objMosaicSize.y, 0xF, 12, false, true);
+
+        ioRegisters.mapAddress(0x50, &specialEffect.firstTargetFlags, 0x3F, 0);
+        ioRegisters.mapAddress(0x50, &specialEffect.effectType, 0b11, 6);
+        ioRegisters.mapAddress(0x50, &specialEffect.secondTargetFlags, 0x3F, 8);
+        ioRegisters.mapAddress(0x50, &blendCoefficients.eva, 0x1F, 16, false, true);
+        ioRegisters.mapAddress(0x50, &blendCoefficients.evb, 0x1F, 24, false, true);
+        ioRegisters.mapAddress(0x54, &blendCoefficients.evy, 0x1F, 0, false, true);
+    }
+
+    private bool onAffineReferencePointPreWrite(int affineLayer, bool y)(int mask, ref int value) {
+        auto signedValue = (value << 4) >> 4;
+        static if (y) {
+            bgTransform!affineLayer.cy = signedValue;
+        } else {
+            bgTransform!affineLayer.cx = signedValue;
+        }
+        return true;
     }
 
     @property public FrameSwapper frameSwapper() {
@@ -104,65 +269,56 @@ public class Display {
     }
 
     private void drawLine(int line) {
-        int displayControl = ioRegisters.getUnMonitored!short(0x0);
-        // If the blanking bit is set then we only draw a white line
-        if (displayControl.checkBit(7)) {
+        // If blanking is forced then we only draw a white line
+        if (control.forceBlank) {
             lineBlank(line);
             return;
         }
         // Otherwise we start by drawing the background layers, which depend on the mode
-        int displayMode = displayControl & 0b111;
-        int bgEnables = displayControl.getBits(8, 12);
-        switch (displayMode) {
+        switch (control.bgMode) {
             case 0:
-                layerBackgroundText!0(line, bgEnables);
-                layerBackgroundText!1(line, bgEnables);
-                layerBackgroundText!2(line, bgEnables);
-                layerBackgroundText!3(line, bgEnables);
+                layerBackgroundText!0(line);
+                layerBackgroundText!1(line);
+                layerBackgroundText!2(line);
+                layerBackgroundText!3(line);
                 break;
             case 1:
-                layerBackgroundText!0(line, bgEnables);
-                layerBackgroundText!1(line, bgEnables);
-                layerBackgroundAffine!2(line, bgEnables);
+                layerBackgroundText!0(line);
+                layerBackgroundText!1(line);
+                layerBackgroundAffine!2(line);
                 layerTransparent!3();
                 break;
             case 2:
                 layerTransparent!0();
                 layerTransparent!1();
-                layerBackgroundAffine!2(line, bgEnables);
-                layerBackgroundAffine!3(line, bgEnables);
+                layerBackgroundAffine!2(line);
+                layerBackgroundAffine!3(line);
                 break;
             case 3:
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap!("16Single", 2)(line, bgEnables, 0);
+                lineBackgroundBitmap!("16Single", 2)(line);
                 layerTransparent!3();
                 break;
             case 4:
-                int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap!("8Double", 2)(line, bgEnables, frameIndex);
+                lineBackgroundBitmap!("8Double", 2)(line);
                 layerTransparent!3();
                 break;
             case 5:
-                int frameIndex = displayControl.getBit(4);
                 layerTransparent!0();
                 layerTransparent!1();
-                lineBackgroundBitmap!("16Double", 2)(line, bgEnables, frameIndex);
+                lineBackgroundBitmap!("16Double", 2)(line);
                 layerTransparent!3();
                 break;
             default:
                 break;
         }
         // We always draw the object layer
-        int tileMapping = displayControl.getBit(6);
-        layerObjects(line, bgEnables, displayMode, tileMapping);
+        layerObjects(line);
         // Finally we compose all the layers into the drawn line
-        int windowEnables = displayControl.getBits(13, 15);
-        int blendControl = ioRegisters.getUnMonitored!short(0x50);
-        short backColor = palette.get!short(0x0) & 0x7FFF;
-        layerCompose(line, windowEnables, blendControl, backColor);
+        layerCompose(line);
     }
 
     private void lineBlank(int line) {
@@ -177,40 +333,24 @@ public class Display {
         linePixels!layer[] = TRANSPARENT;
     }
 
-    private void layerBackgroundText(int layer)(int line, int bgEnables) {
+    private void layerBackgroundText(int layer)(int line) {
         // Draw a transparent line if the layer is not enabled
-        if (!bgEnables.checkBit(layer)) {
+        if (!control.layerEnableFlags.checkBit(layer)) {
             layerTransparent!layer();
             return;
         }
-        // Otherwise we fetch the background control register for the layer
-        enum bgControlAddress = 0x8 + (layer << 1);
-        int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
-        // From it we get the settings
-        int tileBase = bgControl.getBits(2, 3) << 14;
-        int mosaic = bgControl.getBit(6);
-        int singlePalette = bgControl.getBit(7);
-        int mapBase = bgControl.getBits(8, 12) << 11;
-        int screenSize = bgControl.getBits(14, 15);
-        // We also need the mosaic control
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
         // Tile palette data is 4 bit when using 16 palettes, or 8 bit when just using 1
         // We also calculate a shift so that: 1 << tileSizeShift = sizeOfTile = (8 * 8 * paletteDataSize)
-        int tile4Bit = singlePalette ? 0 : 1;
+        int tile4Bit = bgControl!layer.singlePalette ? 0 : 1;
         int tileSizeShift = 6 - tile4Bit;
         // In text mode, the screen size is 256 or 512 in each dimension (1 or 2 maps in each dimension)
         // Here we get this size as a bit mask (writable as 2^n - 1)
-        int totalWidth = (256 << (screenSize & 0b1)) - 1;
-        int totalHeight = (256 << ((screenSize & 0b10) >> 1)) - 1;
-        // Finally we need the offset values for scrolling the backgroung
-        enum layerAddressOffset = layer << 2;
-        int xOffset = ioRegisters.getUnMonitored!short(0x10 + layerAddressOffset) & 0x1FF;
-        int yOffset = ioRegisters.getUnMonitored!short(0x12 + layerAddressOffset) & 0x1FF;
+        int totalWidth = (256 << (bgControl!layer.size & 0b1)) - 1;
+        int totalHeight = (256 << ((bgControl!layer.size & 0b10) >> 1)) - 1;
         // To get the tile y coordinate, we add the offet and apply the height mask (to wrap around)
-        int y = (line + yOffset) & totalHeight;
+        int y = (line + bgOffset!layer.y) & totalHeight;
         // If y is outside the first vertical tile map, we address into the second one instead
+        int mapBase = bgControl!layer.mapBase << 11;
         if (y & ~255) {
             // Restrict y to the map size
             y &= 255;
@@ -218,8 +358,8 @@ public class Display {
             mapBase += BYTES_PER_KIB << (totalWidth & ~255 ? 2 : 1);
         }
         // If the mosaic is enabled, then we round down to the next mosaic multiple
-        if (mosaic) {
-            y -= y % mosaicSizeY;
+        if (bgControl!layer.mosaicEnabled) {
+            y -= y % (bgMosaicSize.y + 1);
         }
         // Now we calculate the map line (row of tiles in a map), and the tile line (row of dotss in a tile)
         int mapLine = y >> 3;
@@ -235,7 +375,7 @@ public class Display {
         } else {
             foreach (column; 0 .. DISPLAY_WIDTH) {
                 // For every column, we get the base x coordinate like we did for the y
-                int x = (column + xOffset) & totalWidth;
+                int x = (column + bgOffset!layer.x) & totalWidth;
                 // Again, we address into the second horizontal map the if x is outside the first
                 int map = mapBase;
                 if (x & ~255) {
@@ -243,8 +383,8 @@ public class Display {
                     map += BYTES_PER_KIB << 1;
                 }
                 // If the mosaic is enabled, then we round down to the next mosaic multiple
-                if (mosaic) {
-                    x -= x % mosaicSizeX;
+                if (bgControl!layer.mosaicEnabled) {
+                    x -= x % (bgMosaicSize.x + 1);
                 }
                 // We calculate the map and tile columns just like we did for the y
                 int mapColumn = x >> 3;
@@ -270,11 +410,11 @@ public class Display {
                 }
                 // Now we calculate the address into the tile data: we add the base tile address, tile number * tile size,
                 // line into the tile * 8 dotss, and the column into the tile (both divided by 2 if 4 bits per dots)
-                int tileAddress = tileBase + (tileNumber << tileSizeShift)
+                int tileAddress = (bgControl!layer.tileBase << 14) + (tileNumber << tileSizeShift)
                         + ((sampleLine << 3) + sampleColumn >> tile4Bit);
                 // By addressing into the tile, we get the palette index, but this depends on the palette mode: 1 or 16
                 int paletteAddress = void;
-                if (singlePalette) {
+                if (bgControl!layer.singlePalette) {
                     // For a single palette we address directly
                     int paletteIndex = vram.get!byte(tileAddress) & 0xFF;
                     // The first color of the palette is transparent
@@ -303,50 +443,31 @@ public class Display {
         }
     }
 
-    private void layerBackgroundAffine(int layer)(int line, int bgEnables) {
-        // There are two affine layers, with indexes 2 or 3. The address offset is for accessing the transform registers
+    private void layerBackgroundAffine(int layer)(int line) {
+        // There are two affine layers, with indices 2 or 3
         enum affineLayer = layer - 2;
-        enum layerAddressOffset = affineLayer << 4;
         // If the layer isn't enabled, we make it transparent
-        if (!bgEnables.checkBit(layer)) {
+        if (!control.layerEnableFlags.checkBit(layer)) {
             layerTransparent!layer();
-            // We also need to increment the transform coordinates by the coefficients (for the next line)
-            int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
-            int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
-            internalAffineReferenceX!affineLayer += pb;
-            internalAffineReferenceY!affineLayer += pd;
+            // We also need to increment the current coordinates by the vertical transformation coefficients
+            bgTransform!affineLayer.cx += bgTransform!affineLayer.b;
+            bgTransform!affineLayer.cy += bgTransform!affineLayer.d;
             return;
         }
-        // Otherwise we fetch the background control register for the layer
-        enum bgControlAddress = 0x8 + (layer << 1);
-        int bgControl = ioRegisters.getUnMonitored!short(bgControlAddress);
-        // From it we get the settings
-        int tileBase = bgControl.getBits(2, 3) << 14;
-        int mosaic = bgControl.getBit(6);
-        int mapBase = bgControl.getBits(8, 12) << 11;
-        int displayOverflow = bgControl.getBit(13);
-        int screenSize = bgControl.getBits(14, 15);
-        // We also need the mosaic control
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
         // We calculate the size of the layer (square) and represent it as a bit mask (2^n -1)
-        int bgSize = (128 << screenSize) - 1;
+        int bgSize = (128 << bgControl!layer.size) - 1;
         int bgSizeInv = ~bgSize;
         // This shift is an equivalent multiplier for the tile map size (1 << n = tilesPerLine)
-        int mapLineShift = screenSize + 4;
-        // These are the coefficients of a 2x2 matrix. Incrementing the coordinates at each dot and line by
-        // the corresponding coefficients is the equivalent of multiplying the original coordinates by the matrix
-        int pa = ioRegisters.getUnMonitored!short(0x20 + layerAddressOffset);
-        int pb = ioRegisters.getUnMonitored!short(0x22 + layerAddressOffset);
-        int pc = ioRegisters.getUnMonitored!short(0x24 + layerAddressOffset);
-        int pd = ioRegisters.getUnMonitored!short(0x26 + layerAddressOffset);
+        int mapLineShift = bgControl!layer.size + 4;
         // These are the current coordinates of the dots to be sampled in the layer, in fixed 20.8 format
-        int dx = internalAffineReferenceX!affineLayer;
-        int dy = internalAffineReferenceY!affineLayer;
-        // We increment the stored values by the coefficients for the next line
-        internalAffineReferenceX!affineLayer += pb;
-        internalAffineReferenceY!affineLayer += pd;
+        int cx = bgTransform!affineLayer.cx;
+        int cy = bgTransform!affineLayer.cy;
+        // We increment the stored values by the vertical coefficients
+        bgTransform!affineLayer.cx += bgTransform!affineLayer.b;
+        bgTransform!affineLayer.cy += bgTransform!affineLayer.d;
+        // These are the horizontal transformation coefficients
+        int pa = bgTransform!affineLayer.a;
+        int pc = bgTransform!affineLayer.c;
         // Use the optimized ASM implementation of the line drawing code if available
         static if (__traits(compiles, LINE_BACKGROUND_AFFINE_ASM)) {
             size_t lineAddress = cast(size_t) linePixels!layer.ptr;
@@ -355,14 +476,14 @@ public class Display {
             mixin (LINE_BACKGROUND_AFFINE_ASM);
         } else {
             // On every iteration we also increment the coordinates by the transform coefficients
-            for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
+            for (int column = 0; column < DISPLAY_WIDTH; column++, cx += pa, cy += pc) {
                 // The coordinates have 8 fractional bits, so we get the integer part by shifting
-                int x = dx >> 8;
-                int y = dy >> 8;
+                int x = cx >> 8;
+                int y = cy >> 8;
                 // Now we check if the coordinates are outside the layer by using the inverse mask
                 if (x & bgSizeInv) {
                     // There are two modes for overflow: wrap around (apply mask) or make it transparent
-                    if (displayOverflow) {
+                    if (bgControl!layer.overflowWrapAround) {
                         x &= bgSize;
                     } else {
                         linePixels!layer[column] = TRANSPARENT;
@@ -370,7 +491,7 @@ public class Display {
                     }
                 }
                 if (y & bgSizeInv) {
-                    if (displayOverflow) {
+                    if (bgControl!layer.overflowWrapAround) {
                         y &= bgSize;
                     } else {
                         linePixels!layer[column] = TRANSPARENT;
@@ -378,9 +499,9 @@ public class Display {
                     }
                 }
                 // If the mosaic mode is enabled, we round the coordinates down to the nearest multiple
-                if (mosaic) {
-                    x -= x % mosaicSizeX;
-                    y -= y % mosaicSizeY;
+                if (bgControl!layer.mosaicEnabled) {
+                    x -= x % (bgMosaicSize.x + 1);
+                    y -= y % (bgMosaicSize.y + 1);
                 }
                 // Tiles are 8x8, so dividing the x and y dots coordinates by 8 gives us their coordinates in the map
                 int mapColumn = x >> 3;
@@ -390,12 +511,12 @@ public class Display {
                 int tileLine = y & 7;
                 // To calculate the address in the map, we add the base address to line and column offsets
                 // The line offset is multiplied by the number of tiles in a map line
-                int mapAddress = mapBase + (mapLine << mapLineShift) + mapColumn;
+                int mapAddress = (bgControl!layer.mapBase << 11) + (mapLine << mapLineShift) + mapColumn;
                 // Now we can fetch the tile number
                 int tileNumber = vram.get!byte(mapAddress) & 0xFF;
                 // To calculate the address in the tile data, we add the tile base to the number, line and column offsets
                 // The tile number is multiplied by the tile size (64), and the line offset by the tile line size (8)
-                int tileAddress = tileBase + (tileNumber << 6) + (tileLine << 3) + tileColumn;
+                int tileAddress = (bgControl!layer.tileBase << 14) + (tileNumber << 6) + (tileLine << 3) + tileColumn;
                 // By addressing into the tile, we get the palette index, which we multiply by 2 to get the address
                 int paletteAddress = (vram.get!byte(tileAddress) & 0xFF) << 1;
                 // The first color of the palette is transparent
@@ -410,44 +531,33 @@ public class Display {
         }
     }
 
-    private void lineBackgroundBitmap(string mode, int layer)(int line, int bgEnables, int frameIndex)
+    private void lineBackgroundBitmap(string mode, int layer)(int line)
                 if (mode == "16Single" || mode == "8Double" || mode == "16Double") {
+        // Bitmaps always use the first affine layer properties
+        enum affineLayer = 0;
         // If the layer isn't enabled, we make it transparent
-        if (!bgEnables.checkBit(2)) {
+        if (!control.layerEnableFlags.checkBit(2)) {
             layerTransparent!layer();
-            // We also need to increment the transform coordinates by the coefficients (for the next line)
-            int pb = ioRegisters.getUnMonitored!short(0x22);
-            int pd = ioRegisters.getUnMonitored!short(0x26);
-            internalAffineReferenceX!0 += pb;
-            internalAffineReferenceY!0 += pd;
+            // We also need to increment the current coordinates by the vertical transformation coefficients
+            bgTransform!affineLayer.cx += bgTransform!affineLayer.b;
+            bgTransform!affineLayer.cy += bgTransform!affineLayer.d;
             return;
         }
-        // Otherwise we fetch the background control register for the layer
-        int bgControl = ioRegisters.getUnMonitored!short(0xC);
-        // From it we get the settings
-        int mosaic = bgControl.getBit(6);
-        // We also need the mosaic control
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
-        // These are the coefficients of a 2x2 matrix. Incrementing the coordinates at each dot and line by
-        // the corresponding coefficients is the equivalent of multiplying the original coordinates by the matrix
-        int pa = ioRegisters.getUnMonitored!short(0x20);
-        int pb = ioRegisters.getUnMonitored!short(0x22);
-        int pc = ioRegisters.getUnMonitored!short(0x24);
-        int pd = ioRegisters.getUnMonitored!short(0x26);
         // These are the current coordinates of the dots to be sampled in the layer, in fixed 20.8 format
-        int dx = internalAffineReferenceX!0;
-        int dy = internalAffineReferenceY!0;
-        // We increment the stored values by the coefficients for the next line
-        internalAffineReferenceX!0 += pb;
-        internalAffineReferenceY!0 += pd;
+        int cx = bgTransform!affineLayer.cx;
+        int cy = bgTransform!affineLayer.cy;
+        // We increment the stored values by the vertical coefficients
+        bgTransform!affineLayer.cx += bgTransform!affineLayer.b;
+        bgTransform!affineLayer.cy += bgTransform!affineLayer.d;
+        // These are the horizontal transformation coefficients
+        int pa = bgTransform!affineLayer.a;
+        int pc = bgTransform!affineLayer.c;
         // Calculate the frame base address from the index (not used for 16Single mode)
-        int addressBase = frameIndex ? 0xA000 : 0x0;
+        int addressBase = control.frameIndex ? 0xA000 : 0x0;
         // On every iteration we also increment the coordinates by the transform coefficients
-        for (int column = 0; column < DISPLAY_WIDTH; column++, dx += pa, dy += pc) {
-            int x = dx >> 8;
-            int y = dy >> 8;
+        for (int column = 0; column < DISPLAY_WIDTH; column++, cx += pa, cy += pc) {
+            int x = cx >> 8;
+            int y = cy >> 8;
             // The 16Double mode has a smaller layer, others use the display size
             static if (mode == "16Double") {
                 enum layerWidth = 160;
@@ -462,9 +572,9 @@ public class Display {
                 continue;
             }
             // If the mosaic mode is enabled, we round the coordinates down to the nearest multiple
-            if (mosaic) {
-                x -= x % mosaicSizeX;
-                y -= y % mosaicSizeY;
+            if (bgControl!layer.mosaicEnabled) {
+                x -= x % (bgMosaicSize.x + 1);
+                y -= y % (bgMosaicSize.y + 1);
             }
             // The dot offet is just the x offset added to y multiplied by the number of dots in a layer line
             int dotOffset = x + y * layerWidth;
@@ -488,24 +598,20 @@ public class Display {
         }
     }
 
-    private void layerObjects(int line, int bgEnables, int displayMode, int tileMapping) {
+    private void layerObjects(int line) {
         // Sprites only covert part of the line, so we start by clearing the layer with transparency
         objectLinePixels[] = TRANSPARENT;
         // The info line is the top object priority (0 and 1) and mode bits (2 and 3). Fill with the lowest priority
         infoLinePixels[] = 0b11;
         // Skip if objects aren't enabled
-        if (!bgEnables.checkBit(4)) {
+        if (!control.layerEnableFlags.checkBit(4)) {
             return;
         }
         // Objects start a higher address with bitmaped display modes
         int tileBase = 0x10000;
-        if (displayMode >= 3) {
+        if (control.bgMode >= 3) {
             tileBase += 0x4000;
         }
-        // Get the mosaic control data
-        int mosaicControl = ioRegisters.getUnMonitored!int(0x4C);
-        int mosaicSizeX = (mosaicControl & 0b1111) + 1;
-        int mosaicSizeY = mosaicControl.getBits(4, 7) + 1;
         // Higher index objects have lower priority, and we traverse in increasing priority
         foreach_reverse (i; 0 .. 128) {
             // Attributes are 8 bytes long (6 used, 2 for padding), and consecutive in memory
@@ -672,8 +778,8 @@ public class Display {
                 }
                 // Now that we have the coordinates to sample in memory, we can apply the mosaic effect
                 if (mosaic) {
-                    sampleX -= sampleX % mosaicSizeX;
-                    sampleY -= sampleY % mosaicSizeY;
+                    sampleX -= sampleX % (objMosaicSize.x);
+                    sampleY -= sampleY % (objMosaicSize.y);
                 }
                 // We divide the coordinates by 8 to get coordinates of the tile to draw
                 int mapX = sampleX >> 3;
@@ -684,7 +790,7 @@ public class Display {
                 // Now we calculate the tile address, which starts with the number
                 int tileAddress = tileNumber;
                 // To which we add the tile coordinate offsets, depending on the layout
-                if (tileMapping) {
+                if (control.objMap1D) {
                     // For a 1D layout we add: the y offset * the number of tiles in an object line, and the x offset
                     // We then multiply by 2 if we're using a single palette, since that means the tile are 2x size
                     tileAddress += mapX + (mapY << mapYShift) << singlePalette;
@@ -737,38 +843,21 @@ public class Display {
         }
     }
 
-    private void layerCompose(int line, int windowEnables, int blendControl, short backColor) {
-        // Layers are composed into the final line by resolving priorities and applying special effects
-        int colorEffect = blendControl.getBits(6, 7);
-        // Every layer has an assigned priority. Ties for backgrounds are broken by the layer number
-        // (lower is higher priority). A tied object layer is higher priority then all backgrounds
-        int priority0 = ioRegisters.getUnMonitored!short(0x8) & 0b11;
-        int priority1 = ioRegisters.getUnMonitored!short(0xA) & 0b11;
-        int priority2 = ioRegisters.getUnMonitored!short(0xC) & 0b11;
-        int priority3 = ioRegisters.getUnMonitored!short(0xE) & 0b11;
+    private void layerCompose(int line) {
+        short backColor = palette.get!short(0x0) & 0x7FFF;
         // We fill the line in the frame with the composed layer
         auto frame = _frameSwapper.workFrame;
+        // Layers are composed into the final line by resolving priorities and applying special effects
         for (int column = 0, p = line * DISPLAY_WIDTH; column < DISPLAY_WIDTH; column++, p++) {
             // From the object info line, we get the object priority and mode
             int objInfo = infoLinePixels[column];
-            int priority4 = objInfo & 0b11;
+            int objPriority = objInfo & 0b11;
             int objMode = objInfo >> 2;
             // Now we find in which window we are (if any; they could be disabled)
-            bool specialEffectEnabled = void;
-            int layerEnables = void;
-            int window = getWindow(windowEnables, objMode, line, column);
-            if (window != 0) {
-                // If in a window, then it controls layers and special effects
-                int windowControl = ioRegisters.getUnMonitored!byte(window);
-                layerEnables = windowControl & 0b11111;
-                specialEffectEnabled = windowControl.checkBit(5);
-            } else {
-                // Otherwise we enable everything
-                layerEnables = 0b11111;
-                specialEffectEnabled = true;
-            }
+            WindowControl window = void;
+            getWindow(objMode, line, column, window);
             // Now we do the actual composition: we find the top most dot color, and the one just below
-            // We also need save the dots' layers and priorities to apply special effects later
+            // We also need to save the dots' layers and priorities to apply special effects later
             // We start on the backdrop: layer 5, with priority 3, and a constant color
             short firstColor = backColor;
             short secondColor = backColor;
@@ -776,10 +865,12 @@ public class Display {
             int secondLayer = 5;
             int firstPriority = 3;
             int secondPriority = 3;
+            // Every layer has an assigned priority. Ties for backgrounds are broken by the layer number
+            // (lower is higher priority). A tied object layer is higher priority then all backgrounds
             // Now we traverse the layers in the natural order of priorities (the tie breaking order)
             foreach (layer; AliasSeq!(3, 2, 1, 0, 4)) {
                 // We skip disabled layers
-                if (!layerEnables.checkBit(layer)) {
+                if (!window.layerEnableFlags.checkBit(layer)) {
                     continue;
                 }
                 // We skip transparent colors
@@ -789,7 +880,11 @@ public class Display {
                 }
                 // We check if this layer has a higher priority (smaller value) than the current one
                 // We use <= so that ties will result in the naturally higher priority layer being used
-                alias layerPriority = Alias!(mixin("priority" ~ layer.to!string()));
+                static if (layer == 4) {
+                    int layerPriority = objPriority;
+                } else {
+                    int layerPriority = bgControl!layer.priority;
+                }
                 if (layerPriority <= firstPriority) {
                     // The first layer is now the second
                     secondColor = firstColor;
@@ -807,31 +902,32 @@ public class Display {
                 }
             }
             // Now that we have the data for the top two layers, we combine them in to the final dot
-            if ((objMode & 0b1) && firstLayer == 4 && blendControl.checkBit(secondLayer + 8)) {
+            if ((objMode & 0b1) && firstLayer == 4 && specialEffect.secondTargetFlags.checkBit(secondLayer)) {
                 // If the object is in alpha-blend mode and on the top layer, and blending is enabled
                 // for the second layer, then we must blend the two, regardless of the special effects mode
                 firstColor = applyBlendEffect(firstColor, secondColor);
-            } else if (specialEffectEnabled) {
+            } else if (window.specialEffectEnabled) {
                 // Othwerwise we might apply a special effect
-                final switch (colorEffect) {
+                final switch (specialEffect.effectType) {
                     case 0:
                         // No effect, just use the top color as is
                         break;
                     case 1:
                         // If both layers have blending enabled, then we blend the two
-                        if (blendControl.checkBit(firstLayer) && blendControl.checkBit(secondLayer + 8)) {
+                        if (specialEffect.firstTargetFlags.checkBit(firstLayer)
+                                && specialEffect.secondTargetFlags.checkBit(secondLayer)) {
                             firstColor = applyBlendEffect(firstColor, secondColor);
                         }
                         break;
                     case 2:
                         // If the first layer has blending enabled, then we increase its brightness
-                        if (blendControl.checkBit(firstLayer)) {
+                        if (specialEffect.firstTargetFlags.checkBit(firstLayer)) {
                             firstColor = applyBrightnessEffect!false(firstColor);
                         }
                         break;
                     case 3:
                         // If the second layer has blending enabled, then we decrease its brightness
-                        if (blendControl.checkBit(firstLayer)) {
+                        if (specialEffect.firstTargetFlags.checkBit(firstLayer)) {
                             firstColor = applyBrightnessEffect!true(firstColor);
                         }
                         break;
@@ -842,49 +938,46 @@ public class Display {
         }
     }
 
-    private int getWindow(int windowEnables, int objectMode, int line, int column) {
-        // Return null when no window is enabled
-        if (windowEnables == 0) {
-            return 0;
+    private void getWindow(int objectMode, int line, int column, ref WindowControl window) {
+        // Enable everything if windows are not in use
+        if (control.windowEnableFlags == 0) {
+            window.layerEnableFlags = 0b11111;
+            window.specialEffectEnabled = true;
+            return;
         }
         // If any window is enabled, then we check that the dot is inside, using the priority order
-        if (windowEnables.checkBit(0) && insideWindow!0(line, column)) {
-            return 0x48;
+        foreach (i; AliasSeq!(0, 1)) {
+            if (control.windowEnableFlags.checkBit(i) && insideWindow!i(line, column)) {
+                window = windowControl!i;
+                return;
+            }
         }
-        if (windowEnables.checkBit(1) && insideWindow!1(line, column)) {
-            return 0x49;
+        if (control.windowEnableFlags.checkBit(2) && objectMode.checkBit(1)) {
+            window = objWindowCtrl;
+            return;
         }
-        if (windowEnables.checkBit(2) && objectMode.checkBit(1)) {
-            return 0x4B;
-        }
-        return 0x4A;
+        window = outWindowCtrl;
     }
 
-    private bool insideWindow(int index)(int line, int column) {
+    private bool insideWindow(int i)(int line, int column) {
         // When the bounds are max < min, the window is in [0, max) and [min, size)
         // Start by checking the horizontal bounds
-        int horizontalDimensions = ioRegisters.getUnMonitored!short(0x40 + index * 2);
-        int x1 = horizontalDimensions.getBits(8, 15);
-        int x2 = horizontalDimensions & 0xFF;
-        if (x1 <= x2) {
-            if (column < x1 || column >= x2) {
+        if (windowSize!i.startX <= windowSize!i.endX) {
+            if (column < windowSize!i.startX || column >= windowSize!i.endX) {
                 return false;
             }
         } else {
-            if (column >= x2 && column < x1) {
+            if (column >= windowSize!i.endX && column < windowSize!i.startX) {
                 return false;
             }
         }
         // Then check the vertical bounds
-        int verticalDimensions = ioRegisters.getUnMonitored!short(0x44 + index * 2);
-        int y1 = verticalDimensions.getBits(8, 15);
-        int y2 = verticalDimensions & 0xFF;
-        if (y1 <= y2) {
-            if (line < y1 || line >= y2) {
+        if (windowSize!i.startY <= windowSize!i.endY) {
+            if (line < windowSize!i.startY || line >= windowSize!i.endY) {
                 return false;
             }
         } else {
-            if (line >= y2 && line < y1) {
+            if (line >= windowSize!i.endY && line < windowSize!i.startY) {
                 return false;
             }
         }
@@ -897,7 +990,7 @@ public class Display {
         int green = color.getBits(5, 9);
         int blue = color.getBits(10, 14);
         // Get the scaling factor, which is in 0.4 fixed format
-        int evy = min(ioRegisters.getUnMonitored!int(0x54) & 0b11111, 16);
+        int evy = min(blendCoefficients.evy, 16);
         // Apply the effect
         static if (decrease) {
             // For decrease, we subtract the rounded percentage from each component
@@ -923,9 +1016,8 @@ public class Display {
         int secondGreen = second.getBits(5, 9);
         int secondBlue = second.getBits(10, 14);
         // Get the blending coefficients for both colors, which are in 0.4 fixed format
-        int blendAlpha = ioRegisters.getUnMonitored!short(0x52);
-        int eva = min(blendAlpha & 0b11111, 16);
-        int evb = min(blendAlpha.getBits(8, 12), 16);
+        int eva = min(blendCoefficients.eva, 16);
+        int evb = min(blendCoefficients.evb, 16);
         // Get the fraction from each component of each colour
         firstRed = firstRed * eva + 8 >> 4;
         firstGreen = firstGreen * eva + 8 >> 4;
@@ -941,83 +1033,57 @@ public class Display {
         return (blendBlue & 0x1F) << 10 | (blendGreen & 0x1F) << 5 | blendRed & 0x1F;
     }
 
-    private void reloadInternalAffineReferencePoint(int layer)() {
-        enum affineLayer = layer - 2;
-        enum layerAddressOffset = affineLayer << 4;
-        int dx = ioRegisters.getUnMonitored!int(0x28 + layerAddressOffset) << 4;
-        internalAffineReferenceX!affineLayer = dx >> 4;
-        int dy = ioRegisters.getUnMonitored!int(0x2C + layerAddressOffset) << 4;
-        internalAffineReferenceY!affineLayer = dy >> 4;
-    }
-
-    private void onAffineReferencePointPostWrite(int layer, bool y)
-            (IoRegisters* ioRegisters, int address, int shift, int mask, int oldValue, int newValue) {
-        enum affineLayer = layer - 2;
-        newValue <<= 4;
-        newValue >>= 4;
-        static if (y) {
-            internalAffineReferenceY!affineLayer = newValue;
-        } else {
-            internalAffineReferenceX!affineLayer = newValue;
-        }
-    }
-
     private void endLineDrawEvents(int line) {
-        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
-        // Set the HBLANK bit in the display status
-        displayStatus.setBit(1, true);
+        // Set the HBLANK flag in the display status
+        status.inHBlank = true;
         // Run the DMAs if within the visible vertical lines
         if (line < DISPLAY_HEIGHT) {
             dmas.signalHBLANK();
         }
         // Trigger the HBLANK interrupt if enabled
-        if (displayStatus.checkBit(4)) {
+        if (status.intHBlankEnabled) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_HBLANK);
         }
-        // Write back the modified display status
-        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
     }
 
     private void startLineDrawEvents(int line) {
-        int displayStatus = ioRegisters.getUnMonitored!short(0x4);
         // Clear the HBLANK bit in the display status
-        displayStatus.setBit(1, false);
+        status.inHBlank = false;
         // Update the VCOUNT register
-        ioRegisters.setUnMonitored!byte(0x6, cast(byte) line);
+        status.vCounter = cast(ubyte) line;
         // Update the VMATCH bit in the display status
-        auto vmatch = displayStatus.getBits(8, 15) == line;
-        displayStatus.setBit(2, vmatch);
+        status.vCountMatch = status.vCounter == status.vCountTarget;
         // Trigger the VMATCH interrupt if enabled
-        if (vmatch && displayStatus.checkBit(5)) {
+        if (status.vCountMatch && status.intVCounterEnabled) {
             interruptHandler.requestInterrupt(InterruptSource.LCD_VCOUNTER_MATCH);
         }
         // Check for VBLANK start or end
         switch (line) {
             case DISPLAY_HEIGHT: {
                 // Set the VBLANK bit in the display status
-                displayStatus.setBit(0, true);
+                status.inVBlank = true;
                 // Signal VBLANK to the DMAs
                 dmas.signalVBLANK();
                 // Trigger the VBLANK interrupt if enabled
-                if (displayStatus.checkBit(3)) {
+                if (status.intVBlankEnabled) {
                     interruptHandler.requestInterrupt(InterruptSource.LCD_VBLANK);
                 }
                 break;
             }
             case TIMING_HEIGTH - 1: {
                 // Clear the VBLANK bit
-                displayStatus.setBit(0, false);
+                status.inVBlank = false;
                 // Reload the transformation data
-                reloadInternalAffineReferencePoint!2();
-                reloadInternalAffineReferencePoint!3();
+                foreach (i; AliasSeq!(0, 1)) {
+                    bgTransform!i.cx = (bgTransform!i.x << 4) >> 4;
+                    bgTransform!i.cy = (bgTransform!i.y << 4) >> 4;
+                }
                 break;
             }
             default: {
                 break;
             }
         }
-        // Write back the modified display status
-        ioRegisters.setUnMonitored!short(0x4, cast(short) displayStatus);
     }
 }
 

@@ -12,7 +12,7 @@ public class HaltHandler {
         this.ioRegisters = ioRegisters;
         this.processor = processor;
 
-        ioRegisters.mapAddress(0x300, null, 0b1, 15).postWriteMonitor(&onHaltRequestPostWrite);
+        ioRegisters.mapAddress(0x300, null, 0b1, 15).preWriteMonitor(&onHaltRequestPreWrite);
     }
 
     public void irqTriggered() {
@@ -29,13 +29,14 @@ public class HaltHandler {
         processor.halt(softwareHalted || dmaHalted);
     }
 
-    private void onHaltRequestPostWrite(int mask, int oldHaltMode, int newHaltMode) {
-        if (newHaltMode) {
+    private bool onHaltRequestPreWrite(int mask, ref int haltMode) {
+        if (haltMode) {
             // TODO: implement stop
             throw new Error("Stop unimplemented");
         } else {
             softwareHalted = true;
             updateState();
         }
+        return true;
     }
 }

@@ -727,16 +727,7 @@ public struct MemoryBus {
                 if (address > IO_REGISTERS_END) {
                     return cast(T) _unusedMemory(address);
                 }
-                if (address >= 0x4000100 && address < 0x4000110
-                        || address >= 0x4000060 && address < 0x4000088
-                        || address >= 0x4000090 && address < 0x40000A8
-                        || address >= 0x40000B0 && address < 0x40000E0
-                        || address >= 0x4000200 && address < 0x4000210
-                        || address >= 0x4000300 && address < 0x4000302
-                        || address >= 0x4000130 && address < 0x4000134) {
-                    return _newIoRegisters.get!T(address & IO_REGISTERS_MASK);
-                }
-                return _ioRegisters.get!T(address & IO_REGISTERS_MASK);
+                return _newIoRegisters.get!T(address & IO_REGISTERS_MASK);
             case 0x5:
                 return _palette.get!T(address & PALETTE_MASK);
             case 0x6:
@@ -765,17 +756,7 @@ public struct MemoryBus {
                 return;
             case 0x4:
                 if (address <= IO_REGISTERS_END) {
-                    if (address >= 0x4000100 && address < 0x4000110
-                            || address >= 0x4000060 && address < 0x4000088
-                            || address >= 0x4000090 && address < 0x40000A8
-                            || address >= 0x40000B0 && address < 0x40000E0
-                            || address >= 0x4000200 && address < 0x4000210
-                            || address >= 0x4000300 && address < 0x4000302
-                            || address >= 0x4000130 && address < 0x4000134) {
-                        _newIoRegisters.set!T(address & IO_REGISTERS_MASK, value);
-                    } else {
-                        _ioRegisters.set!T(address & IO_REGISTERS_MASK, value);
-                    }
+                    _newIoRegisters.set!T(address & IO_REGISTERS_MASK, value);
                 }
                 return;
             case 0x5:

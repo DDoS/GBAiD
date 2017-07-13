@@ -125,12 +125,13 @@ private alias PostWriteMonitor = void delegate(int, int, int);
 private union ValuePtr {
     bool* valueBool;
     byte* valueByte;
+    ubyte* valueUbyte;
     short* valueShort;
     int* valueInt;
 }
 
 private enum ValueSize {
-    NULL, BOOL, BYTE, SHORT, INT
+    NULL, BOOL, BYTE, UBYTE, SHORT, INT
 }
 
 private struct Register {
@@ -158,6 +159,9 @@ private struct Register {
         } else static if (is(T == byte*)) {
             this.valuePtr.valueByte = valuePtr;
             valueSize = ValueSize.BYTE;
+        } else static if (is(T == ubyte*)) {
+            this.valuePtr.valueUbyte = valuePtr;
+            valueSize = ValueSize.UBYTE;
         } else static if (is(T == short*)) {
             this.valuePtr.valueShort = valuePtr;
             valueSize = ValueSize.SHORT;
@@ -178,6 +182,8 @@ private struct Register {
                 return *valuePtr.valueBool & 0b1;
             case BYTE:
                 return *valuePtr.valueByte & 0xFF;
+            case UBYTE:
+                return *valuePtr.valueUbyte & 0xFF;
             case SHORT:
                 return *valuePtr.valueShort & 0xFFFF;
             case INT:
@@ -195,6 +201,9 @@ private struct Register {
                 break;
             case BYTE:
                 *valuePtr.valueByte = cast(byte) value;
+                break;
+            case UBYTE:
+                *valuePtr.valueUbyte = cast(ubyte) value;
                 break;
             case SHORT:
                 *valuePtr.valueShort = cast(short) value;

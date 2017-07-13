@@ -36,15 +36,15 @@ public class GameBoyAdvance {
         memory.biosReadFallback = &biosReadFallback;
         memory.unusedMemory = &unusedReadFallBack;
 
-        auto ioRegisters = memory.ioRegisters;
+        auto ioRegisters = memory.newIoRegisters;
 
         processor = new ARM7TDMI(&memory, BIOS_START);
-        haltHandler = new HaltHandler(memory.newIoRegisters, processor);
-        interruptHandler = new InterruptHandler(memory.newIoRegisters, processor, haltHandler);
-        keypad = new Keypad(memory.newIoRegisters, interruptHandler);
-        dmas = new DMAs(&memory, memory.newIoRegisters, interruptHandler, haltHandler);
-        soundChip = new SoundChip(memory.newIoRegisters, dmas);
-        timers = new Timers(memory.newIoRegisters, interruptHandler, soundChip);
+        haltHandler = new HaltHandler(ioRegisters, processor);
+        interruptHandler = new InterruptHandler(ioRegisters, processor, haltHandler);
+        keypad = new Keypad(ioRegisters, interruptHandler);
+        dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
+        soundChip = new SoundChip(ioRegisters, dmas);
+        timers = new Timers(ioRegisters, interruptHandler, soundChip);
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;

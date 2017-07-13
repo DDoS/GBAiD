@@ -37,6 +37,8 @@ public class SoundChip {
     private int directBVolume = 0;
     private int directAEnableFlags = 0;
     private int directBEnableFlags = 0;
+    private int biasLevel = 0x200;
+    private int amplitudeResolution = 0;
     private int psgRightReSample = 0;
     private int psgLeftReSample = 0;
     private uint psgCount = 0;
@@ -116,6 +118,10 @@ public class SoundChip {
         ioRegisters.mapAddress(0x84, &wave.enabled, 0b1, 2, true, false);
         ioRegisters.mapAddress(0x84, &noise.enabled, 0b1, 3, true, false);
         ioRegisters.mapAddress(0x84, &masterEnable, 0b1, 7).preWriteMonitor(&onMasterEnablePreWrite);
+
+        ioRegisters.mapAddress(0x88, &biasLevel, 0x3FF, 0);
+        ioRegisters.mapAddress(0x88, &amplitudeResolution, 0b11, 14);
+
         // TODO: unmap all the addresses when the masterEnable is 0, and remap when 1
     }
 
