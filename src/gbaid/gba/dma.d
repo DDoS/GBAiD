@@ -4,14 +4,14 @@ import std.meta : AliasSeq;
 
 import gbaid.util;
 
-import gbaid.gba.io : NewIoRegisters = IoRegisters;
+import gbaid.gba.io;
 import gbaid.gba.memory;
 import gbaid.gba.interrupt;
 import gbaid.gba.halt;
 
 public class DMAs {
     private MemoryBus* memory;
-    private NewIoRegisters* ioRegisters;
+    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
     mixin declareFields!(int, true, "srcAddress", 0, 4);
@@ -24,7 +24,7 @@ public class DMAs {
     mixin declareFields!(int, true, "internWordCount", 0, 4);
     private int triggered = 0;
 
-    public this(MemoryBus* memory, NewIoRegisters* ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
+    public this(MemoryBus* memory, IoRegisters* ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
         this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;

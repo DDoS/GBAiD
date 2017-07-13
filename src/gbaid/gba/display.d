@@ -10,7 +10,7 @@ import std.algorithm.mutation : swap;
 
 import gbaid.util;
 
-import gbaid.gba.io : NewIoRegisters = IoRegisters;
+import gbaid.gba.io;
 import gbaid.gba.memory;
 import gbaid.gba.dma;
 import gbaid.gba.interrupt;
@@ -102,7 +102,7 @@ public class Display {
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
     private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
-    private NewIoRegisters* ioRegisters;
+    private IoRegisters* ioRegisters;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;
@@ -128,7 +128,7 @@ public class Display {
     private int line = 0;
     private int dot = 0;
 
-    public this(NewIoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
+    public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
         this.ioRegisters = ioRegisters;
         this.palette = palette;

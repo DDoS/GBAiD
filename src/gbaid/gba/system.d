@@ -36,7 +36,7 @@ public class GameBoyAdvance {
         memory.biosReadFallback = &biosReadFallback;
         memory.unusedMemory = &unusedReadFallBack;
 
-        auto ioRegisters = memory.newIoRegisters;
+        auto ioRegisters = memory.ioRegisters;
 
         processor = new ARM7TDMI(&memory, BIOS_START);
         haltHandler = new HaltHandler(ioRegisters, processor);
