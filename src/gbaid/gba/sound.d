@@ -71,9 +71,9 @@ public class SoundChip {
         ioRegisters.mapAddress(0x6C, &tone2.useDuration, 0b1, 14);
         ioRegisters.mapAddress(0x6C, null, 0b1, 15, false, true).preWriteMonitor(&onToneEnablePreWrite!2);
 
-        ioRegisters.mapAddress(0x70, &wave.combineBanks, 0b1, 5);
-        ioRegisters.mapAddress(0x70, &wave.selectedBank, 0b1, 6);
-        ioRegisters.mapAddress(0x70, &wave.enabled, 0b1, 7);
+        ioRegisters.mapAddress(0x70, &wave.combinePatterns, 0b1, 5);
+        ioRegisters.mapAddress(0x70, &wave.selectedPattern, 0b1, 6);
+        ioRegisters.mapAddress(0x70, &wave.channelEnabled, 0b1, 7);
         ioRegisters.mapAddress(0x70, &wave.duration, 0xFF, 16, false, true);
         ioRegisters.mapAddress(0x70, &wave.volume, 0b111, 29);
         ioRegisters.mapAddress(0x74, &wave.rate, 0x7FF, 0, false, true);
@@ -113,10 +113,10 @@ public class SoundChip {
         ioRegisters.mapAddress(0x80, &directB.timerIndex, 0b1, 30);
         ioRegisters.mapAddress(0x80, null, 0b1, 31, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'B');
 
-        ioRegisters.mapAddress(0x84, &tone1.enabled, 0b1, 0, true, false);
-        ioRegisters.mapAddress(0x84, &tone2.enabled, 0b1, 1, true, false);
-        ioRegisters.mapAddress(0x84, &wave.enabled, 0b1, 2, true, false);
-        ioRegisters.mapAddress(0x84, &noise.enabled, 0b1, 3, true, false);
+        ioRegisters.mapAddress(0x84, &tone1.playbackEnabled, 0b1, 0, true, false);
+        ioRegisters.mapAddress(0x84, &tone2.playbackEnabled, 0b1, 1, true, false);
+        ioRegisters.mapAddress(0x84, &wave.playbackEnabled, 0b1, 2, true, false);
+        ioRegisters.mapAddress(0x84, &noise.playbackEnabled, 0b1, 3, true, false);
         ioRegisters.mapAddress(0x84, &masterEnable, 0b1, 7).preWriteMonitor(&onMasterEnablePreWrite);
 
         ioRegisters.mapAddress(0x88, &biasLevel, 0x3FF, 0);
@@ -129,13 +129,9 @@ public class SoundChip {
         _receiver = receiver;
     }
 
-    public void addTimerOverflows(int timer)(size_t overflows) if (timer == 0 || timer == 1) {
-        if (directA.enabled && directA.timerIndex == timer) {
-            directA.timerOverflows += overflows;
-        }
-        if (directB.enabled && directB.timerIndex == timer) {
-            directB.timerOverflows += overflows;
-        }
+    public void addTimerOverflows(int timer)(size_t overflows) {
+        directA.addTimerOverflows!timer(overflows);
+        directB.addTimerOverflows!timer(overflows);
     }
 
     public size_t emulate(size_t cycles) {
@@ -297,8 +293,8 @@ public class SoundChip {
     }
 
     private bool onMasterEnablePreWrite(int mask, ref int masterEnable) {
-        directA.enabled = cast(bool) masterEnable;
-        directB.enabled = cast(bool) masterEnable;
+        directA.channelEnabled = cast(bool) masterEnable;
+        directB.channelEnabled = cast(bool) masterEnable;
         // Clear the PSG sound channels on disable
         if (!masterEnable) {
             tone1 = SquareWaveGenerator!true.init;
@@ -317,7 +313,7 @@ public class SoundChip {
 
 private struct SquareWaveGenerator(bool sweep) {
     private static enum size_t SQUARE_WAVE_FREQUENCY = 2 ^^ 17;
-    private bool enabled = false;
+    private bool playbackEnabled = false;
     private int rate = 0;
     private int duty = 0;
     private int envelopeStep = 0;
@@ -335,7 +331,7 @@ private struct SquareWaveGenerator(bool sweep) {
     private int envelope = 0;
 
     private void restart() {
-        enabled = true;
+        playbackEnabled = true;
         tDuration = 0;
         tPeriod = 0;
         envelope = initialVolume;
@@ -343,7 +339,7 @@ private struct SquareWaveGenerator(bool sweep) {
 
     private int nextSample() {
         // Don't play if disabled
-        if (!enabled) {
+        if (!playbackEnabled) {
             return 0;
         }
         // Find the period and the edge (in ticks)
@@ -373,7 +369,7 @@ private struct SquareWaveGenerator(bool sweep) {
         // Disable for the next sample if the duration expired
         tDuration += 1;
         if (useDuration && tDuration >= (64 - duration) * (PSG_FREQUENCY / 256)) {
-            enabled = false;
+            playbackEnabled = false;
         }
         // Update the envelope if enabled
         if (envelopeStep > 0 && tDuration % (envelopeStep * (PSG_FREQUENCY / 64)) == 0) {
@@ -396,7 +392,7 @@ private struct SquareWaveGenerator(bool sweep) {
                     rate += rate >> sweepShift;
                 }
                 if (rate < 0 || rate >= 2048) {
-                    enabled = false;
+                    playbackEnabled = false;
                 }
             }
         }
@@ -404,38 +400,41 @@ private struct SquareWaveGenerator(bool sweep) {
     }
 }
 
-// TODO: use a shift register
 private struct PatternWaveGenerator {
     private static enum size_t PATTERN_FREQUENCY = 2 ^^ 21;
     private static enum size_t BYTES_PER_PATTERN = 4 * int.sizeof;
-    private void[BYTES_PER_PATTERN * 2] patterns;
-    private bool enabled = false;
-    private bool combineBanks = false;
-    private int selectedBank = 0;
+    private void[BYTES_PER_PATTERN][2] patterns;
+    private bool channelEnabled = false;
+    private bool playbackEnabled = false;
+    private bool combinePatterns = false;
+    private int selectedPattern = 0;
     private int volume = 0;
     private int duration = 0;
     private bool useDuration = false;
     private int rate = 0;
     private size_t tDuration = 0;
     private size_t tPeriod = 0;
-    private size_t pointer = 0;
-    private size_t pointerEnd = 0;
+    private int patternIndex = 0;
+    private int rotateCount = 0;
     private int sample = 0;
 
     @property private int* patternData(int index)() {
-        return cast(int*) patterns.ptr + ((1 - selectedBank) * (BYTES_PER_PATTERN / int.sizeof) + index);
+        return cast(int*) patterns[1 - selectedPattern].ptr + index;
     }
 
     private void restart() {
-        tDuration = 0;
-        tPeriod = 0;
-        pointer = selectedBank * 2 * BYTES_PER_PATTERN;
-        pointerEnd = combineBanks ? 2 * BYTES_PER_PATTERN * 2 : pointer + 2 * BYTES_PER_PATTERN;
+        if (channelEnabled) {
+            playbackEnabled = true;
+            tDuration = 0;
+            tPeriod = 0;
+            patternIndex = selectedPattern;
+            rotateCount = 0;
+        }
     }
 
     private int nextSample() {
         // Don't play if disabled
-        if (!enabled) {
+        if (!channelEnabled || !playbackEnabled) {
             return 0;
         }
         // Check if we should generate a new sample
@@ -445,9 +444,21 @@ private struct PatternWaveGenerator {
             // Accumulate samples
             int newSample = 0;
             foreach (i; 0 .. newSampleCount) {
-                // Get the byte at the pointer, the the upper nibble for the first sample and the lower for the second
-                auto sampleByte = (cast(byte*) patterns.ptr)[pointer / 2];
-                auto unsignedSample = (sampleByte >>> (1 - pointer % 2) * 4) & 0xF;
+                auto pattern = cast(byte*) patterns[patternIndex];
+                // The samples are ordered so that the upper nibble is first, followed by the lower
+                int unsignedSample = pattern[0] >>> 4 & 0xF;
+                // Rotate the entire bank by 4 bits to the left
+                foreach (b; 0 .. BYTES_PER_PATTERN - 1) {
+                    pattern[b] = cast(byte) (pattern[b] << 4 | pattern[b + 1] >>> 4 & 0xF);
+                }
+                pattern[BYTES_PER_PATTERN - 1] = cast(byte) (pattern[BYTES_PER_PATTERN - 1] << 4 | unsignedSample);
+                // Increment the rotate counter, and reset pattern playback once all the samples have been output
+                rotateCount += 1;
+                if (rotateCount >= BYTES_PER_PATTERN * 2) {
+                    // When combining we play the other pattern, otherwise we replay the same one
+                    patternIndex = combinePatterns ? 1 - patternIndex : selectedPattern;
+                    rotateCount = 0;
+                }
                 // Apply the volume setting and accumulate
                 final switch (volume) {
                     case 0b000:
@@ -473,11 +484,6 @@ private struct PatternWaveGenerator {
                         newSample += (3 * unsignedSample) / 2 - 12;
                         break;
                 }
-                // Increment the pointer and reset to the start on overflow
-                pointer += 1;
-                if (pointer >= pointerEnd) {
-                    pointer = selectedBank * 2 * BYTES_PER_PATTERN;
-                }
             }
             // Set the new sample as the average of the accumulated ones
             sample = newSample / newSampleCount;
@@ -489,7 +495,7 @@ private struct PatternWaveGenerator {
         // Disable for the next sample if the duration expired
         tDuration += 1;
         if (useDuration && tDuration >= (256 - duration) * (PSG_FREQUENCY / 256)) {
-            enabled = false;
+            playbackEnabled = false;
         }
         return sample;
     }
@@ -497,7 +503,7 @@ private struct PatternWaveGenerator {
 
 private struct NoiseGenerator {
     private static enum size_t NOISE_FREQUENCY = 2 ^^ 19;
-    private bool enabled = false;
+    private bool playbackEnabled = false;
     private bool use7Bits = false;
     private int divider = 0;
     private int preScaler = 0;
@@ -513,7 +519,7 @@ private struct NoiseGenerator {
     private int sample = 0;
 
     private void restart() {
-        enabled = true;
+        playbackEnabled = true;
         tDuration = 0;
         tPeriod = 0;
         envelope = initialVolume;
@@ -522,7 +528,7 @@ private struct NoiseGenerator {
 
     private int nextSample() {
         // Don't play if disabled
-        if (!enabled) {
+        if (!playbackEnabled) {
             return 0;
         }
         // Calculate the period by applying the inverse of the divider and pre-scaler
@@ -558,7 +564,7 @@ private struct NoiseGenerator {
         // Disable for the next sample if the duration expired
         tDuration += 1;
         if (useDuration && tDuration >= (64 - duration) * (PSG_FREQUENCY / 256)) {
-            enabled = false;
+            playbackEnabled = false;
         }
         // Update the envelope if enabled (using the duration before it was incremented)
         if (envelopeStep > 0 && tDuration % (envelopeStep * (PSG_FREQUENCY / 64)) == 0) {
@@ -580,17 +586,23 @@ private struct DirectSound(char channel) {
     private static enum size_t QUEUE_BYTE_SIZE = 32;
     private byte[QUEUE_BYTE_SIZE] queue;
     private DMAs dmas;
-    private bool enabled = false;
+    private bool channelEnabled = false;
     private int timerIndex = 0;
     private size_t timerOverflows = 0;
     private size_t queueIndex = 0;
     private size_t queueSize = 0;
     private int reSample = 0;
     private int reSampleCount = 0;
-    private short sample = 0;
+    private int sample = 0;
 
     private this(DMAs dmas) {
         this.dmas = dmas;
+    }
+
+    private void addTimerOverflows(int timer)(size_t overflows) if (timer == 0 || timer == 1) {
+        if (channelEnabled && timerIndex == timer) {
+            timerOverflows += overflows;
+        }
     }
 
     private void clearQueue() {
@@ -623,11 +635,14 @@ private struct DirectSound(char channel) {
         }
     }
 
-    private short nextSample() {
+    private int nextSample() {
+        if (!channelEnabled) {
+            return 0;
+        }
         // Generate a new sample if we have any
         if (reSampleCount > 0) {
             // Average the samples
-            sample = cast(short) (reSample / reSampleCount);
+            sample = reSample / reSampleCount;
             // Clear the re-sample and count
             reSample = 0;
             reSampleCount = 0;
