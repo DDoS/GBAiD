@@ -214,12 +214,11 @@ public class Display {
     }
 
     private bool onAffineReferencePointPreWrite(int affineLayer, bool y)(int mask, ref int value) {
-        auto signedValue = (value << 4) >> 4;
-        static if (y) {
-            bgTransform!affineLayer.cy = signedValue;
-        } else {
-            bgTransform!affineLayer.cx = signedValue;
-        }
+        alias referencePoint(bool y) = Alias!("bgTransform!affineLayer.c" ~ (y ? "y" : "x"));
+        // Update the internal reference point
+        mixin(referencePoint!y) = mixin(referencePoint!y) & ~mask | value;
+        // Sign extend it
+        mixin(referencePoint!y) = (mixin(referencePoint!y) << 4) >> 4;
         return true;
     }
 
