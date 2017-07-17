@@ -50,6 +50,31 @@ public class SoundChip {
         directA = DirectSound!'A'(dmas);
         directB = DirectSound!'B'(dmas);
 
+        // These registers are mapped regardless of the master enable flag
+        // Final mixing and direct sound control register
+        ioRegisters.mapAddress(0x80, &psgGlobalVolume, 0b11, 16);
+        ioRegisters.mapAddress(0x80, &directAVolume, 0b1, 18);
+        ioRegisters.mapAddress(0x80, &directBVolume, 0b1, 19);
+        ioRegisters.mapAddress(0x80, &directAEnableFlags, 0b11, 24);
+        ioRegisters.mapAddress(0x80, &directA.timerIndex, 0b1, 26);
+        ioRegisters.mapAddress(0x80, null, 0b1, 27, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'A');
+        ioRegisters.mapAddress(0x80, &directBEnableFlags, 0b11, 28);
+        ioRegisters.mapAddress(0x80, &directB.timerIndex, 0b1, 30);
+        ioRegisters.mapAddress(0x80, null, 0b1, 31, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'B');
+        // Sound status register
+        ioRegisters.mapAddress(0x84, &tone1.playbackEnabled, 0b1, 0, true, false);
+        ioRegisters.mapAddress(0x84, &tone2.playbackEnabled, 0b1, 1, true, false);
+        ioRegisters.mapAddress(0x84, &wave.playbackEnabled, 0b1, 2, true, false);
+        ioRegisters.mapAddress(0x84, &noise.playbackEnabled, 0b1, 3, true, false);
+        ioRegisters.mapAddress(0x84, &masterEnable, 0b1, 7).postWriteMonitor(&onMasterEnablePostWrite);
+        // Digital to analog converter control register
+        ioRegisters.mapAddress(0x88, &biasLevel, 0x3FF, 0);
+        ioRegisters.mapAddress(0x88, &amplitudeResolution, 0b11, 14);
+    }
+
+    private void mapChannelRegisters() {
+        // The registers for the sound channels are only mapped when the sound is enabled
+        // First tone channel control register
         ioRegisters.mapAddress(0x60, &tone1.sweepShift, 0b111, 0);
         ioRegisters.mapAddress(0x60, &tone1.decreasingShift, 0b1, 3);
         ioRegisters.mapAddress(0x60, &tone1.sweepStep, 0b111, 4);
@@ -61,7 +86,7 @@ public class SoundChip {
         ioRegisters.mapAddress(0x64, &tone1.rate, 0x7FF, 0, false, true);
         ioRegisters.mapAddress(0x64, &tone1.useDuration, 0b1, 14);
         ioRegisters.mapAddress(0x64, null, 0b1, 15, false, true).preWriteMonitor(&onToneEnablePreWrite!1);
-
+        // Second tone channel control register
         ioRegisters.mapAddress(0x68, &tone2.duration, 0x3F, 0, false, true);
         ioRegisters.mapAddress(0x68, &tone2.duty, 0b11, 6);
         ioRegisters.mapAddress(0x68, &tone2.envelopeStep, 0b111, 8);
@@ -70,7 +95,7 @@ public class SoundChip {
         ioRegisters.mapAddress(0x6C, &tone2.rate, 0x7FF, 0, false, true);
         ioRegisters.mapAddress(0x6C, &tone2.useDuration, 0b1, 14);
         ioRegisters.mapAddress(0x6C, null, 0b1, 15, false, true).preWriteMonitor(&onToneEnablePreWrite!2);
-
+        // Wave channel control register
         ioRegisters.mapAddress(0x70, &wave.combinePatterns, 0b1, 5);
         ioRegisters.mapAddress(0x70, &wave.selectedPattern, 0b1, 6);
         ioRegisters.mapAddress(0x70, &wave.channelEnabled, 0b1, 7);
@@ -79,13 +104,7 @@ public class SoundChip {
         ioRegisters.mapAddress(0x74, &wave.rate, 0x7FF, 0, false, true);
         ioRegisters.mapAddress(0x74, &wave.useDuration, 0b1, 14);
         ioRegisters.mapAddress(0x74, null, 0b1, 15, false, true).preWriteMonitor(&onWaveEnablePreWrite);
-
-        foreach (i; AliasSeq!(0, 1, 2, 3)) {
-            ioRegisters.mapAddress(0x90 + i * 4, null, 0xFFFFFFFF, 0)
-                    .readMonitor(&onWavePatternRead!i)
-                    .preWriteMonitor(&onWavePatternPreWrite!i);
-        }
-
+        // Noise channel control register
         ioRegisters.mapAddress(0x78, &noise.duration, 0x3F, 0, false, true);
         ioRegisters.mapAddress(0x78, &noise.envelopeStep, 0b111, 8);
         ioRegisters.mapAddress(0x78, &noise.increasingEnvelope, 0b1, 11);
@@ -95,34 +114,33 @@ public class SoundChip {
         ioRegisters.mapAddress(0x7C, &noise.preScaler, 0b1111, 4);
         ioRegisters.mapAddress(0x7C, &noise.useDuration, 0b1, 14);
         ioRegisters.mapAddress(0x7C, null, 0b1, 15, false, true).preWriteMonitor(&onNoiseEnablePreWrite);
-
-        ioRegisters.mapAddress(0xA0, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'A');
-        ioRegisters.mapAddress(0xA4, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'B');
-
+        // PSG sound mixing register
         ioRegisters.mapAddress(0x80, &psgRightVolume, 0b111, 0);
         ioRegisters.mapAddress(0x80, &psgLeftVolume, 0b111, 4);
         ioRegisters.mapAddress(0x80, &psgRightEnableFlags, 0b1111, 8);
         ioRegisters.mapAddress(0x80, &psgLeftEnableFlags, 0b1111, 12);
-        ioRegisters.mapAddress(0x80, &psgGlobalVolume, 0b11, 16);
-        ioRegisters.mapAddress(0x80, &directAVolume, 0b1, 18);
-        ioRegisters.mapAddress(0x80, &directBVolume, 0b1, 19);
-        ioRegisters.mapAddress(0x80, &directAEnableFlags, 0b11, 24);
-        ioRegisters.mapAddress(0x80, &directA.timerIndex, 0b1, 26);
-        ioRegisters.mapAddress(0x80, null, 0b1, 27, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'A');
-        ioRegisters.mapAddress(0x80, &directBEnableFlags, 0b11, 28);
-        ioRegisters.mapAddress(0x80, &directB.timerIndex, 0b1, 30);
-        ioRegisters.mapAddress(0x80, null, 0b1, 31, false, true).preWriteMonitor(&onDirectSoundClearPreWrite!'B');
+        // Wave pattern data registers
+        foreach (i; AliasSeq!(0, 1, 2, 3)) {
+            ioRegisters.mapAddress(0x90 + i * 4, null, 0xFFFFFFFF, 0)
+                    .readMonitor(&onWavePatternRead!i)
+                    .preWriteMonitor(&onWavePatternPreWrite!i);
+        }
+        // Direct sound queue registers
+        ioRegisters.mapAddress(0xA0, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'A');
+        ioRegisters.mapAddress(0xA4, null, 0xFFFFFFFF, 0).preWriteMonitor(&onDirectSoundQueuePreWrite!'B');
+    }
 
-        ioRegisters.mapAddress(0x84, &tone1.playbackEnabled, 0b1, 0, true, false);
-        ioRegisters.mapAddress(0x84, &tone2.playbackEnabled, 0b1, 1, true, false);
-        ioRegisters.mapAddress(0x84, &wave.playbackEnabled, 0b1, 2, true, false);
-        ioRegisters.mapAddress(0x84, &noise.playbackEnabled, 0b1, 3, true, false);
-        ioRegisters.mapAddress(0x84, &masterEnable, 0b1, 7).preWriteMonitor(&onMasterEnablePreWrite);
-
-        ioRegisters.mapAddress(0x88, &biasLevel, 0x3FF, 0);
-        ioRegisters.mapAddress(0x88, &amplitudeResolution, 0b11, 14);
-
-        // TODO: unmap all the addresses when the masterEnable is 0, and remap when 1
+    private void unmapChannelRegisters() {
+        // Channel control registers
+        for (uint address = 0x60; address < 0x80; address += 4) {
+            ioRegisters.unmapAddress(address, 0xFFFFFFFF, 0);
+        }
+        // PSG sound mixing register
+        ioRegisters.unmapAddress(0x80, 0xFFFF, 0);
+        // Wave pattern data and direct sound queue registers
+        for (uint address = 0x90; address < 0xA8; address += 4) {
+            ioRegisters.unmapAddress(address, 0xFFFFFFFF, 0);
+        }
     }
 
     @property public void receiver(AudioReceiver receiver) {
@@ -292,22 +310,24 @@ public class SoundChip {
         return false;
     }
 
-    private bool onMasterEnablePreWrite(int mask, ref int masterEnable) {
-        directA.channelEnabled = cast(bool) masterEnable;
-        directB.channelEnabled = cast(bool) masterEnable;
-        // Clear the PSG sound channels on disable
-        if (!masterEnable) {
+    private void onMasterEnablePostWrite(int mask, int oldMasterEnable, int newMasterEnable) {
+        directA.channelEnabled = cast(bool) newMasterEnable;
+        directB.channelEnabled = cast(bool) newMasterEnable;
+        if (oldMasterEnable && !newMasterEnable) {
+            // On disable: clear the PSG sound channels and unmap the sound channel registers
             tone1 = SquareWaveGenerator!true.init;
             tone2 = SquareWaveGenerator!false.init;
             wave = PatternWaveGenerator.init;
             noise = NoiseGenerator.init;
-            // Also reset PSG output control
             psgRightVolume = 0;
             psgLeftVolume = 0;
             psgRightEnableFlags = 0;
             psgLeftEnableFlags = 0;
+            unmapChannelRegisters();
+        } else if (!oldMasterEnable && newMasterEnable) {
+            // On enable: map the sound channel registers
+            mapChannelRegisters();
         }
-        return false;
     }
 }
 
