@@ -2,31 +2,29 @@ module gbaid.gba.io;
 
 import std.meta : Alias;
 import std.format : format;
+import std.container.array : Array;
 
 import gbaid.util;
 
 public enum uint IO_REGISTERS_SIZE = 1 * BYTES_PER_KIB;
 
 public struct IoRegisters {
-    private Register[][IO_REGISTERS_SIZE / int.sizeof] registerSets;
+    private Array!Register[IO_REGISTERS_SIZE / int.sizeof] registerSets;
 
     public auto mapAddress(T)(uint address, T valuePtr, int mask, int shift,
             bool readable = true, bool writable = true) {
-        if ((address & 0b11) != 0) {
-            throw new Exception(format("Address %08x is not 4 byte aligned", address));
-        }
-        if (address >= IO_REGISTERS_SIZE) {
-            throw new Exception(format("Address out of bounds: %08x >= %08x", address, IO_REGISTERS_SIZE));
-        }
+        checkAddress(address);
+        // Get the integer aligned address
         address >>>= 2;
+        // Verify that the new mapping doesn't overlap any existing one
         foreach (register; registerSets[address]) {
             if ((mask << shift) & (register.mask << register.shift)) {
                 throw new Exception("Overlapping masks");
             }
         }
-
+        // Add the register to the address
         registerSets[address] ~= Register(valuePtr, mask, shift, readable, writable);
-
+        // Return an anonymous builder for adding listeners to the mapping
         struct Builder {
             Register* register;
 
@@ -45,8 +43,42 @@ public struct IoRegisters {
                 return this;
             }
         }
-
         return Builder(&registerSets[address][$ - 1]);
+    }
+
+    public void unmapAddress(uint address, int mask, int shift) {
+        checkAddress(address);
+        // Get the integer aligned address
+        address >>>= 2;
+        // Remove any mappings that are fully covered by the mask
+        auto removeMask = mask << shift;
+        auto registerSet = registerSets[address];
+        for (size_t i = 0; i < registerSet.length; i++) {
+            auto registerMask = registerSet[i].mask << registerSet[i].shift;
+            auto maskIntersection = removeMask & registerMask;
+            //import std.stdio; writefln("%08x %08x %08x", removeMask, registerMask, maskIntersection);
+            if (maskIntersection == 0) {
+                continue;
+            }
+            if (maskIntersection != registerMask) {
+                throw new Exception(format("Partial mask match when unmapping: %08x < %08x",
+                        maskIntersection, registerMask));
+            }
+            registerSet.linearRemove(registerSet[i .. i + 1]);
+            // Update the index for the shift
+            i -= 1;
+        }
+        // Writeback the updated register set
+        registerSets[address] = registerSet;
+    }
+
+    private void checkAddress(uint address) {
+        if ((address & 0b11) != 0) {
+            throw new Exception(format("Address %08x is not 4 byte aligned", address));
+        }
+        if (address >= IO_REGISTERS_SIZE) {
+            throw new Exception(format("Address out of bounds: %08x >= %08x", address, IO_REGISTERS_SIZE));
+        }
     }
 
     private alias lsb(T) = Alias!(((1 << IntSizeLog2!T) - 1) ^ 0b11);
@@ -304,4 +336,8 @@ unittest {
 
     monitor4.expected(0x00FF0000, 0x00CD0000);
     assert (io.get!short(0x1A) == 0x00CD);
+
+    assert (io.registerSets[0x10 >>> 2].length == 2);
+    io.unmapAddress(0x10, 0x3FF, 0);
+    assert (io.registerSets[0x10 >>> 2].length == 1);
 }
