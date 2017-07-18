@@ -89,7 +89,7 @@ public struct IoRegisters {
     public T get(T, bool monitored = true)(uint address) if (IsInt8to32Type!T) {
         auto shift = (address & lsb!T) << 3;
         auto mask = bits!T << shift;
-        auto registers = registerSets[(address & ~3) >>> 2];
+        auto registers = registerSets[address >>> 2];
         int readValue = 0;
         foreach (register; registers) {
             if (!register.readable) {
@@ -124,7 +124,7 @@ public struct IoRegisters {
         } else {
             int intValue = value.ucast() << shift;
         }
-        auto registers = registerSets[(address & ~3) >>> 2];
+        auto registers = registerSets[address >>> 2];
         foreach (register; registers) {
             if (!register.writable) {
                 continue;
@@ -144,7 +144,7 @@ public struct IoRegisters {
                     }
                 }
             } else {
-                register.value = newValue;
+                register.value = newValue | register.value & ~modifiedMask;
             }
         }
     }

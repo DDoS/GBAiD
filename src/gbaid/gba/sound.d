@@ -412,6 +412,7 @@ private struct SquareWaveGenerator(bool sweep) {
                     rate += rate >> sweepShift;
                 }
                 if (rate < 0 || rate >= 2048) {
+                    rate = 0;
                     playbackEnabled = false;
                 }
             }
