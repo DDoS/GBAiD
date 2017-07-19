@@ -164,7 +164,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 
 ## TODO ##
 
-- Fix crash in LoZ Minish Cap first dungeon
 - Remove ioRegisters field where unnecessary
 - Implement SIO
 - Implement emulator networking for SIO

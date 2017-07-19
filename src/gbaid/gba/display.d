@@ -794,8 +794,8 @@ public class Display {
                 }
                 // Now that we have the coordinates to sample in memory, we can apply the mosaic effect
                 if (mosaic) {
-                    sampleX -= sampleX % (objMosaicSize.x);
-                    sampleY -= sampleY % (objMosaicSize.y);
+                    sampleX -= sampleX % (objMosaicSize.x + 1);
+                    sampleY -= sampleY % (objMosaicSize.y + 1);
                 }
                 // We divide the coordinates by 8 to get coordinates of the tile to draw
                 int mapX = sampleX >> 3;
