@@ -4,12 +4,10 @@ import gbaid.gba.io;
 import gbaid.gba.cpu;
 
 public class HaltHandler {
-    private IoRegisters* ioRegisters;
     private ARM7TDMI processor;
     private bool softwareHalted = false, dmaHalted = false;
 
     public this(IoRegisters* ioRegisters, ARM7TDMI processor) {
-        this.ioRegisters = ioRegisters;
         this.processor = processor;
 
         ioRegisters.mapAddress(0x300, null, 0b1, 15).preWriteMonitor(&onHaltRequestPreWrite);

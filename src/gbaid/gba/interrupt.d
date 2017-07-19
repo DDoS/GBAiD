@@ -7,7 +7,6 @@ import gbaid.gba.cpu;
 import gbaid.gba.halt;
 
 public class InterruptHandler {
-    private IoRegisters* ioRegisters;
     private ARM7TDMI processor;
     private HaltHandler haltHandler;
     private bool masterEnable = false;
@@ -15,7 +14,6 @@ public class InterruptHandler {
     private int request = 0;
 
     public this(IoRegisters* ioRegisters, ARM7TDMI processor, HaltHandler haltHandler) {
-        this.ioRegisters = ioRegisters;
         this.processor = processor;
         this.haltHandler = haltHandler;
 

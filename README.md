@@ -164,7 +164,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 
 ## TODO ##
 
-- Remove ioRegisters field where unnecessary
 - Implement SIO
 - Implement emulator networking for SIO
 - Emulator pause feature

@@ -11,7 +11,6 @@ import gbaid.gba.halt;
 
 public class DMAs {
     private MemoryBus* memory;
-    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private HaltHandler haltHandler;
     mixin declareFields!(int, true, "srcAddress", 0, 4);
@@ -26,7 +25,6 @@ public class DMAs {
 
     public this(MemoryBus* memory, IoRegisters* ioRegisters, InterruptHandler interruptHandler, HaltHandler haltHandler) {
         this.memory = memory;
-        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
         this.haltHandler = haltHandler;
 

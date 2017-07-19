@@ -9,7 +9,6 @@ import gbaid.gba.interrupt;
 import gbaid.gba.sound;
 
 public class Timers {
-    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private SoundChip soundChip;
     mixin declareFields!(int, true, "reloadValue", 0, 4);
@@ -18,7 +17,6 @@ public class Timers {
     mixin declareFields!(int, true, "ticks", 0, 4);
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler, SoundChip soundChip) {
-        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
         this.soundChip = soundChip;
 

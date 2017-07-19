@@ -102,7 +102,6 @@ public class Display {
     private static enum short TRANSPARENT = cast(short) 0x8000;
     private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
     private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
-    private IoRegisters* ioRegisters;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;
@@ -130,7 +129,6 @@ public class Display {
 
     public this(IoRegisters* ioRegisters, Palette* palette, Vram* vram, Oam* oam,
             InterruptHandler interruptHandler, DMAs dmas) {
-        this.ioRegisters = ioRegisters;
         this.palette = palette;
         this.vram = vram;
         this.oam = oam;

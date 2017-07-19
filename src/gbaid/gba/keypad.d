@@ -49,14 +49,12 @@ public struct KeypadState {
 }
 
 public class Keypad {
-    private IoRegisters* ioRegisters;
     private InterruptHandler interruptHandler;
     private ptrdiff_t cyclesUntilNextUpdate = 0;
     private int stateBits = STATE_BITS_CLEARED;
     private int control = 0;
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
-        this.ioRegisters = ioRegisters;
         this.interruptHandler = interruptHandler;
 
         ioRegisters.mapAddress(0x130, &stateBits, 0x3FF, 0, true, false);
