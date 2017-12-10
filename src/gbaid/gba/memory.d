@@ -473,7 +473,7 @@ public struct GamePak {
                     static if (is(T == short) || is(T == ushort)) {
                         return eeprom.get!T(lowAddress & ~eepromMask);
                     } else {
-                        return cast(T) _unusedMemory(address);
+                        return cast(T) _unusedMemory(address & IntAlignMask!T);
                     }
                 }
                 goto case 0x4;
@@ -487,20 +487,20 @@ public struct GamePak {
                             address &= FLASH_MASK;
                             return save.flash512k.get!T(address);
                         } else {
-                            return cast(T) _unusedMemory(address);
+                            return cast(T) _unusedMemory(address & IntAlignMask!T);
                         }
                     case FLASH_1M:
                         static if (is(T == byte) || is(T == ubyte)) {
                             address &= FLASH_MASK;
                             return save.flash1m.get!T(address);
                         } else {
-                            return cast(T) _unusedMemory(address);
+                            return cast(T) _unusedMemory(address & IntAlignMask!T);
                         }
                     case NONE:
-                        return cast(T) _unusedMemory(address);
+                        return cast(T) _unusedMemory(address & IntAlignMask!T);
                 }
             default:
-                return cast(T) _unusedMemory(address);
+                return cast(T) _unusedMemory(address & IntAlignMask!T);
         }
     }
 
@@ -630,21 +630,22 @@ public struct MemoryBus {
             case 0x0:
                 auto lowAddress = address & 0xFFFFFF;
                 if (lowAddress & ~BIOS_MASK) {
-                    return cast(T) _unusedMemory(address);
+                    return cast(T) _unusedMemory(address & IntAlignMask!T);
                 }
-                if (!_biosReadGuard(address)) {
-                    return cast(T) _biosReadFallback(address);
+                auto alignedAddress = address & IntAlignMask!T;
+                if (!_biosReadGuard(alignedAddress)) {
+                    return cast(T) _biosReadFallback(alignedAddress);
                 }
                 return _bios.get!T(address & BIOS_MASK);
             case 0x1:
-                return cast(T) _unusedMemory(address);
+                return cast(T) _unusedMemory(address & IntAlignMask!T);
             case 0x2:
                 return _boardWRAM.get!T(address & BOARD_WRAM_MASK);
             case 0x3:
                 return _chipWRAM.get!T(address & CHIP_WRAM_MASK);
             case 0x4:
                 if (address > IO_REGISTERS_END) {
-                    return cast(T) _unusedMemory(address);
+                    return cast(T) _unusedMemory(address & IntAlignMask!T);
                 }
                 return _ioRegisters.get!T(address & IO_REGISTERS_MASK);
             case 0x5:
@@ -660,7 +661,7 @@ public struct MemoryBus {
             case 0x8: .. case 0xE:
                 return _gamePak.get!T(address - GAME_PAK_START);
             default:
-                return cast(T) _unusedMemory(address);
+                return cast(T) _unusedMemory(address & IntAlignMask!T);
         }
     }
 

@@ -111,13 +111,13 @@ public class ARM7TDMI {
 
     private void branch() {
         // fetch first instruction
+        int firstInstruction = fetchInstruction();
+        registers.incrementPC();
+        // fetch second
         instruction = fetchInstruction();
         registers.incrementPC();
-        // fetch second and decode first
-        int nextInstruction = fetchInstruction();
-        decoded = instruction;
-        instruction = nextInstruction;
-        registers.incrementPC();
+        // "decode" first
+        decoded = firstInstruction;
     }
 
     private int fetchInstruction() {

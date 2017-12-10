@@ -23,7 +23,7 @@ public class GameBoyAdvance {
     private SoundChip soundChip;
     private Timers timers;
     private DMAs dmas;
-    private int lastBIOSPreFetch;
+    private int lastBiosValidRead;
     private size_t displayCycles = 0;
     private size_t processorCycles = 0;
     private size_t dmasCycles = 0;
@@ -95,18 +95,20 @@ public class GameBoyAdvance {
     }
 
     private bool biosReadGuard(uint address) {
-        if (processor.getProgramCounter() < cast(int) BIOS_SIZE) {
-            lastBIOSPreFetch = processor.getPreFetch();
+        if (cast(uint) processor.getProgramCounter() < BIOS_SIZE) {
+            if (address < BIOS_SIZE) {
+                lastBiosValidRead = memory.bios.get!int(address & IntAlignMask!int);
+            }
             return true;
         }
         return false;
     }
 
     private int biosReadFallback(uint address) {
-        return lastBIOSPreFetch;
+        return rotateRead(address, lastBiosValidRead);
     }
 
     private int unusedReadFallBack(uint address) {
-        return processor.getPreFetch();
+        return rotateRead(address, processor.getPreFetch());
     }
 }
