@@ -11,6 +11,7 @@ import gbaid.gba.halt;
 import gbaid.gba.keypad;
 import gbaid.gba.sound;
 import gbaid.gba.timer;
+import gbaid.gba.sio;
 
 public class GameBoyAdvance {
     private static enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
@@ -23,6 +24,7 @@ public class GameBoyAdvance {
     private SoundChip soundChip;
     private Timers timers;
     private DMAs dmas;
+    private SerialPort serialPort;
     private int lastBiosValidRead;
     private size_t displayCycles = 0;
     private size_t processorCycles = 0;
@@ -30,6 +32,7 @@ public class GameBoyAdvance {
     private size_t timersCycles = 0;
     private size_t soundChipCycles = 0;
     private size_t keypadCycles = 0;
+    private size_t serialPortCycles = 0;
 
     public this(void[] bios, GamePakData gamePakData) {
         memory = MemoryBus(bios, gamePakData);
@@ -45,6 +48,7 @@ public class GameBoyAdvance {
         dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
         soundChip = new SoundChip(ioRegisters, dmas);
         timers = new Timers(ioRegisters, interruptHandler, soundChip);
+        serialPort = new SerialPort(ioRegisters, interruptHandler);
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;
@@ -81,6 +85,7 @@ public class GameBoyAdvance {
             timersCycles = timers.emulate(timersCycles + CYCLE_BATCH_SIZE);
             soundChipCycles = soundChip.emulate(soundChipCycles + CYCLE_BATCH_SIZE);
             keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
+            serialPortCycles = serialPort.emulate(serialPortCycles + CYCLE_BATCH_SIZE);
         }
         // An incomplete batch of cycles might be lef over, so process it too
         auto partialBatch = cycles % CYCLE_BATCH_SIZE;
@@ -91,6 +96,7 @@ public class GameBoyAdvance {
             timersCycles = timers.emulate(timersCycles + partialBatch);
             soundChipCycles = soundChip.emulate(soundChipCycles + partialBatch);
             keypadCycles = keypad.emulate(keypadCycles + partialBatch);
+            serialPortCycles = serialPort.emulate(serialPortCycles + partialBatch);
         }
     }
 

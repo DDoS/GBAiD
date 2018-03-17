@@ -56,7 +56,6 @@ public struct IoRegisters {
         for (size_t i = 0; i < registerSet.length; i++) {
             auto registerMask = registerSet[i].mask << registerSet[i].shift;
             auto maskIntersection = removeMask & registerMask;
-            //import std.stdio; writefln("%08x %08x %08x", removeMask, registerMask, maskIntersection);
             if (maskIntersection == 0) {
                 continue;
             }
