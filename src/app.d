@@ -5,6 +5,7 @@ import std.stdio : writeln;
 import std.getopt: getopt, config;
 import std.file : read, FileException;
 import std.path : exists, setExtension;
+import std.process : spawnProcess;
 
 import derelict.sdl2.sdl;
 
@@ -12,6 +13,7 @@ import gbaid.util;
 import gbaid.gba;
 import gbaid.input;
 import gbaid.audio;
+import gbaid.comm;
 import gbaid.render.renderer;
 import gbaid.save;
 
@@ -30,6 +32,7 @@ public int main(string[] args) {
     RtcConfig rtcConfig = RtcConfig.AUTO;
     bool controller = false;
     bool rawAudio = false;
+    uint serialIndex = 0;
     getopt(args,
         config.caseSensitive,
         "bios|b", &biosFile,
@@ -46,8 +49,14 @@ public int main(string[] args) {
         "eeprom", &eepromConfig,
         "rtc", &rtcConfig,
         "controller|c", &controller,
-        "raw-audio", &rawAudio
+        "raw-audio", &rawAudio,
+        "serial-index", &serialIndex
     );
+
+    if (serialIndex >= 4) {
+        writeln("Serial communication index must be between 0 and 3");
+        return 1;
+    }
 
     // Resolve BIOS
     if (biosFile is null) {
@@ -154,6 +163,9 @@ public int main(string[] args) {
         renderer.destroy();
         SDL_Quit();
     }
+
+    gba.serialCommunication = new MappedMemoryCommunication(serialIndex);
+    gba.serialIndex = serialIndex;
 
     // Create a mutex for the main and GBA threads
     auto emulatorLock = new Mutex();

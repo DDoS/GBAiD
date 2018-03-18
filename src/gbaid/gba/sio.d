@@ -5,10 +5,26 @@ import gbaid.util;
 import gbaid.gba.io;
 import gbaid.gba.interrupt;
 
+public alias SerialIn = uint delegate(uint index);
+public alias SerialOut = void delegate(uint index, uint data);
+
+public interface Communication {
+    public void setReady(uint index, bool ready);
+    public bool allReady();
+    public void begin(uint receipt);
+    public uint ongoing();
+    public uint dataIn(uint index);
+    public void dataOut(uint receipt, uint index, uint data);
+}
+
+private enum IoMode {
+    NORMAL_8BIT, NORMAL_32BIT, MULTIPLAYER, UART, JOYBUS, GENERAL_PURPOSE
+}
+
 private struct MultiplayerControl {
     private byte baudRate = 0;
     private bool child = false;
-    private bool childrenReady = false;
+    private bool allReady = false;
     private byte id = 0;
     private bool error = false;
     private bool active = false;
@@ -17,6 +33,7 @@ private struct MultiplayerControl {
 
 public class SerialPort {
     private InterruptHandler interruptHandler;
+    private Communication _communication;
     private MultiplayerControl control;
     private int data1 = 0;
     private int data2 = 0;
@@ -26,14 +43,18 @@ public class SerialPort {
     private bool interruptSi = false;
     private byte mode1 = 0;
     private byte mode2 = 0;
-    private size_t remainingCycles = 0;
+    private uint _index = 0;
+    private uint receipt = 0;
+    private bool endWait = false;
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         this.interruptHandler = interruptHandler;
 
+        _communication = new NullCommunication();
+
         ioRegisters.mapAddress(0x128, &control.baudRate, 0b11, 0);
         ioRegisters.mapAddress(0x128, &control.child, 0b1, 2);
-        ioRegisters.mapAddress(0x128, &control.childrenReady, 0b1, 3);
+        ioRegisters.mapAddress(0x128, &control.allReady, 0b1, 3);
         ioRegisters.mapAddress(0x128, &control.id, 0b11, 4);
         ioRegisters.mapAddress(0x128, &control.error, 0b1, 6);
         ioRegisters.mapAddress(0x128, &control.active, 0b1, 7).postWriteMonitor(&onPostWriteActive);
@@ -57,26 +78,52 @@ public class SerialPort {
         ioRegisters.mapAddress(0x134, &mode2, 0b11, 14).postWriteMonitor(&onPostWriteMode);
     }
 
-    private void onPostWriteMode(int mask, int oldValue, int newValue) {
-        import std.stdio : writefln;
-        import std.conv : to;
-        writefln!"%s"(ioMode.to!string());
+    @property public void index(uint index) {
+        _index = index;
+    }
 
-        control.child = false;
-        control.childrenReady = ioMode == IoMode.MULTIPLAYER;
+    @property public void communication(Communication communication) {
+        _communication = communication;
+    }
+
+    import std.stdio : writefln;
+
+    private void onPostWriteMode(int mask, int oldValue, int newValue) {
+        if (oldValue == newValue) {
+            return;
+        }
+        if (ioMode == IoMode.MULTIPLAYER) {
+            if (_index == 0) {
+                control.child = false;
+                writefln("parent ready");
+            } else {
+                control.child = true;
+                writefln("child %s ready", _index);
+            }
+            _communication.setReady(_index, true);
+        } else {
+            _communication.setReady(_index, false);
+        }
+        endWait = false;
     }
 
     private void onPostWriteActive(int mask, int oldValue, int newValue) {
-        if (ioMode == IoMode.MULTIPLAYER) {
-            import std.stdio : writefln;
-            writefln!"active: %s -> %s"(oldValue, newValue);
-            data1 = 0xFFFFFFFF;
-            data2 = 0xFFFFFFFF;
-            remainingCycles = 4096;
+        if (oldValue || !newValue) {
+            return;
+        }
+        if (ioMode == IoMode.MULTIPLAYER && _index == 0) {
+            receipt += 1;
+            _communication.begin(receipt);
+            _communication.dataOut(receipt, _index, data3);
+            endWait = true;
+            writefln("parent wrote %04x", data3);
         }
     }
 
     private void onPostWriteData3(int mask, int oldValue, int newValue) {
+        if (oldValue == newValue) {
+            return;
+        }
         if (ioMode == IoMode.MULTIPLAYER) {
             import std.stdio : writefln;
             writefln!"send: %04x"(newValue);
@@ -84,21 +131,43 @@ public class SerialPort {
     }
 
     public size_t emulate(size_t cycles) {
-        if (ioMode != IoMode.MULTIPLAYER || !control.active) {
+        if (ioMode != IoMode.MULTIPLAYER) {
             return 0;
         }
-        if (remainingCycles <= cycles) {
-            data1.setBits(0, 15, data3);
-            control.active = false;
-            control.id = 0;
-            control.error = false;
-            if (control.interrupt) {
-                interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
+
+        control.allReady = _communication.allReady();
+
+        auto ongoingReceipt = _communication.ongoing();
+        if (ongoingReceipt == 0) {
+            if (endWait) {
+                endWait = false;
+                data1.setBits(0, 15, _communication.dataIn(0));
+                data1.setBits(16, 31, _communication.dataIn(1));
+                data2.setBits(0, 15, _communication.dataIn(2));
+                data2.setBits(16, 31, _communication.dataIn(3));
+
+                control.active = false;
+                control.id = cast(byte) _index;
+                control.error = false;
+
+                if (control.interrupt) {
+                    interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
+                }
+
+                if (_index == 0) {
+                    writefln("parent read %08x %08x", data1, data2);
+                } else {
+                    writefln("child %s read %08x %08x", _index, data1, data2);
+                }
             }
-            remainingCycles = 0;
-        } else {
-            remainingCycles -= cycles;
+        } else if (ongoingReceipt != receipt) {
+            control.active = true;
+            receipt = ongoingReceipt;
+            _communication.dataOut(receipt, _index, data3);
+            endWait = true;
+            writefln("child %s wrote %04x", _index, data3);
         }
+
         return 0;
     }
 
@@ -125,6 +194,25 @@ public class SerialPort {
     }
 }
 
-private enum IoMode {
-    NORMAL_8BIT, NORMAL_32BIT, MULTIPLAYER, UART, JOYBUS, GENERAL_PURPOSE
+private class NullCommunication : Communication {
+    public override void setReady(uint index, bool ready) {
+    }
+
+    public override bool allReady() {
+        return false;
+    }
+
+    public override void begin(uint receipt) {
+    }
+
+    public override uint ongoing() {
+        return 0;
+    }
+
+    public override uint dataIn(uint index) {
+        return 0xFFFFFFFF;
+    }
+
+    public override void dataOut(uint receipt, uint index, uint data) {
+    }
 }

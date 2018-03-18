@@ -67,6 +67,14 @@ public class GameBoyAdvance {
         return memory.gamePak.saveData;
     }
 
+    @property public void serialCommunication(Communication communication) {
+        serialPort.communication = communication;
+    }
+
+    @property public void serialIndex(uint index) {
+        serialPort.index = index;
+    }
+
     public void setKeypadState(KeypadState state) {
         keypad.setState(state);
     }
