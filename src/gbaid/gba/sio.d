@@ -11,10 +11,11 @@ public alias SerialOut = void delegate(uint index, uint data);
 public interface Communication {
     public void setReady(uint index, bool ready);
     public bool allReady();
-    public void begin(uint receipt);
+    public void begin(uint index);
+    public void end(uint index);
     public uint ongoing();
     public uint dataIn(uint index);
-    public void dataOut(uint receipt, uint index, uint data);
+    public void dataOut(uint index, uint data);
 }
 
 private enum IoMode {
@@ -44,8 +45,8 @@ public class SerialPort {
     private byte mode1 = 0;
     private byte mode2 = 0;
     private uint _index = 0;
-    private uint receipt = 0;
-    private bool endWait = false;
+    private size_t waitCycles = 0;
+    private bool complete = true;
 
     public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
         this.interruptHandler = interruptHandler;
@@ -64,7 +65,7 @@ public class SerialPort {
         ioRegisters.mapAddress(0x124, &data2, 0xFFFFFFFF, 0);
         ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16).postWriteMonitor(&onPostWriteData3);
 
-        ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0);
+        ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0).readMonitor(&test);
         ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1);
         ioRegisters.mapAddress(0x134, &stateSi, 0b1, 2);
         ioRegisters.mapAddress(0x134, &stateSo, 0b1, 3);
@@ -78,6 +79,12 @@ public class SerialPort {
         ioRegisters.mapAddress(0x134, &mode2, 0b11, 14).postWriteMonitor(&onPostWriteMode);
     }
 
+    import std.stdio : writefln;
+
+    void test(int, ref int) {
+        writefln("yes");
+    }
+
     @property public void index(uint index) {
         _index = index;
     }
@@ -85,8 +92,6 @@ public class SerialPort {
     @property public void communication(Communication communication) {
         _communication = communication;
     }
-
-    import std.stdio : writefln;
 
     private void onPostWriteMode(int mask, int oldValue, int newValue) {
         if (oldValue == newValue) {
@@ -102,9 +107,13 @@ public class SerialPort {
             }
             _communication.setReady(_index, true);
         } else {
+            if (_index == 0) {
+                writefln("parent not ready");
+            } else {
+                writefln("child %s not ready", _index);
+            }
             _communication.setReady(_index, false);
         }
-        endWait = false;
     }
 
     private void onPostWriteActive(int mask, int oldValue, int newValue) {
@@ -112,10 +121,10 @@ public class SerialPort {
             return;
         }
         if (ioMode == IoMode.MULTIPLAYER && _index == 0) {
-            receipt += 1;
-            _communication.begin(receipt);
-            _communication.dataOut(receipt, _index, data3);
-            endWait = true;
+            _communication.begin(_index);
+            _communication.dataOut(_index, data3);
+            complete = false;
+            waitCycles = 4096;
             writefln("parent wrote %04x", data3);
         }
     }
@@ -131,40 +140,46 @@ public class SerialPort {
     }
 
     public size_t emulate(size_t cycles) {
+        if (waitCycles >= cycles) {
+            waitCycles -= cycles;
+        }
+
         if (ioMode != IoMode.MULTIPLAYER) {
             return 0;
         }
 
         control.allReady = _communication.allReady();
 
-        auto ongoingReceipt = _communication.ongoing();
-        if (ongoingReceipt == 0) {
-            if (endWait) {
-                endWait = false;
-                data1.setBits(0, 15, _communication.dataIn(0));
-                data1.setBits(16, 31, _communication.dataIn(1));
-                data2.setBits(0, 15, _communication.dataIn(2));
-                data2.setBits(16, 31, _communication.dataIn(3));
+        auto ongoing = _communication.ongoing();
+        if (!complete && waitCycles < cycles && !ongoing) {
+            complete = true;
 
-                control.active = false;
-                control.id = cast(byte) _index;
-                control.error = false;
+            data1.setBits(0, 15, _communication.dataIn(0));
+            data1.setBits(16, 31, _communication.dataIn(1));
+            data2.setBits(0, 15, _communication.dataIn(2));
+            data2.setBits(16, 31, _communication.dataIn(3));
 
-                if (control.interrupt) {
-                    interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
-                }
+            _communication.end(_index);
 
-                if (_index == 0) {
-                    writefln("parent read %08x %08x", data1, data2);
-                } else {
-                    writefln("child %s read %08x %08x", _index, data1, data2);
-                }
+            control.active = false;
+            control.id = cast(byte) _index;
+            control.error = false;
+
+            if (control.interrupt) {
+                interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
             }
-        } else if (ongoingReceipt != receipt) {
+
+            if (_index == 0) {
+                writefln("parent read %08x %08x", data1, data2);
+            } else {
+                writefln("child %s read %08x %08x", _index, data1, data2);
+            }
+        } else if (complete && ongoing) {
             control.active = true;
-            receipt = ongoingReceipt;
-            _communication.dataOut(receipt, _index, data3);
-            endWait = true;
+            _communication.begin(_index);
+            _communication.dataOut(_index, data3);
+            complete = false;
+            waitCycles = 4096;
             writefln("child %s wrote %04x", _index, data3);
         }
 
@@ -202,7 +217,10 @@ private class NullCommunication : Communication {
         return false;
     }
 
-    public override void begin(uint receipt) {
+    public override void begin(uint index) {
+    }
+
+    public override void end(uint index) {
     }
 
     public override uint ongoing() {
@@ -213,6 +231,6 @@ private class NullCommunication : Communication {
         return 0xFFFFFFFF;
     }
 
-    public override void dataOut(uint receipt, uint index, uint data) {
+    public override void dataOut(uint index, uint data) {
     }
 }
