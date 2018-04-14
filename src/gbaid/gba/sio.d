@@ -5,17 +5,15 @@ import gbaid.util;
 import gbaid.gba.io;
 import gbaid.gba.interrupt;
 
-public alias SerialIn = uint delegate(uint index);
-public alias SerialOut = void delegate(uint index, uint data);
-
 public interface Communication {
     public void setReady(uint index, bool ready);
     public bool allReady();
     public void begin(uint index);
     public void end(uint index);
-    public uint ongoing();
-    public uint dataIn(uint index);
-    public void dataOut(uint index, uint data);
+    public bool active();
+    public uint allWrote();
+    public uint read(uint index);
+    public void write(uint index, uint data);
 }
 
 private enum IoMode {
@@ -66,9 +64,9 @@ public class SerialPort {
         ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16).postWriteMonitor(&onPostWriteData3);
 
         ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0).readMonitor(&test);
-        ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1);
-        ioRegisters.mapAddress(0x134, &stateSi, 0b1, 2);
-        ioRegisters.mapAddress(0x134, &stateSo, 0b1, 3);
+        ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1).readMonitor(&test);
+        ioRegisters.mapAddress(0x134, &stateSi, 0b1, 2).readMonitor(&test);
+        ioRegisters.mapAddress(0x134, &stateSo, 0b1, 3).readMonitor(&test);
         ioRegisters.mapAddress(0x134, &dirSc, 0b1, 4);
         ioRegisters.mapAddress(0x134, &dirSd, 0b1, 5);
         ioRegisters.mapAddress(0x134, &dirSi, 0b1, 6);
@@ -122,9 +120,9 @@ public class SerialPort {
         }
         if (ioMode == IoMode.MULTIPLAYER && _index == 0) {
             _communication.begin(_index);
-            _communication.dataOut(_index, data3);
+            _communication.write(_index, data3);
             complete = false;
-            waitCycles = 4096;
+            waitCycles = 0;
             writefln("parent wrote %04x", data3);
         }
     }
@@ -134,30 +132,29 @@ public class SerialPort {
             return;
         }
         if (ioMode == IoMode.MULTIPLAYER) {
-            import std.stdio : writefln;
             writefln!"send: %04x"(newValue);
         }
     }
 
     public size_t emulate(size_t cycles) {
-        if (waitCycles >= cycles) {
-            waitCycles -= cycles;
-        }
+        waitCycles += cycles;
 
         if (ioMode != IoMode.MULTIPLAYER) {
             return 0;
         }
 
         control.allReady = _communication.allReady();
+        auto active = _communication.active();
+        auto allWrote = _communication.allWrote();
+        auto done = _index == 0 ? allWrote : !active;
 
-        auto ongoing = _communication.ongoing();
-        if (!complete && waitCycles < cycles && !ongoing) {
+        if (waitCycles > 4096 && !complete && done) {
             complete = true;
 
-            data1.setBits(0, 15, _communication.dataIn(0));
-            data1.setBits(16, 31, _communication.dataIn(1));
-            data2.setBits(0, 15, _communication.dataIn(2));
-            data2.setBits(16, 31, _communication.dataIn(3));
+            data1.setBits(0, 15, _communication.read(0));
+            data1.setBits(16, 31, _communication.read(1));
+            data2.setBits(0, 15, _communication.read(2));
+            data2.setBits(16, 31, _communication.read(3));
 
             _communication.end(_index);
 
@@ -174,12 +171,13 @@ public class SerialPort {
             } else {
                 writefln("child %s read %08x %08x", _index, data1, data2);
             }
-        } else if (complete && ongoing) {
+            writefln("Cycles %s", waitCycles);
+        } else if (complete && active) {
             control.active = true;
             _communication.begin(_index);
-            _communication.dataOut(_index, data3);
+            _communication.write(_index, data3);
             complete = false;
-            waitCycles = 4096;
+            waitCycles = 0;
             writefln("child %s wrote %04x", _index, data3);
         }
 
@@ -223,14 +221,18 @@ private class NullCommunication : Communication {
     public override void end(uint index) {
     }
 
-    public override uint ongoing() {
+    public override bool active() {
+        return false;
+    }
+
+    public override uint allWrote() {
         return 0;
     }
 
-    public override uint dataIn(uint index) {
+    public override uint read(uint index) {
         return 0xFFFFFFFF;
     }
 
-    public override void dataOut(uint index, uint data) {
+    public override void write(uint index, uint data) {
     }
 }

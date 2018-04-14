@@ -82,22 +82,26 @@ public class MappedMemoryCommunication : Communication {
         shared_.wrote[index] = 0;
     }
 
-    public override uint ongoing() {
-        auto shared_ = getShared();
-        bool notWritten = false;
-        foreach (i, conn; shared_.connected) {
-            if (conn) {
-                notWritten |= shared_.wrote[i] == 0;
-            }
-        }
-        return shared_.active != 0 && notWritten;
+    public override bool active() {
+        return getShared().active != 0;
     }
 
-    public override uint dataIn(uint index) {
+    public override uint allWrote() {
+        auto shared_ = getShared();
+        bool wrote = true;
+        foreach (i, conn; shared_.connected) {
+            if (conn) {
+                wrote &= shared_.wrote[i] != 0;
+            }
+        }
+        return wrote;
+    }
+
+    public override uint read(uint index) {
         return getShared().data[index];
     }
 
-    public override void dataOut(uint index, uint data) {
+    public override void write(uint index, uint data) {
         auto shared_ = getShared();
         shared_.data[index] = data;
         shared_.wrote[index] = 0xFF;
