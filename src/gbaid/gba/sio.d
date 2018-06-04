@@ -128,9 +128,6 @@ public class SerialPort {
     }
 
     private void onPostWriteData3(int mask, int oldValue, int newValue) {
-        if (oldValue == newValue) {
-            return;
-        }
         if (ioMode == IoMode.MULTIPLAYER) {
             writefln!"send: %04x"(newValue);
         }
@@ -148,7 +145,7 @@ public class SerialPort {
         auto allWrote = _communication.allWrote();
         auto done = _index == 0 ? allWrote : !active;
 
-        if (waitCycles > 4096 && !complete && done) {
+        if (waitCycles >= 4096 && !complete && done) {
             complete = true;
 
             data1.setBits(0, 15, _communication.read(0));
