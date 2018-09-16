@@ -1105,7 +1105,7 @@ public class FrameSwapper {
     private enum FRAME_SIZE = DISPLAY_WIDTH * DISPLAY_HEIGHT;
     private short[FRAME_SIZE] frame0;
     private short[FRAME_SIZE] frame1;
-    private bool workFrameIndex = false;
+    private bool workFrame1 = false;
     private bool newFrameReady = false;
     private Condition frameReadySignal;
 
@@ -1114,15 +1114,12 @@ public class FrameSwapper {
     }
 
     @property private short[] workFrame() {
-        if (workFrameIndex) {
-            return frame1;
-        }
-        return frame0;
+        return workFrame1 ? frame1 : frame0;
     }
 
     public void swapFrame() {
         synchronized (frameReadySignal.mutex) {
-            workFrameIndex = !workFrameIndex;
+            workFrame1 = !workFrame1;
             newFrameReady = true;
             frameReadySignal.notify();
         }
@@ -1134,10 +1131,13 @@ public class FrameSwapper {
                 frameReadySignal.wait();
             }
             newFrameReady = false;
-            if (workFrameIndex) {
-                return frame0;
-            }
-            return frame1;
+            return workFrame1 ? frame0 : frame1;
+        }
+    }
+
+    public short[] currentFrame() {
+        synchronized (frameReadySignal.mutex) {
+            return workFrame1 ? frame0 : frame1;
         }
     }
 }

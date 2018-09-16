@@ -26,25 +26,23 @@ public enum string WINDOW_OUTPUT_FRAGMENT_SHADER_SOURCE =
 
 #version 120
 
-const float RATIO = 1.5;
-const float RATIO_INV = 1 / RATIO;
-const vec2 ASPECT = vec2(RATIO, 1);
-
 varying vec2 textureCoords;
 
 uniform sampler2D color;
-uniform vec2 size;
+uniform vec2 inputSize;
+uniform vec2 outputSize;
 
 void main() {
-    vec2 m = size / ASPECT;
-    vec2 sampleCoords = textureCoords;
+    float inputRatio = inputSize.x / inputSize.y;
+    float outputRatio = outputSize.x / outputSize.y;
 
-    if (m.x > m.y) {
-        float margin = (size.x / size.y - RATIO) / 2;
-        sampleCoords.x = mix(-margin, 1 + margin, sampleCoords.x);
+    vec2 sampleCoords = textureCoords;
+    if (inputRatio < outputRatio) {
+        sampleCoords.x *= outputRatio / inputRatio;
+        sampleCoords.x += (inputRatio - outputRatio) / (2 * inputRatio);
     } else {
-        float margin = (size.y / size.x - RATIO_INV) / 2;
-        sampleCoords.y = mix(-margin, 1 + margin, sampleCoords.y);
+        sampleCoords.y *= inputRatio / outputRatio;
+        sampleCoords.y += (outputRatio - inputRatio) / (2 * outputRatio);
     }
 
     sampleCoords.y = 1 - sampleCoords.y;

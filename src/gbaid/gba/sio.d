@@ -80,7 +80,7 @@ public class SerialPort {
     import std.stdio : writefln;
 
     void test(int, ref int) {
-        writefln("yes");
+        //writefln("yes");
     }
 
     @property public void index(uint index) {
@@ -98,17 +98,17 @@ public class SerialPort {
         if (ioMode == IoMode.MULTIPLAYER) {
             if (_index == 0) {
                 control.child = false;
-                writefln("parent ready");
+                //writefln("parent ready");
             } else {
                 control.child = true;
-                writefln("child %s ready", _index);
+                //writefln("child %s ready", _index);
             }
             _communication.setReady(_index, true);
         } else {
             if (_index == 0) {
-                writefln("parent not ready");
+                //writefln("parent not ready");
             } else {
-                writefln("child %s not ready", _index);
+                //writefln("child %s not ready", _index);
             }
             _communication.setReady(_index, false);
         }
@@ -123,13 +123,13 @@ public class SerialPort {
             _communication.write(_index, data3);
             complete = false;
             waitCycles = 0;
-            writefln("parent wrote %04x", data3);
+            //writefln("parent wrote %04x", data3);
         }
     }
 
     private void onPostWriteData3(int mask, int oldValue, int newValue) {
         if (ioMode == IoMode.MULTIPLAYER) {
-            writefln!"send: %04x"(newValue);
+            //writefln!"send: %04x"(newValue);
         }
     }
 
@@ -164,18 +164,18 @@ public class SerialPort {
             }
 
             if (_index == 0) {
-                writefln("parent read %08x %08x", data1, data2);
+                //writefln("parent read %08x %08x", data1, data2);
             } else {
-                writefln("child %s read %08x %08x", _index, data1, data2);
+                //writefln("child %s read %08x %08x", _index, data1, data2);
             }
-            writefln("Cycles %s", waitCycles);
+            //writefln("Cycles %s", waitCycles);
         } else if (complete && active) {
             control.active = true;
             _communication.begin(_index);
             _communication.write(_index, data3);
             complete = false;
             waitCycles = 0;
-            writefln("child %s wrote %04x", _index, data3);
+            //writefln("child %s wrote %04x", _index, data3);
         }
 
         return 0;

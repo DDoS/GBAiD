@@ -3,7 +3,7 @@ module gbaid.gba.memory;
 import core.time : TickDuration;
 
 import std.meta : Alias;
-import std.traits : MutableOf, ImmutableOf;
+import std.traits : ImmutableOf;
 import std.format : format;
 
 import gbaid.util;
@@ -101,7 +101,7 @@ public struct Memory(uint byteSize, bool readOnly) {
         static if (readOnly) {
             private alias Mod = ImmutableOf!T;
         } else {
-            private alias Mod = MutableOf!T;
+            private alias Mod = T;
         }
     }
 }

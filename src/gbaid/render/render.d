@@ -171,7 +171,8 @@ public class FrameRenderer {
             upscaledTexture.bind(0);
         }
         program.use();
-        program.setUniform("size", windowWidth, windowHeight);
+        program.setUniform("inputSize", frameWidth, frameHeight);
+        program.setUniform("outputSize", windowWidth, windowHeight);
         context.setViewPort(0, 0, windowWidth, windowHeight);
         vertexArray.draw();
         context.updateDisplay();
