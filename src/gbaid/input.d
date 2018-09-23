@@ -16,9 +16,15 @@ public interface InputSource {
     @property public KeypadState keypadState();
 
     @property public bool quickSave();
+
+    @property public uint lastDigit();
 }
 
 public class Keyboard : InputSource {
+    private static enum int[10] DIGIT_CODES = [
+        SDL_SCANCODE_0, SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4,
+        SDL_SCANCODE_5, SDL_SCANCODE_6, SDL_SCANCODE_7, SDL_SCANCODE_8, SDL_SCANCODE_9
+    ];
     private int[10] buttonCodeMap = [
         SDL_SCANCODE_P,
         SDL_SCANCODE_L,
@@ -34,6 +40,7 @@ public class Keyboard : InputSource {
     private int quickSaveKey = SDL_SCANCODE_Q;
     private KeypadState state;
     private bool save = false;
+    private uint digit = 0;
 
     public void map(Button button, int key) {
         buttonCodeMap[button] = key;
@@ -52,6 +59,12 @@ public class Keyboard : InputSource {
             state.setPressed(cast(Button) buttonIndex, cast(bool) keyboard[buttonCode]);
         }
         save = cast(bool) keyboard[quickSaveKey];
+        foreach (uint i, digitCode; DIGIT_CODES) {
+            if (cast(bool) keyboard[digitCode]) {
+                digit = i;
+                break;
+            }
+        }
     }
 
     @property public override KeypadState keypadState() {
@@ -60,6 +73,10 @@ public class Keyboard : InputSource {
 
     @property public override bool quickSave() {
         return save;
+    }
+
+    @property public override uint lastDigit() {
+        return digit;
     }
 }
 
@@ -158,6 +175,10 @@ public class Controller : InputSource {
 
     @property public override bool quickSave() {
         return save;
+    }
+
+    @property public override uint lastDigit() {
+        return 0;
     }
 
     private static struct StickMapping {

@@ -3,6 +3,7 @@ import core.sync.mutex : Mutex;
 import core.sync.condition : Condition;
 import core.sync.barrier : Barrier;
 
+import std.algorithm.searching : count;
 import std.stdio : writeln, writefln;
 import std.getopt: getopt, config;
 import std.file : exists, read, FileException;
@@ -89,7 +90,7 @@ public int main(string[] args) {
         } else {
             config.romFile = config.romFile.expandPath();
             if (!config.romFile.exists()) {
-                writeln("ROM file %s doesn't exist", index + 1);
+                writefln("ROM file %s doesn't exist", config.romFile);
                 return 1;
             }
         }
@@ -104,9 +105,10 @@ public int main(string[] args) {
                 config.saveFile = config.saveFile.expandPath();
             }
 
-            // Add multiplayer index to save file when not the first player, to prevent conflicts
-            if (index > 0) {
-                config.saveFile = config.saveFile.stripExtension() ~ (index + 1).to!string() ~ config.saveFile.extension();
+            // Add multiplayer index to save file if it conflicts with another
+            auto count = gbaConfigs.count!((GbaConfig config, string saveFile) => config.saveFile == saveFile)(config.saveFile);
+            if (count > 1) {
+                config.saveFile = config.saveFile.stripExtension() ~ count.to!string() ~ config.saveFile.extension();
             }
 
             if (noLoad) {
@@ -141,7 +143,6 @@ public int main(string[] args) {
     renderer.setUpscalingMode(upscaling);
 
     auto audio = new AudioQueue!2(SOUND_OUTPUT_FREQUENCY, !rawAudio);
-    //gba.audioReceiver = &audio.queueAudio;
 
     auto keyboardInput = new Keyboard();
     InputSource auxiliaryInput = null;
@@ -175,6 +176,7 @@ public int main(string[] args) {
 
     // Update the input then draw the next frame, waiting for it if needed
     bool previousQuickSave = false;
+    uint activeGbaIndex = 0;
     while (gbas.running && !renderer.isCloseRequested()) {
         // Pass the keypad button state to the GBA
         keyboardInput.poll();
@@ -185,19 +187,24 @@ public int main(string[] args) {
             keypadState |= auxiliaryInput.keypadState;
             quickSave |= auxiliaryInput.quickSave;
         }
-        //gba.setKeypadState(keypadState);
+        gbas.setKeypadState(activeGbaIndex, keypadState);
         // Quick save if requested
         if (!previousQuickSave && quickSave) {
             if (sharedConfig.noSave) {
                 writeln("Saving is disabled");
             } else {
-                //audio.pause();
-                //gba.gamePakSaveData.saveGamePak(saveFile);
-                //writeln("Quick saved \"", saveFile, "\"");
-                //audio.resume();
+                audio.pause();
+                gbas.saveAllGamePaks();
+                audio.resume();
             }
         }
         previousQuickSave = quickSave;
+        // Switch active GBA using number inputs
+        auto lastDigit = keyboardInput.lastDigit;
+        if (lastDigit >= 1 && lastDigit <= multiplayer && activeGbaIndex != lastDigit - 1) {
+            activeGbaIndex = lastDigit - 1;
+            gbas.attachAudio(activeGbaIndex);
+        }
         // Draw the latest frame
         renderer.draw(gbas.currentFrame());
     }
@@ -215,6 +222,7 @@ private struct GbaConfig {
 
 private class GbaMultiplexer : Thread {
     private AudioQueue!2 audio;
+    private Mutex emulatorLock;
     private Condition cycleSignal;
     private Condition cycleSync;
     private GbaInstance[] gbaThreads;
@@ -225,16 +233,18 @@ private class GbaMultiplexer : Thread {
         super(&run);
         this.audio = audio;
 
-        auto mutex = new Mutex();
-        cycleSignal = new Condition(mutex);
-        cycleSync = new Condition(mutex);
+        emulatorLock = new Mutex();
+        auto cycleMutex = new Mutex();
+        cycleSignal = new Condition(cycleMutex);
+        cycleSync = new Condition(cycleMutex);
 
         gbaThreads.length = gbaConfigs.length;
         foreach (uint index, ref thread; gbaThreads) {
             thread = new GbaInstance(index, gbaConfigs[index], bios, cycleSignal, cycleSync);
             thread.name = "GBA_" ~ index.to!string();
         }
-        gbaThreads[0].attachAudio(&audio.queueAudio);
+
+        attachAudio(0);
 
         if (gbaThreads.length == 2) {
             combinedFrames.length = (DISPLAY_WIDTH * DISPLAY_HEIGHT) * 2;
@@ -252,6 +262,16 @@ private class GbaMultiplexer : Thread {
 
     public @property bool running() {
         return _running;
+    }
+
+    public void setKeypadState(uint index, KeypadState state) {
+        gbaThreads[index].setKeypadState(state);
+    }
+
+    public void attachAudio(uint index) {
+        foreach (i, gba; gbaThreads) {
+            gba.attachAudio(i == index ? &audio.queueAudio : null);
+        }
     }
 
     public short[] currentFrame() {
@@ -283,17 +303,23 @@ private class GbaMultiplexer : Thread {
         return combinedFrames;
     }
 
+    public void saveAllGamePaks() {
+        synchronized (emulatorLock) {
+            foreach (thread; gbaThreads) {
+                thread.saveGamePak();
+            }
+        }
+    }
+
     private @property bool allBlocked() {
         if (!_running) {
             return true;
         }
         foreach (i, thread; gbaThreads) {
             if (!thread.blocked) {
-                //writefln("not blocked %d", i);
                 return false;
             }
         }
-        //writefln("all blocked");
         return true;
     }
 
@@ -308,6 +334,7 @@ private class GbaMultiplexer : Thread {
             }
             foreach (thread; gbaThreads) {
                 thread.join();
+                thread.saveGamePak();
             }
         }
 
@@ -321,16 +348,15 @@ private class GbaMultiplexer : Thread {
             auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
 
             synchronized (cycleSignal.mutex) {
-                //writefln("sending cycles %d", equivalentCycles);
                 foreach (thread; gbaThreads) {
                     thread.receiveCycles(equivalentCycles);
                 }
-                cycleSignal.notifyAll();
+                synchronized (emulatorLock) {
+                    cycleSignal.notifyAll();
 
-                while (!allBlocked) {
-                    //writefln("sync wait");
-                    cycleSync.wait();
-                    //writefln("sync resume");
+                    while (!allBlocked) {
+                        cycleSync.wait();
+                    }
                 }
             }
         }
@@ -370,6 +396,10 @@ private class GbaInstance : Thread {
         availableCycles = cycles;
     }
 
+    public void setKeypadState(KeypadState state) {
+        gba.setKeypadState(state);
+    }
+
     public short[] currentFrame() {
         return gba.frameSwapper.currentFrame();
     }
@@ -402,11 +432,8 @@ private class GbaInstance : Thread {
             synchronized (cycleSignal.mutex) {
                 cycleSync.notify();
                 while (blocked) {
-                    //writefln("signal wait");
                     cycleSignal.wait();
-                    //writefln("signal resume");
                 }
-                //writefln("emulating");
             }
 
             gba.emulate(availableCycles);

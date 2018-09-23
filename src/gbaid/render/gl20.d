@@ -303,11 +303,18 @@ public class GL20Context : Context {
 
     public override bool isWindowCloseRequested() {
         SDL_PumpEvents();
+
         SDL_Event event;
-        if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUIT, SDL_QUIT) < 0) {
+        if (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUIT, SDL_QUIT) < 0) {
             throw new Exception("Failed to peep events: " ~ toDString(SDL_GetError()));
         }
-        return event.type == SDL_QUIT;
+
+        if (event.type == SDL_QUIT) {
+            return true;
+        }
+
+        SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+        return false;
     }
 
     public gbaid.render.gl.GLVersion getGLVersion() {
