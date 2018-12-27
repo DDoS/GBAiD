@@ -18,8 +18,13 @@ import gbaid.gba.assembly;
 
 public enum uint DISPLAY_WIDTH = 240;
 public enum uint DISPLAY_HEIGHT = 160;
-public enum size_t CYCLES_PER_FRAME = (DISPLAY_WIDTH + Display.BLANK_LENGTH)
-        * (DISPLAY_HEIGHT + Display.BLANK_LENGTH) * Display.CYCLES_PER_DOT;
+
+public enum uint BLANK_LENGTH = 68;
+public enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
+public enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
+
+public enum uint CYCLES_PER_DOT = 4;
+public enum size_t CYCLES_PER_FRAME = TIMING_WIDTH * TIMING_HEIGTH * CYCLES_PER_DOT;
 
 private struct DisplayControl {
     private byte bgMode = 0;
@@ -97,11 +102,7 @@ private struct BlendCoefficients  {
 }
 
 public class Display {
-    private enum uint BLANK_LENGTH = 68;
-    public static enum uint CYCLES_PER_DOT = 4;
     private static enum short TRANSPARENT = cast(short) 0x8000;
-    private static enum uint TIMING_WIDTH = DISPLAY_WIDTH + BLANK_LENGTH;
-    private static enum uint TIMING_HEIGTH = DISPLAY_HEIGHT + BLANK_LENGTH;
     private Palette* palette;
     private Vram* vram;
     private Oam* oam;

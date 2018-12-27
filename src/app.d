@@ -17,6 +17,7 @@ import gbaid.gba;
 import gbaid.input;
 import gbaid.audio;
 import gbaid.render.renderer;
+import gbaid.comm;
 import gbaid.save;
 
 private enum string SAVE_EXTENSION = ".gsf";
@@ -203,7 +204,9 @@ public int main(string[] args) {
         auto lastDigit = keyboardInput.lastDigit;
         if (lastDigit >= 1 && lastDigit <= multiplayer && activeGbaIndex != lastDigit - 1) {
             activeGbaIndex = lastDigit - 1;
+            audio.pause();
             gbas.attachAudio(activeGbaIndex);
+            audio.resume();
         }
         // Draw the latest frame
         renderer.draw(gbas.currentFrame());
@@ -222,9 +225,6 @@ private struct GbaConfig {
 
 private class GbaMultiplexer : Thread {
     private AudioQueue!2 audio;
-    private Mutex emulatorLock;
-    private Condition cycleSignal;
-    private Condition cycleSync;
     private GbaInstance[] gbaThreads;
     private short[] combinedFrames;
     private bool _running = true;
@@ -233,15 +233,11 @@ private class GbaMultiplexer : Thread {
         super(&run);
         this.audio = audio;
 
-        emulatorLock = new Mutex();
-        auto cycleMutex = new Mutex();
-        cycleSignal = new Condition(cycleMutex);
-        cycleSync = new Condition(cycleMutex);
-
         gbaThreads.length = gbaConfigs.length;
+        auto serialData = gbaThreads.length > 1 ? new SharedSerialData() : null;
         foreach (uint index, ref thread; gbaThreads) {
-            thread = new GbaInstance(index, gbaConfigs[index], bios, cycleSignal, cycleSync);
-            thread.name = "GBA_" ~ index.to!string();
+            thread = new GbaInstance(index, gbaConfigs[index], bios);
+            thread.shareSerialData(serialData);
         }
 
         attachAudio(0);
@@ -255,9 +251,6 @@ private class GbaMultiplexer : Thread {
 
     public void stop() {
         _running = false;
-        synchronized (cycleSignal.mutex) {
-            cycleSync.notify();
-        }
     }
 
     public @property bool running() {
@@ -304,80 +297,49 @@ private class GbaMultiplexer : Thread {
     }
 
     public void saveAllGamePaks() {
-        synchronized (emulatorLock) {
-            foreach (thread; gbaThreads) {
-                thread.saveGamePak();
-            }
+        foreach (thread; gbaThreads) {
+            thread.saveGamePak();
         }
-    }
-
-    private @property bool allBlocked() {
-        if (!_running) {
-            return true;
-        }
-        foreach (i, thread; gbaThreads) {
-            if (!thread.blocked) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void run() {
         scope (exit) {
             _running = false;
             foreach (thread; gbaThreads) {
-                thread.stop();
-            }
-            synchronized (cycleSignal.mutex) {
-                cycleSignal.notifyAll();
-            }
-            foreach (thread; gbaThreads) {
-                thread.join();
                 thread.saveGamePak();
             }
         }
 
-        foreach (thread; gbaThreads) {
-            thread.start();
-        }
         audio.resume();
 
         while (_running) {
             auto requiredSamples = audio.nextRequiredSamples();
             auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
 
-            synchronized (cycleSignal.mutex) {
+            enum batch = TIMING_WIDTH * CYCLES_PER_DOT;
+            for (size_t c = 0; c < equivalentCycles; c += batch) {
                 foreach (thread; gbaThreads) {
-                    thread.receiveCycles(equivalentCycles);
+                    thread.receiveCycles(batch);
                 }
-                synchronized (emulatorLock) {
-                    cycleSignal.notifyAll();
-
-                    while (!allBlocked) {
-                        cycleSync.wait();
-                    }
-                }
+            }
+            foreach (thread; gbaThreads) {
+                thread.receiveCycles(equivalentCycles % batch);
             }
         }
     }
 }
 
-private class GbaInstance : Thread {
+private class GbaInstance {
     private GbaConfig config;
     private void[] bios;
-    private Condition cycleSignal;
-    private Condition cycleSync;
+    private uint index;
     private GameBoyAdvance gba;
     private bool _running = true;
-    private size_t availableCycles;
 
-    public this(uint index, GbaConfig config, void[] bios, Condition cycleSignal, Condition cycleSync) {
-        super(&run);
+    public this(uint index, GbaConfig config, void[] bios) {
         this.config = config;
         this.bios = bios;
-        this.cycleSignal = cycleSignal;
-        this.cycleSync = cycleSync;
+        this.index = index;
 
         GamePakData gamePakData = void;
         if (config.newSave) {
@@ -385,7 +347,7 @@ private class GbaInstance : Thread {
         } else {
             gamePakData = gamePakForExistingRom(config.romFile, config.saveFile, config.eepromConfig, config.rtcConfig);
         }
-        gba = new GameBoyAdvance(bios, gamePakData);
+        gba = new GameBoyAdvance(bios, gamePakData, index);
     }
 
     public void stop() {
@@ -393,7 +355,13 @@ private class GbaInstance : Thread {
     }
 
     public void receiveCycles(size_t cycles) {
-        availableCycles = cycles;
+        gba.emulate(cycles);
+    }
+
+    public void shareSerialData(SharedSerialData data) {
+        if (data) {
+            gba.serialCommunication = new MappedMemoryCommunication(index, data);
+        }
     }
 
     public void setKeypadState(KeypadState state) {
@@ -415,29 +383,6 @@ private class GbaInstance : Thread {
         } else {
             gba.gamePakSaveData.saveGamePak(config.saveFile);
             writeln("Saved \"", config.saveFile, "\"");
-        }
-    }
-
-    public @property bool blocked() {
-        return _running && availableCycles <= 0;
-    }
-
-    private void run() {
-        // Main GBA loop
-        while (_running) {
-            scope (failure) {
-                _running = false;
-            }
-
-            synchronized (cycleSignal.mutex) {
-                cycleSync.notify();
-                while (blocked) {
-                    cycleSignal.wait();
-                }
-            }
-
-            gba.emulate(availableCycles);
-            availableCycles = 0;
         }
     }
 }

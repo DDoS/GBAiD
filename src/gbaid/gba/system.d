@@ -14,7 +14,7 @@ import gbaid.gba.timer;
 import gbaid.gba.sio;
 
 public class GameBoyAdvance {
-    private static enum size_t CYCLE_BATCH_SIZE = Display.CYCLES_PER_DOT * 4;
+    private static enum size_t CYCLE_BATCH_SIZE = CYCLES_PER_DOT * 4;
     private MemoryBus memory;
     private ARM7TDMI processor;
     private InterruptHandler interruptHandler;
@@ -34,7 +34,7 @@ public class GameBoyAdvance {
     private size_t keypadCycles = 0;
     private size_t serialPortCycles = 0;
 
-    public this(void[] bios, GamePakData gamePakData) {
+    public this(void[] bios, GamePakData gamePakData, uint serialIndex = 0) {
         memory = MemoryBus(bios, gamePakData);
         memory.biosReadFallback = &biosReadFallback;
         memory.unusedMemory = &unusedReadFallBack;
@@ -48,7 +48,7 @@ public class GameBoyAdvance {
         dmas = new DMAs(&memory, ioRegisters, interruptHandler, haltHandler);
         soundChip = new SoundChip(ioRegisters, dmas);
         timers = new Timers(ioRegisters, interruptHandler, soundChip);
-        serialPort = new SerialPort(ioRegisters, interruptHandler);
+        serialPort = new SerialPort(ioRegisters, interruptHandler, serialIndex);
         display = new Display(ioRegisters, memory.palette, memory.vram, memory.oam, interruptHandler, dmas);
 
         memory.biosReadGuard = &biosReadGuard;
@@ -71,10 +71,6 @@ public class GameBoyAdvance {
         serialPort.communication = communication;
     }
 
-    @property public void serialIndex(uint index) {
-        serialPort.index = index;
-    }
-
     public void setKeypadState(KeypadState state) {
         keypad.setState(state);
     }
@@ -95,7 +91,7 @@ public class GameBoyAdvance {
             keypadCycles = keypad.emulate(keypadCycles + CYCLE_BATCH_SIZE);
             serialPortCycles = serialPort.emulate(serialPortCycles + CYCLE_BATCH_SIZE);
         }
-        // An incomplete batch of cycles might be lef over, so process it too
+        // An incomplete batch of cycles might be left over, so process it too
         auto partialBatch = cycles % CYCLE_BATCH_SIZE;
         if (partialBatch > 0) {
             displayCycles = display.emulate(displayCycles + partialBatch);

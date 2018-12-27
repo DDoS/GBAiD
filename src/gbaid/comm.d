@@ -1,109 +1,150 @@
 module gbaid.comm;
 
-import std.mmfile;
-
 import gbaid.util;
 
-import gbaid.gba.sio : Communication;
+import gbaid.gba.sio : Communication, CommunicationState;
 
-private struct SharedData {
-    private uint[4] data;
-    private ubyte[4] connected;
-    private ubyte[4] ready;
-    private ubyte[4] wrote;
-    private ubyte active;
+public class SharedSerialData {
+    public uint[4] data;
+    public bool[4] connected;
+    public bool[4] ready;
+    public bool[4] written;
+    public bool[4] read;
+    public bool[4] finalized;
+    public bool active;
 
-    static assert (data.offsetof == 0);
-    static assert (connected.offsetof == 16);
-    static assert (ready.offsetof == 20);
-    static assert (wrote.offsetof == 24);
-    static assert (active.offsetof == 28);
-    static assert (SharedData.sizeof == 32);
+    this() {
+        active = false;
+        data[] = 0xFFFFFFFF;
+        connected[] = false;
+        ready[] = false;
+        written[] = false;
+        read[] = false;
+    }
 }
 
 public class MappedMemoryCommunication : Communication {
     private uint index;
-    private MmFile file;
+    private SharedSerialData _shared;
 
-    public this(uint index) {
+    public this(uint index, SharedSerialData _shared) {
         this.index = index;
+        this._shared = _shared;
 
-        file = new MmFile("test", MmFile.Mode.readWrite, SharedData.sizeof, null);
-
-        auto shared_ = getShared();
-        if (index == 0) {
-            shared_.active = 0;
-            shared_.data[] = 0xFFFFFFFF;
-            shared_.connected[] = 0;
-            shared_.ready[] = 0;
-            shared_.wrote[] = 0xFF;
-        }
-        shared_.connected[index] = 0xFF;
+        _shared.connected[index] = true;
     }
 
     public ~this() {
-        auto shared_ = getShared();
-        shared_.connected[index] = 0;
-        shared_.data[index] = 0xFFFFFFFF;
+        _shared.connected[index] = false;
+        _shared.data[index] = 0xFFFFFFFF;
     }
 
-    private SharedData* getShared() {
-        return cast(SharedData*) file[];
+    public override CommunicationState getState() {
+        bool allRead = allRead(), allWritten = allWritten(), allFinalized = allFinalized();
+        if (_shared.active && allWritten && allRead && allFinalized) {
+            return CommunicationState.FINALIZE_DONE;
+        }
+        if (_shared.active && allWritten && allRead) {
+            return CommunicationState.READ_DONE;
+        }
+        if (_shared.active && allWritten) {
+            return CommunicationState.WRITE_DONE;
+        }
+        if (_shared.active) {
+            return CommunicationState.INIT_DONE;
+        }
+        return CommunicationState.IDLE;
+    }
+
+    private bool allWritten() {
+        bool written = true;
+        foreach (i, conn; _shared.connected) {
+            if (conn) {
+                written &= _shared.written[i];
+            }
+        }
+        return written;
+    }
+
+    private bool allRead() {
+        bool read = true;
+        foreach (i, conn; _shared.connected) {
+            if (conn) {
+                read &= _shared.read[i];
+            }
+        }
+        return read;
+    }
+
+    private bool allFinalized() {
+        bool finalized = true;
+        foreach (i, conn; _shared.connected) {
+            if (conn) {
+                finalized &= _shared.finalized[i];
+            }
+        }
+        return finalized;
     }
 
     public override void setReady(uint index, bool ready) {
-        getShared().ready[index] = ready ? 0xFF : 0;
+        _shared.ready[index] = ready;
+        if (!ready) {
+            _shared.data[index] = 0xFFFFFFFF;
+            _shared.written[index] = false;
+            _shared.read[index] = false;
+        }
     }
 
     public override bool allReady() {
-        auto shared_ = getShared();
         bool ready = true;
-        foreach (i, conn; shared_.connected) {
+        foreach (i, conn; _shared.connected) {
             if (conn) {
-                ready &= shared_.ready[i] != 0;
+                ready &= _shared.ready[i];
             }
         }
         return ready;
     }
 
-    public override void begin(uint index) {
-        auto shared_ = getShared();
-        if (index == 0) {
-            shared_.active = 0xFF;
-        }
-        shared_.data[index] = 0xFFFFFFFF;
+    public override void init() {
+        _shared.active = true;
     }
 
-    public override void end(uint index) {
-        auto shared_ = getShared();
-        if (index == 0) {
-            shared_.active = 0;
-        }
-        shared_.wrote[index] = 0;
+    public override void writeDone(uint index, bool done) {
+        _shared.written[index] = done;
     }
 
-    public override bool active() {
-        return getShared().active != 0;
+    public override bool writeDone(uint index) {
+        return _shared.written[index];
     }
 
-    public override uint allWrote() {
-        auto shared_ = getShared();
-        bool wrote = true;
-        foreach (i, conn; shared_.connected) {
-            if (conn) {
-                wrote &= shared_.wrote[i] != 0;
-            }
-        }
-        return wrote;
+    public override void readDone(uint index, bool done) {
+        _shared.read[index] = done;
+    }
+
+    public override bool readDone(uint index) {
+        return _shared.read[index];
+    }
+
+    public override void finalizeDone(uint index, bool done) {
+        _shared.finalized[index] = done;
+    }
+
+    public override bool finalizeDone(uint index) {
+        return _shared.finalized[index];
+    }
+
+    public override void deinit() {
+        _shared.active = false;
+        _shared.written[] = false;
+        _shared.read[] = false;
+        _shared.finalized[] = false;
     }
 
     public override uint read(uint index) {
-        return getShared().data[index];
+        return _shared.data[index];
     }
 
-    public override void write(uint index, uint data) {
-        auto shared_ = getShared();
-        shared_.data[index] = data;
-        shared_.wrote[index] = 0xFF;
+    public override void write(uint index, uint word) {
+        _shared.data[index] = word;
     }
 }

@@ -5,13 +5,32 @@ import gbaid.util;
 import gbaid.gba.io;
 import gbaid.gba.interrupt;
 
+public enum CommunicationState {
+    IDLE,
+    INIT_DONE,
+    WRITE_DONE,
+    READ_DONE,
+    FINALIZE_DONE
+}
+
 public interface Communication {
+    public CommunicationState getState();
     public void setReady(uint index, bool ready);
     public bool allReady();
-    public void begin(uint index);
-    public void end(uint index);
-    public bool active();
-    public uint allWrote();
+
+    public void init();
+
+    public void writeDone(uint index, bool done);
+    public bool writeDone(uint index);
+
+    public void readDone(uint index, bool done);
+    public bool readDone(uint index);
+
+    public void finalizeDone(uint index, bool done);
+    public bool finalizeDone(uint index);
+
+    public void deinit();
+
     public uint read(uint index);
     public void write(uint index, uint data);
 }
@@ -42,21 +61,23 @@ public class SerialPort {
     private bool interruptSi = false;
     private byte mode1 = 0;
     private byte mode2 = 0;
-    private uint _index = 0;
+    private uint index = 0;
     private size_t waitCycles = 0;
-    private bool complete = true;
 
-    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler) {
+    public this(IoRegisters* ioRegisters, InterruptHandler interruptHandler, uint index) {
         this.interruptHandler = interruptHandler;
+
+        this.index = index;
+        control.child = index != 0;
 
         _communication = new NullCommunication();
 
         ioRegisters.mapAddress(0x128, &control.baudRate, 0b11, 0);
-        ioRegisters.mapAddress(0x128, &control.child, 0b1, 2);
-        ioRegisters.mapAddress(0x128, &control.allReady, 0b1, 3);
-        ioRegisters.mapAddress(0x128, &control.id, 0b11, 4);
-        ioRegisters.mapAddress(0x128, &control.error, 0b1, 6);
-        ioRegisters.mapAddress(0x128, &control.active, 0b1, 7).postWriteMonitor(&onPostWriteActive);
+        ioRegisters.mapAddress(0x128, &control.child, 0b1, 2, true, false);
+        ioRegisters.mapAddress(0x128, &control.allReady, 0b1, 3, true, false);
+        ioRegisters.mapAddress(0x128, &control.id, 0b11, 4, true, false);
+        ioRegisters.mapAddress(0x128, &control.error, 0b1, 6, true, false);
+        ioRegisters.mapAddress(0x128, &control.active, 0b1, 7, true, index == 0).postWriteMonitor(&onPostWriteActive);
         ioRegisters.mapAddress(0x128, &control.interrupt, 0b1, 14);
 
         ioRegisters.mapAddress(0x120, &data1, 0xFFFFFFFF, 0);
@@ -80,11 +101,7 @@ public class SerialPort {
     import std.stdio : writefln;
 
     void test(int, ref int) {
-        //writefln("yes");
-    }
-
-    @property public void index(uint index) {
-        _index = index;
+        writefln("yes");
     }
 
     @property public void communication(Communication communication) {
@@ -96,21 +113,12 @@ public class SerialPort {
             return;
         }
         if (ioMode == IoMode.MULTIPLAYER) {
-            if (_index == 0) {
-                control.child = false;
-                //writefln("parent ready");
-            } else {
-                control.child = true;
-                //writefln("child %s ready", _index);
-            }
-            _communication.setReady(_index, true);
+            //writefln("%s ready", index);
+            _communication.setReady(index, true);
         } else {
-            if (_index == 0) {
-                //writefln("parent not ready");
-            } else {
-                //writefln("child %s not ready", _index);
-            }
-            _communication.setReady(_index, false);
+            import std.conv : to;
+            //writefln("%s not ready: %s", index, ioMode.to!string());
+            _communication.setReady(index, false);
         }
     }
 
@@ -118,18 +126,15 @@ public class SerialPort {
         if (oldValue || !newValue) {
             return;
         }
-        if (ioMode == IoMode.MULTIPLAYER && _index == 0) {
-            _communication.begin(_index);
-            _communication.write(_index, data3);
-            complete = false;
-            waitCycles = 0;
-            //writefln("parent wrote %04x", data3);
+        if (ioMode == IoMode.MULTIPLAYER && index == 0) {
+            //writefln("init");
+            _communication.init();
         }
     }
 
     private void onPostWriteData3(int mask, int oldValue, int newValue) {
         if (ioMode == IoMode.MULTIPLAYER) {
-            //writefln!"send: %04x"(newValue);
+            //writefln!"%s sends %04x"(index, newValue);
         }
     }
 
@@ -141,41 +146,55 @@ public class SerialPort {
         }
 
         control.allReady = _communication.allReady();
-        auto active = _communication.active();
-        auto allWrote = _communication.allWrote();
-        auto done = _index == 0 ? allWrote : !active;
 
-        if (waitCycles >= 4096 && !complete && done) {
-            complete = true;
+        final switch (_communication.getState()) with (CommunicationState) {
+            case IDLE:
+                break;
+            case INIT_DONE: {
+                if (!_communication.writeDone(index)) {
+                    control.active = true;
+                    _communication.write(index, data3);
+                    waitCycles = 0;
 
-            data1.setBits(0, 15, _communication.read(0));
-            data1.setBits(16, 31, _communication.read(1));
-            data2.setBits(0, 15, _communication.read(2));
-            data2.setBits(16, 31, _communication.read(3));
-
-            _communication.end(_index);
-
-            control.active = false;
-            control.id = cast(byte) _index;
-            control.error = false;
-
-            if (control.interrupt) {
-                interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
+                    //writefln("%s wrote %04x", index, data3);
+                    _communication.writeDone(index, true);
+                }
+                break;
             }
+            case WRITE_DONE: {
+                if (!_communication.readDone(index) && waitCycles >= 0/*12544*/) {
+                    data1.setBits(0, 15, _communication.read(0));
+                    data1.setBits(16, 31, _communication.read(1));
+                    data2.setBits(0, 15, _communication.read(2));
+                    data2.setBits(16, 31, _communication.read(3));
 
-            if (_index == 0) {
-                //writefln("parent read %08x %08x", data1, data2);
-            } else {
-                //writefln("child %s read %08x %08x", _index, data1, data2);
+                    //writefln("%s read %08x %08x", index, data1, data2);
+                    _communication.readDone(index, true);
+                }
+                break;
             }
-            //writefln("Cycles %s", waitCycles);
-        } else if (complete && active) {
-            control.active = true;
-            _communication.begin(_index);
-            _communication.write(_index, data3);
-            complete = false;
-            waitCycles = 0;
-            //writefln("child %s wrote %04x", _index, data3);
+            case READ_DONE: {
+                if (!_communication.finalizeDone(index)) {
+                    control.active = false;
+                    control.id = cast(byte) index;
+                    control.error = false;
+
+                    if (control.interrupt) {
+                        interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
+                    }
+
+                    //writefln("%s finalized", index);
+                    _communication.finalizeDone(index, true);
+                }
+                break;
+            }
+            case FINALIZE_DONE: {
+                if (index == 0) {
+                    //writefln("deinit\n");
+                    _communication.deinit();
+                }
+                break;
+            }
         }
 
         return 0;
@@ -205,6 +224,10 @@ public class SerialPort {
 }
 
 private class NullCommunication : Communication {
+    public override CommunicationState getState() {
+        return CommunicationState.IDLE;
+    }
+
     public override void setReady(uint index, bool ready) {
     }
 
@@ -212,18 +235,31 @@ private class NullCommunication : Communication {
         return false;
     }
 
-    public override void begin(uint index) {
+    public override void init() {
     }
 
-    public override void end(uint index) {
+    public override void writeDone(uint index, bool done) {
     }
 
-    public override bool active() {
-        return false;
+    public override bool writeDone(uint index) {
+        return true;
     }
 
-    public override uint allWrote() {
-        return 0;
+    public override void readDone(uint index, bool done) {
+    }
+
+    public override bool readDone(uint index) {
+        return true;
+    }
+
+    public override void finalizeDone(uint index, bool done) {
+    }
+
+    public override bool finalizeDone(uint index) {
+        return true;
+    }
+
+    public void deinit() {
     }
 
     public override uint read(uint index) {
