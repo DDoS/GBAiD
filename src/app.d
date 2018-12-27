@@ -204,9 +204,7 @@ public int main(string[] args) {
         auto lastDigit = keyboardInput.lastDigit;
         if (lastDigit >= 1 && lastDigit <= multiplayer && activeGbaIndex != lastDigit - 1) {
             activeGbaIndex = lastDigit - 1;
-            audio.pause();
             gbas.attachAudio(activeGbaIndex);
-            audio.resume();
         }
         // Draw the next frame
         renderer.draw(gbas.nextFrame());
@@ -225,22 +223,33 @@ private struct GbaConfig {
 
 private class GbaMultiplexer : Thread {
     private AudioQueue!2 audio;
+    private Mutex emulatorLock;
+    private Condition cycleSignal;
+    private Condition cycleSync;
     private GbaInstance[] gbaThreads;
     private short[] combinedFrames;
+    private uint audioIndex = 0;
+    private uint previousAudioIndex = 0;
     private bool _running = true;
 
     public this(AudioQueue!2 audio, GbaConfig[] gbaConfigs, void[] bios) {
         super(&run);
         this.audio = audio;
 
+        emulatorLock = new Mutex();
+        auto cycleMutex = new Mutex();
+        cycleSignal = new Condition(cycleMutex);
+        cycleSync = new Condition(cycleMutex);
+
         gbaThreads.length = gbaConfigs.length;
         auto serialData = gbaThreads.length > 1 ? new SharedSerialData() : null;
         foreach (uint index, ref thread; gbaThreads) {
-            thread = new GbaInstance(index, gbaConfigs[index], bios);
+            thread = new GbaInstance(index, gbaConfigs[index], bios, cycleSignal, cycleSync);
+            thread.name = "GBA_" ~ index.to!string();
             thread.shareSerialData(serialData);
         }
 
-        attachAudio(0);
+        gbaThreads[audioIndex].attachAudio(&audio.queueAudio);
 
         if (gbaThreads.length == 2) {
             combinedFrames.length = (DISPLAY_WIDTH * DISPLAY_HEIGHT) * 2;
@@ -251,6 +260,9 @@ private class GbaMultiplexer : Thread {
 
     public void stop() {
         _running = false;
+        synchronized (cycleSignal.mutex) {
+            cycleSync.notify();
+        }
     }
 
     public @property bool running() {
@@ -262,9 +274,7 @@ private class GbaMultiplexer : Thread {
     }
 
     public void attachAudio(uint index) {
-        foreach (i, gba; gbaThreads) {
-            gba.attachAudio(i == index ? &audio.queueAudio : null);
-        }
+        audioIndex = index;
     }
 
     public short[] nextFrame() {
@@ -297,8 +307,37 @@ private class GbaMultiplexer : Thread {
     }
 
     public void saveAllGamePaks() {
-        foreach (thread; gbaThreads) {
-            thread.saveGamePak();
+        synchronized (emulatorLock) {
+            foreach (thread; gbaThreads) {
+                thread.saveGamePak();
+            }
+        }
+    }
+
+    private @property bool allBlocked() {
+        if (!_running) {
+            return true;
+        }
+        foreach (i, thread; gbaThreads) {
+            if (!thread.blocked) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void distributeCycles(size_t cycles) {
+        synchronized (cycleSignal.mutex) {
+            foreach (thread; gbaThreads) {
+                thread.receiveCycles(cycles);
+            }
+            synchronized (emulatorLock) {
+                cycleSignal.notifyAll();
+
+                while (!allBlocked) {
+                    cycleSync.wait();
+                }
+            }
         }
     }
 
@@ -306,39 +345,61 @@ private class GbaMultiplexer : Thread {
         scope (exit) {
             _running = false;
             foreach (thread; gbaThreads) {
+                thread.stop();
+            }
+            synchronized (cycleSignal.mutex) {
+                cycleSignal.notifyAll();
+            }
+            foreach (thread; gbaThreads) {
+                thread.join();
                 thread.saveGamePak();
             }
         }
 
+        foreach (thread; gbaThreads) {
+            thread.start();
+        }
         audio.resume();
 
         while (_running) {
+            if (audioIndex != previousAudioIndex) {
+                gbaThreads[previousAudioIndex].attachAudio(null);
+                gbaThreads[audioIndex].attachAudio(&audio.queueAudio);
+                previousAudioIndex = audioIndex;
+            }
+
             auto requiredSamples = audio.nextRequiredSamples();
             auto equivalentCycles = requiredSamples * CYCLES_PER_AUDIO_SAMPLE;
 
-            enum batch = TIMING_WIDTH * CYCLES_PER_DOT;
-            for (size_t c = 0; c < equivalentCycles; c += batch) {
-                foreach (thread; gbaThreads) {
-                    thread.receiveCycles(batch);
+            if (gbaThreads.length == 1) {
+                distributeCycles(equivalentCycles);
+            } else {
+                enum lineSyncBatch = TIMING_WIDTH * CYCLES_PER_DOT;
+                for (size_t cycles = 0; cycles < equivalentCycles; cycles += lineSyncBatch) {
+                    distributeCycles(lineSyncBatch);
                 }
-            }
-            foreach (thread; gbaThreads) {
-                thread.receiveCycles(equivalentCycles % batch);
+                distributeCycles(equivalentCycles % lineSyncBatch);
             }
         }
     }
 }
 
-private class GbaInstance {
+private class GbaInstance : Thread {
     private GbaConfig config;
     private void[] bios;
+    private Condition cycleSignal;
+    private Condition cycleSync;
     private uint index;
     private GameBoyAdvance gba;
     private bool _running = true;
+    private size_t availableCycles;
 
-    public this(uint index, GbaConfig config, void[] bios) {
+    public this(uint index, GbaConfig config, void[] bios, Condition cycleSignal, Condition cycleSync) {
+        super(&run);
         this.config = config;
         this.bios = bios;
+        this.cycleSignal = cycleSignal;
+        this.cycleSync = cycleSync;
         this.index = index;
 
         GamePakData gamePakData = void;
@@ -355,7 +416,7 @@ private class GbaInstance {
     }
 
     public void receiveCycles(size_t cycles) {
-        gba.emulate(cycles);
+        availableCycles = cycles;
     }
 
     public void shareSerialData(SharedSerialData data) {
@@ -387,6 +448,29 @@ private class GbaInstance {
         } else {
             gba.gamePakSaveData.saveGamePak(config.saveFile);
             writeln("Saved \"", config.saveFile, "\"");
+        }
+    }
+
+    public @property bool blocked() {
+        return _running && availableCycles <= 0;
+    }
+
+    private void run() {
+        // Main GBA loop
+        while (_running) {
+            scope (failure) {
+                _running = false;
+            }
+
+            synchronized (cycleSignal.mutex) {
+                cycleSync.notify();
+                while (blocked) {
+                    cycleSignal.wait();
+                }
+            }
+
+            gba.emulate(availableCycles);
+            availableCycles = 0;
         }
     }
 }
