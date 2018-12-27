@@ -82,12 +82,12 @@ public class SerialPort {
 
         ioRegisters.mapAddress(0x120, &data1, 0xFFFFFFFF, 0);
         ioRegisters.mapAddress(0x124, &data2, 0xFFFFFFFF, 0);
-        ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16).postWriteMonitor(&onPostWriteData3);
+        ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16);
 
-        ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0).readMonitor(&test);
-        ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1).readMonitor(&test);
-        ioRegisters.mapAddress(0x134, &stateSi, 0b1, 2).readMonitor(&test);
-        ioRegisters.mapAddress(0x134, &stateSo, 0b1, 3).readMonitor(&test);
+        ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0);
+        ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1);
+        ioRegisters.mapAddress(0x134, &stateSi, 0b1, 2);
+        ioRegisters.mapAddress(0x134, &stateSo, 0b1, 3);
         ioRegisters.mapAddress(0x134, &dirSc, 0b1, 4);
         ioRegisters.mapAddress(0x134, &dirSd, 0b1, 5);
         ioRegisters.mapAddress(0x134, &dirSi, 0b1, 6);
@@ -98,12 +98,6 @@ public class SerialPort {
         ioRegisters.mapAddress(0x134, &mode2, 0b11, 14).postWriteMonitor(&onPostWriteMode);
     }
 
-    import std.stdio : writefln;
-
-    void test(int, ref int) {
-        writefln("yes");
-    }
-
     @property public void communication(Communication communication) {
         _communication = communication;
     }
@@ -112,14 +106,7 @@ public class SerialPort {
         if (oldValue == newValue) {
             return;
         }
-        if (ioMode == IoMode.MULTIPLAYER) {
-            //writefln("%s ready", index);
-            _communication.setReady(index, true);
-        } else {
-            import std.conv : to;
-            //writefln("%s not ready: %s", index, ioMode.to!string());
-            _communication.setReady(index, false);
-        }
+        _communication.setReady(index, ioMode == IoMode.MULTIPLAYER);
     }
 
     private void onPostWriteActive(int mask, int oldValue, int newValue) {
@@ -127,14 +114,7 @@ public class SerialPort {
             return;
         }
         if (ioMode == IoMode.MULTIPLAYER && index == 0) {
-            //writefln("init");
             _communication.init();
-        }
-    }
-
-    private void onPostWriteData3(int mask, int oldValue, int newValue) {
-        if (ioMode == IoMode.MULTIPLAYER) {
-            //writefln!"%s sends %04x"(index, newValue);
         }
     }
 
@@ -156,7 +136,6 @@ public class SerialPort {
                     _communication.write(index, data3);
                     waitCycles = 0;
 
-                    //writefln("%s wrote %04x", index, data3);
                     _communication.writeDone(index, true);
                 }
                 break;
@@ -168,7 +147,6 @@ public class SerialPort {
                     data2.setBits(0, 15, _communication.read(2));
                     data2.setBits(16, 31, _communication.read(3));
 
-                    //writefln("%s read %08x %08x", index, data1, data2);
                     _communication.readDone(index, true);
                 }
                 break;
@@ -183,14 +161,12 @@ public class SerialPort {
                         interruptHandler.requestInterrupt(InterruptSource.SERIAL_COMMUNICATION);
                     }
 
-                    //writefln("%s finalized", index);
                     _communication.finalizeDone(index, true);
                 }
                 break;
             }
             case FINALIZE_DONE: {
                 if (index == 0) {
-                    //writefln("deinit\n");
                     _communication.deinit();
                 }
                 break;
