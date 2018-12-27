@@ -162,7 +162,7 @@ public class SerialPort {
                 break;
             }
             case WRITE_DONE: {
-                if (!_communication.readDone(index) && waitCycles >= 0/*12544*/) {
+                if (!_communication.readDone(index) && waitCycles >= 1024) {
                     data1.setBits(0, 15, _communication.read(0));
                     data1.setBits(16, 31, _communication.read(1));
                     data2.setBits(0, 15, _communication.read(2));

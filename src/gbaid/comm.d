@@ -1,25 +1,26 @@
 module gbaid.comm;
 
+import core.atomic : MemoryOrder, atomicLoad, atomicStore, atomicOp;
+
 import gbaid.util;
 
 import gbaid.gba.sio : Communication, CommunicationState;
 
 public class SharedSerialData {
-    public uint[4] data;
-    public bool[4] connected;
-    public bool[4] ready;
-    public bool[4] written;
-    public bool[4] read;
-    public bool[4] finalized;
-    public bool active;
+    public shared uint[4] data;
+    /*
+        [0, 3] -> connected
+        [4, 7] -> ready
+        [8, 11] -> written
+        [12, 15] -> read
+        [16, 19] -> finalized
+        20 -> active
+    */
+    public shared uint status;
 
     this() {
-        active = false;
         data[] = 0xFFFFFFFF;
-        connected[] = false;
-        ready[] = false;
-        written[] = false;
-        read[] = false;
+        status = 0;
     }
 }
 
@@ -31,120 +32,90 @@ public class MappedMemoryCommunication : Communication {
         this.index = index;
         this._shared = _shared;
 
-        _shared.connected[index] = true;
+        atomicOp!"|="(_shared.status, 1 << index);
     }
 
     public ~this() {
-        _shared.connected[index] = false;
-        _shared.data[index] = 0xFFFFFFFF;
+        atomicOp!"&="(_shared.status, ~(1 << index));
+        atomicStore!(MemoryOrder.raw)(_shared.data[index], 0xFFFFFFFF);
     }
 
     public override CommunicationState getState() {
-        bool allRead = allRead(), allWritten = allWritten(), allFinalized = allFinalized();
-        if (_shared.active && allWritten && allRead && allFinalized) {
+        uint status = atomicLoad!(MemoryOrder.raw)(_shared.status);
+
+        uint connected = status.getBits(0, 3);
+        bool allWritten = status.getBits(8, 11) == connected;
+        bool allRead = status.getBits(12, 15) == connected;
+        bool allFinalized = status.getBits(16, 19) == connected;
+        bool active = status.checkBit(20);
+
+        if (active && allWritten && allRead && allFinalized) {
             return CommunicationState.FINALIZE_DONE;
         }
-        if (_shared.active && allWritten && allRead) {
+        if (active && allWritten && allRead) {
             return CommunicationState.READ_DONE;
         }
-        if (_shared.active && allWritten) {
+        if (active && allWritten) {
             return CommunicationState.WRITE_DONE;
         }
-        if (_shared.active) {
+        if (active) {
             return CommunicationState.INIT_DONE;
         }
         return CommunicationState.IDLE;
     }
 
-    private bool allWritten() {
-        bool written = true;
-        foreach (i, conn; _shared.connected) {
-            if (conn) {
-                written &= _shared.written[i];
-            }
-        }
-        return written;
-    }
-
-    private bool allRead() {
-        bool read = true;
-        foreach (i, conn; _shared.connected) {
-            if (conn) {
-                read &= _shared.read[i];
-            }
-        }
-        return read;
-    }
-
-    private bool allFinalized() {
-        bool finalized = true;
-        foreach (i, conn; _shared.connected) {
-            if (conn) {
-                finalized &= _shared.finalized[i];
-            }
-        }
-        return finalized;
-    }
-
     public override void setReady(uint index, bool ready) {
-        _shared.ready[index] = ready;
-        if (!ready) {
-            _shared.data[index] = 0xFFFFFFFF;
-            _shared.written[index] = false;
-            _shared.read[index] = false;
+        if (ready) {
+            atomicOp!"|="(_shared.status, 0b10000 << index);
+        } else {
+            atomicOp!"&="(_shared.status, ~(0b10001000100010000 << index));
+            atomicStore!(MemoryOrder.raw)(_shared.data[index], 0xFFFFFFFF);
         }
     }
 
     public override bool allReady() {
-        bool ready = true;
-        foreach (i, conn; _shared.connected) {
-            if (conn) {
-                ready &= _shared.ready[i];
-            }
-        }
-        return ready;
+        uint status = atomicLoad!(MemoryOrder.raw)(_shared.status);
+        uint connected = status.getBits(0, 3);
+        return status.getBits(4, 7) == connected;
     }
 
     public override void init() {
-        _shared.active = true;
+        atomicOp!"|="(_shared.status, 1 << 20);
     }
 
     public override void writeDone(uint index, bool done) {
-        _shared.written[index] = done;
+        atomicOp!"|="(_shared.status, 1 << index + 8);
     }
 
     public override bool writeDone(uint index) {
-        return _shared.written[index];
+        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 8);
     }
 
     public override void readDone(uint index, bool done) {
-        _shared.read[index] = done;
+        atomicOp!"|="(_shared.status, 1 << index + 12);
     }
 
     public override bool readDone(uint index) {
-        return _shared.read[index];
+        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 12);
     }
 
     public override void finalizeDone(uint index, bool done) {
-        _shared.finalized[index] = done;
+        atomicOp!"|="(_shared.status, 1 << index + 16);
     }
 
     public override bool finalizeDone(uint index) {
-        return _shared.finalized[index];
+        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 16);
     }
 
     public override void deinit() {
-        _shared.active = false;
-        _shared.written[] = false;
-        _shared.read[] = false;
-        _shared.finalized[] = false;
+        atomicOp!"&="(_shared.status, ~0b111111111111100000000);
     }
 
     public override uint read(uint index) {
-        return _shared.data[index];
+        return atomicLoad!(MemoryOrder.raw)(_shared.data[index]);
     }
 
     public override void write(uint index, uint word) {
-        _shared.data[index] = word;
+        atomicStore!(MemoryOrder.raw)(_shared.data[index], word);
     }
 }
