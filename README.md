@@ -2,17 +2,17 @@
 
 GBAiD stands for <strong>G</strong>ame<strong>B</strong>oy <strong>A</strong>dvance <strong>i</strong>n <strong>D</strong>. I've started this project as an effort to learn the D programming language.
 
-This emulator is written mostly in pure D, with some inline x86 (32 and 64 bit) assembly in the display emulation to help with performance.
+This emulator is written mostly in pure D, with some optional inline x86 (32 and 64 bit) assembly in the display emulation to help with performance.
 
 ## Current state ##
 
 ![Go dragons!](screenshot.png)
 
-All of the GameBoy's built-in hardware has been implemented, except for the serial communication port.
+All of the GameBoy's built-in hardware has been implemented, except for some advanced serial communication port functionality.
 
 I've tested 8 games so far:
 - Super Mario Advance
-- Mario kart
+- Mario Kart
 - Pokemon Emerald (full play-through completed)
 - Pokemon Ruby/Sapphire
 - Pokemon Fire Red
@@ -29,7 +29,7 @@ The emulator uses under 40% CPU on an Intel Core i7-4980HQ (2.80GHz), for a sing
 
 ### Dependencies ###
 
-GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound (eventually) and controller support.  
+GBAiD uses [SDL2](https://www.libsdl.org/) for input, OpenGL graphics, sound and controller support.  
 
 - SDL 2.0.3 or greater is required
 - OpenGL 2.0 or greater is required
@@ -61,15 +61,18 @@ Or get the binary from the `bin` folder after building and use:
 
 ### Arguments ###
 
-At minimum, you must specify the path to the bios and rom images with
+At minimum, you must specify the path to the BIOS and ROM images with
 
-    -b (path to bios) (path to rom)
+    -b (path to BIOS) (path to ROM)
+
+When a multiplayer count is specified, one ROM must be given per player. Instead of one path, specify multiple
+successive paths.
 
 The following arguments are also recognized:
 
 | Long form    | Short form | Argument                 | Usage                                                                       |
 |--------------|------------|--------------------------|-----------------------------------------------------------------------------|
-| --bios       | -b         | Path to bios             | Specify bios image                                                          |
+| --bios       | -b         | Path to BIOS             | Specify bios image                                                          |
 | --save       | -s         | Path to save             | Specify path for loading and saving saves                                   |
 | --noload     | -n         | None                     | Don't load the save                                                         |
 | --nosave     | -N         | None                     | Don't save the save, either on exit or quick save                           |
@@ -78,6 +81,7 @@ The following arguments are also recognized:
 | --filtering  | -f         | LINEAR or NONE           | What technique to use to filter the output texture to be drawn to the screen|
 | --upscaling  | -u         | EPX, XBR, BICUBIC or NONE| What technique to use to increase the resolution of the drawn texture       |
 | --controller | -c         | None                     | Enable the controller as an input method                                    |
+| --multiplayer| -m         | Player count (max 4)     | Run multiple GBAs with an emulated link cable                               |
 | --raw-audio  | N/A        | None                     | Don't filter the audio output of the emulator; will generally be noisier    |
 | --save-memory| N/A        | See saves section        | What memory configuration to use for the main save                          |
 | --eeprom     | N/A        | See saves section        | What memory configuration to use for the EEPROM                             |
@@ -91,6 +95,9 @@ Saves use a custom format and `.gsf` extension that is not compatible with other
 the same path as the ROM is used, but with the `.gsf` extension instead of whatever the ROM image is using. If no save is
 found matching either the given or default path, then a new save is created using that path. Saves are overwritten on exit,
 unless the `--nosave` argument is used.
+
+When using multiplayer, the same save file resolution algorithm is used. If there are conflicting paths, they are fixed by
+appending an index. It's incremented for each previous player that has a conflicting save file.
 
 The emulator can almost always auto-detect the save type, but it's not guaranteed to always work. If it doesn't work, then you will need to
 use the following switches to configure the save memory manually.
@@ -137,13 +144,20 @@ These will be re-mapable in a future version.
 
 These will be re-mapable in a future version.
 
-| Function   | Keyboard | Controller       |
-|------------|----------|------------------|
-| Quick save | Q        | X                |
+| Function      | Keyboard | Controller       |
+|---------------|----------|------------------|
+| Quick save    | Q        | X                |
+| Switch player | 1 to 4   | N/A              |
 
 Quick saves are not save states, they just write the contents of the save memory to the save file immediately.
 Otherwise this is only done on exit. This is useful to ensure you do not loose game progress if the emulator crashes
 or fails to close normally. Note that quick saves are disabled when using the `-N` switch.
+
+### Multiplayer ###
+
+Multiplayer support is only in alpha. Currently it's not even possible to control players at the same time.
+The active player must be switched using the number keys. It can at least be used for simple things, like
+trading Pokémon. Mario Kart multiplayer races work, but without simultaneous players they aren't very exciting...
 
 ### Upscaling ###
 
@@ -166,12 +180,8 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 
 - Fix LoZ Minish Cap bug: Link disappears when walking into water in Castor Winds
 - Fix LoZ Minish Cap bug: flute audio is garbled
-- Implement SIO
-- Implement emulator networking for SIO
 - Emulator pause feature
 - Save states with quick saves
-- Replace getters and setters with @property
-- Replace most classes with structs
 
 ## Useful information ##
 
