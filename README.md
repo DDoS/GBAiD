@@ -179,7 +179,6 @@ GBAiD is licensed under [MIT](LICENSE.txt)
 ## TODO ##
 
 - Fix LoZ Minish Cap bug: Link disappears when walking into water in Castor Winds
-- Fix LoZ Minish Cap bug: flute audio is garbled
 - Emulator pause feature
 - Save states with quick saves
 
