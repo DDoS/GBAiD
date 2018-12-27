@@ -208,8 +208,8 @@ public int main(string[] args) {
             gbas.attachAudio(activeGbaIndex);
             audio.resume();
         }
-        // Draw the latest frame
-        renderer.draw(gbas.currentFrame());
+        // Draw the next frame
+        renderer.draw(gbas.nextFrame());
     }
 
     return 0;
@@ -267,10 +267,10 @@ private class GbaMultiplexer : Thread {
         }
     }
 
-    public short[] currentFrame() {
+    public short[] nextFrame() {
         auto frameCount = gbaThreads.length;
 
-        auto frame1 = gbaThreads[0].currentFrame();
+        auto frame1 = gbaThreads[0].nextFrame();
         if (frameCount == 1) {
             return frame1;
         }
@@ -366,6 +366,10 @@ private class GbaInstance {
 
     public void setKeypadState(KeypadState state) {
         gba.setKeypadState(state);
+    }
+
+    public short[] nextFrame() {
+        return gba.frameSwapper.nextFrame();
     }
 
     public short[] currentFrame() {
