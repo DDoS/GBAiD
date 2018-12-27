@@ -106,11 +106,14 @@ public int main(string[] args) {
                 config.saveFile = config.saveFile.expandPath();
             }
 
-            // Add multiplayer index to save file if it conflicts with another
-            auto count = gbaConfigs.count!((GbaConfig config, string saveFile) => config.saveFile == saveFile)(config.saveFile);
-            if (count > 1) {
-                config.saveFile = config.saveFile.stripExtension() ~ count.to!string() ~ config.saveFile.extension();
+            // Add index to save file if it conflicts with another
+            auto saveFileUnique = config.saveFile;
+            uint saveFileIndex = 2;
+            while (gbaConfigs[0 .. index].count!((GbaConfig config, string saveFile) => config.saveFile == saveFile)(saveFileUnique)) {
+                saveFileUnique = config.saveFile.stripExtension() ~ saveFileIndex.to!string() ~ config.saveFile.extension();
+                saveFileIndex++;
             }
+            config.saveFile = saveFileUnique;
 
             if (noLoad) {
                 config.newSave = true;
