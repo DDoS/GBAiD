@@ -17,7 +17,7 @@ public class InterruptHandler {
         this.processor = processor;
         this.haltHandler = haltHandler;
 
-        ioRegisters.mapAddress(0x208, &masterEnable, 0b1, 0);
+        ioRegisters.mapAddress(0x208, &masterEnable, 0b1, 0).postWriteMonitor(&onMasterEnablePostWrite);
         ioRegisters.mapAddress(0x200, &enable, 0x3FFF, 0);
         ioRegisters.mapAddress(0x200, &request, 0x3FFF, 16)
                 .preWriteMonitor(&onInterruptAcknowledgePreWrite)
@@ -29,13 +29,20 @@ public class InterruptHandler {
         checkForIrq();
     }
 
+    private void onMasterEnablePostWrite(int mask, int oldMasterEnabled, int newMasterEnabled) {
+        // Trigger any IRQ requested when disabled
+        if (!oldMasterEnabled && newMasterEnabled) {
+            checkForIrq();
+        }
+    }
+
     private bool onInterruptAcknowledgePreWrite(int mask, ref int acknowledged) {
         // Clear the acknowledged interrupts and replace the value by the updated request bits
         acknowledged = request & ~acknowledged;
         return true;
     }
 
-    private void onInterruptAcknowledgePostWrite(int mask, int oldRequest, int newRequest) {
+    private void onInterruptAcknowledgePostWrite(int mask, int oldAcknowledged, int newAcknowledged) {
         // Trigger another IRQ if any is still not acknowledged
         checkForIrq();
     }
