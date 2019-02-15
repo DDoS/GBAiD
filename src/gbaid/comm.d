@@ -11,10 +11,9 @@ public class SharedSerialData {
     /*
         [0, 3] -> connected
         [4, 7] -> ready
-        [8, 11] -> written
-        [12, 15] -> read
-        [16, 19] -> finalized
-        20 -> active
+        [8, 11] -> read
+        [12, 15] -> finalized
+        16 -> active
     */
     public shared uint status;
 
@@ -44,22 +43,18 @@ public class MappedMemoryCommunication : Communication {
         uint status = atomicLoad!(MemoryOrder.raw)(_shared.status);
 
         uint connected = status.getBits(0, 3);
-        bool allWritten = status.getBits(8, 11) == connected;
-        bool allRead = status.getBits(12, 15) == connected;
-        bool allFinalized = status.getBits(16, 19) == connected;
-        bool active = status.checkBit(20);
+        bool allRead = status.getBits(8, 11) == connected;
+        bool allFinalized = status.getBits(12, 15) == connected;
+        bool active = status.checkBit(16);
 
-        if (active && allWritten && allRead && allFinalized) {
+        if (active && allRead && allFinalized) {
             return CommunicationState.FINALIZE_DONE;
         }
-        if (active && allWritten && allRead) {
+        if (active && allRead) {
             return CommunicationState.READ_DONE;
         }
-        if (active && allWritten) {
-            return CommunicationState.WRITE_DONE;
-        }
         if (active) {
-            return CommunicationState.INIT_DONE;
+            return CommunicationState.WRITE_DONE;
         }
         return CommunicationState.IDLE;
     }
@@ -68,7 +63,7 @@ public class MappedMemoryCommunication : Communication {
         if (ready) {
             atomicOp!"|="(_shared.status, 0b10000 << index);
         } else {
-            atomicOp!"&="(_shared.status, ~(0b10001000100010000 << index));
+            atomicOp!"&="(_shared.status, ~(0b1000100010000 << index));
             atomicStore!(MemoryOrder.raw)(_shared.data[index], 0xFFFFFFFF);
         }
     }
@@ -80,35 +75,27 @@ public class MappedMemoryCommunication : Communication {
     }
 
     public override void init() {
-        atomicOp!"|="(_shared.status, 1 << 20);
-    }
-
-    public override void writeDone(uint index, bool done) {
-        atomicOp!"|="(_shared.status, 1 << index + 8);
-    }
-
-    public override bool writeDone(uint index) {
-        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 8);
+        atomicOp!"|="(_shared.status, 1 << 16);
     }
 
     public override void readDone(uint index, bool done) {
-        atomicOp!"|="(_shared.status, 1 << index + 12);
+        atomicOp!"|="(_shared.status, 1 << index + 8);
     }
 
     public override bool readDone(uint index) {
-        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 12);
+        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 8);
     }
 
     public override void finalizeDone(uint index, bool done) {
-        atomicOp!"|="(_shared.status, 1 << index + 16);
+        atomicOp!"|="(_shared.status, 1 << index + 12);
     }
 
     public override bool finalizeDone(uint index) {
-        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 16);
+        return atomicLoad!(MemoryOrder.raw)(_shared.status).checkBit(index + 12);
     }
 
     public override void deinit() {
-        atomicOp!"&="(_shared.status, ~0b111111111111100000000);
+        atomicOp!"&="(_shared.status, ~0b11111111100000000);
     }
 
     public override uint read(uint index) {

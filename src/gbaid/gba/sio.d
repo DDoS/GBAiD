@@ -7,7 +7,6 @@ import gbaid.gba.interrupt;
 
 public enum CommunicationState {
     IDLE,
-    INIT_DONE,
     WRITE_DONE,
     READ_DONE,
     FINALIZE_DONE
@@ -19,9 +18,6 @@ public interface Communication {
     public bool allReady();
 
     public void init();
-
-    public void writeDone(uint index, bool done);
-    public bool writeDone(uint index);
 
     public void readDone(uint index, bool done);
     public bool readDone(uint index);
@@ -82,7 +78,7 @@ public class SerialPort {
 
         ioRegisters.mapAddress(0x120, &data1, 0xFFFFFFFF, 0);
         ioRegisters.mapAddress(0x124, &data2, 0xFFFFFFFF, 0);
-        ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16);
+        ioRegisters.mapAddress(0x128, &data3, 0xFFFF, 16).postWriteMonitor(&onPostWriteOutData);
 
         ioRegisters.mapAddress(0x134, &stateSc, 0b1, 0);
         ioRegisters.mapAddress(0x134, &stateSd, 0b1, 1);
@@ -118,6 +114,10 @@ public class SerialPort {
         }
     }
 
+    private void onPostWriteOutData(int mask, int oldValue, int newValue) {
+        _communication.write(index, data3);
+    }
+
     public size_t emulate(size_t cycles) {
         waitCycles += cycles;
 
@@ -130,29 +130,22 @@ public class SerialPort {
         final switch (_communication.getState()) with (CommunicationState) {
             case IDLE:
                 break;
-            case INIT_DONE: {
-                if (!_communication.writeDone(index)) {
-                    control.active = true;
-                    _communication.write(index, data3);
-                    waitCycles = 0;
-
-                    _communication.writeDone(index, true);
-                }
-                break;
-            }
             case WRITE_DONE: {
-                if (!_communication.readDone(index) && waitCycles >= 1024) {
+                if (!_communication.readDone(index)) {
                     data1.setBits(0, 15, _communication.read(0));
                     data1.setBits(16, 31, _communication.read(1));
                     data2.setBits(0, 15, _communication.read(2));
                     data2.setBits(16, 31, _communication.read(3));
 
                     _communication.readDone(index, true);
+
+                    waitCycles = 0;
+                    control.active = true;
                 }
                 break;
             }
             case READ_DONE: {
-                if (!_communication.finalizeDone(index)) {
+                if (!_communication.finalizeDone(index) && waitCycles >= 1024) {
                     control.active = false;
                     control.id = cast(byte) index;
                     control.error = false;
@@ -212,13 +205,6 @@ private class NullCommunication : Communication {
     }
 
     public override void init() {
-    }
-
-    public override void writeDone(uint index, bool done) {
-    }
-
-    public override bool writeDone(uint index) {
-        return true;
     }
 
     public override void readDone(uint index, bool done) {
